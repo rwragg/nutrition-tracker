@@ -2,9 +2,9 @@ import { formatGrams } from "@/lib/format";
 import { percentOfTarget } from "@/lib/nutrition";
 
 const MACROS = {
-  protein: { label: "Protein", color: "bg-blue" },
-  carbs: { label: "Carbs", color: "bg-accent" },
-  fat: { label: "Fat", color: "bg-purple" },
+  protein: "Protein",
+  carbs: "Carbs",
+  fat: "Fat",
 } as const;
 
 export type MacroKey = keyof typeof MACROS;
@@ -21,33 +21,31 @@ export default function MacroBar({
   tone?: "light" | "dark";
 }) {
   const percent = percentOfTarget(value, target);
-  const { label, color } = MACROS[macro];
   const dark = tone === "dark";
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className={dark ? "font-medium text-white/75" : "font-medium text-navy"}>{label}</span>
-        <span className={dark ? "text-white/55" : "text-muted"}>
-          <span
-            className={`font-semibold tabular-nums ${dark ? "text-white" : "text-navy"}`}
-            data-testid={`macro-${macro}`}
-          >
+      <div className="d-flex align-items-baseline justify-content-between gap-2 small">
+        <span className={dark ? "text-white opacity-75" : "fw-medium text-muted-brand"}>
+          {MACROS[macro]}
+        </span>
+        <span className={dark ? "text-white opacity-50" : "text-muted-brand"}>
+          <span className={`fw-semibold tabular ${dark ? "text-white" : ""}`} data-testid={`macro-${macro}`}>
             {formatGrams(value)}
           </span>{" "}
           / {formatGrams(target)} g
         </span>
       </div>
       <div
-        className={`mt-1.5 h-2.5 overflow-hidden rounded-full ${dark ? "bg-white/15" : "bg-canvas"}`}
+        className={`macro-track mt-2 ${dark ? "macro-track-dark" : ""}`}
         role="progressbar"
-        aria-label={`${label} progress`}
+        aria-label={`${MACROS[macro]} progress`}
         aria-valuenow={Math.min(percent, 100)}
         aria-valuemin={0}
         aria-valuemax={100}
       >
         <div
-          className={`h-full rounded-full ${color} transition-[width] duration-300`}
+          className={`macro-fill macro-${macro}`}
           style={{ width: `${Math.min(percent, 100)}%` }}
         />
       </div>

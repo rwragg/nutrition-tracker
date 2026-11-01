@@ -255,6 +255,24 @@ test("refuses to delete a meal that a day logs", async ({ page, consoleErrors })
   expectQuiet(consoleErrors);
 });
 
+test("opens the dialog as an opaque Bootstrap modal", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add food to Breakfast" }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Add food to Breakfast")).toBeVisible();
+
+  // Bootstrap's .modal-content takes its background from --bs-modal-bg, which is
+  // only defined on .modal. Used anywhere else it goes transparent.
+  const background = await dialog
+    .locator(".modal-content")
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(background).toBe("rgb(255, 255, 255)");
+
+  expectQuiet(consoleErrors);
+});
+
 test("lays out on a phone viewport without horizontal overflow", async ({ page, consoleErrors }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

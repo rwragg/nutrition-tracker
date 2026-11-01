@@ -4,7 +4,7 @@ import { useState } from "react";
 import { UNITS, type Food, type Macros, type Unit } from "@/lib/types";
 import { createId } from "@/lib/store";
 import Dialog from "./Dialog";
-import { BTN_PRIMARY } from "./styles";
+import { BTN_GHOST, BTN_PRIMARY } from "./styles";
 
 const FIELDS: { key: keyof Macros; label: string }[] = [
   { key: "calories", label: "Calories" },
@@ -12,9 +12,6 @@ const FIELDS: { key: keyof Macros; label: string }[] = [
   { key: "carbs", label: "Carbs (g)" },
   { key: "fat", label: "Fat (g)" },
 ];
-
-const INPUT =
-  "w-full rounded-xl border border-hairline bg-canvas px-3.5 py-2.5 text-sm text-navy placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue";
 
 export default function FoodFormDialog({
   food,
@@ -44,48 +41,42 @@ export default function FoodFormDialog({
       title={food ? "Edit food" : "New food"}
       onClose={onClose}
       footer={
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-4 py-2 text-sm font-medium text-muted hover:text-navy focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
-          >
+        <div className="d-flex justify-content-end gap-2 w-100">
+          <button type="button" onClick={onClose} className={BTN_GHOST}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!canSave}
-            className={BTN_PRIMARY}
-            data-testid="save-food"
-          >
+          <button type="button" onClick={save} disabled={!canSave} className={BTN_PRIMARY} data-testid="save-food">
             {food ? "Save food" : "Create food"}
           </button>
         </div>
       }
     >
-      <div className="space-y-4">
-        <label className="block">
-          <span className="text-sm font-medium text-navy">Name</span>
+      <div className="d-flex flex-column gap-3">
+        <div>
+          <label className="form-label fw-medium" htmlFor="food-name">
+            Name
+          </label>
           <input
+            id="food-name"
             type="text"
             value={name}
-            aria-label="Name"
             data-testid="food-name"
             placeholder="Cup of rice"
             onChange={(event) => setName(event.target.value)}
-            className={`mt-1 ${INPUT}`}
+            className="form-control"
           />
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="text-sm font-medium text-navy">Unit</span>
+        <div>
+          <label className="form-label fw-medium" htmlFor="food-unit">
+            Unit
+          </label>
           <select
+            id="food-unit"
             value={unit}
-            aria-label="Unit"
             data-testid="food-unit"
             onChange={(event) => setUnit(event.target.value as Unit)}
-            className={`mt-1 ${INPUT}`}
+            className="form-select"
           >
             {UNITS.map((option) => (
               <option key={option} value={option}>
@@ -93,32 +84,34 @@ export default function FoodFormDialog({
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
         <fieldset>
-          <legend className="text-sm font-medium text-navy">Per one {unit}</legend>
-          <div className="mt-1 grid grid-cols-2 gap-3">
+          <legend className="form-label fw-medium">Per one {unit}</legend>
+          <div className="row g-3">
             {FIELDS.map((field) => (
-              <label key={field.key} className="block">
-                <span className="text-xs text-muted">{field.label}</span>
+              <div key={field.key} className="col-6">
+                <label className="form-label small text-muted-brand" htmlFor={`food-${field.key}`}>
+                  {field.label}
+                </label>
                 <input
+                  id={`food-${field.key}`}
                   type="number"
                   min={0}
                   step={0.1}
                   value={macros[field.key]}
-                  aria-label={field.label}
                   data-testid={`food-${field.key}`}
                   onChange={(event) =>
                     setMacros({ ...macros, [field.key]: Number(event.target.value) || 0 })
                   }
-                  className={`mt-1 ${INPUT}`}
+                  className="form-control"
                 />
-              </label>
+              </div>
             ))}
           </div>
         </fieldset>
 
-        <p className="text-xs text-muted">
+        <p className="small text-muted-brand mb-0">
           Values are for one {unit}, so logging two {unit}s doubles them.
         </p>
       </div>

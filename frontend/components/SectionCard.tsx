@@ -5,15 +5,7 @@ import { formatCalories } from "@/lib/format";
 import { sectionMacros } from "@/lib/nutrition";
 import { SECTION_LABELS, type Day, type Section, type Store } from "@/lib/types";
 import EntryRow from "./EntryRow";
-import { BTN_BLUE, BTN_PURPLE, CARD } from "./styles";
-
-/** Each section carries one palette colour as a strip and a wash behind its title. */
-const ACCENTS: Record<Section, { strip: string; header: string }> = {
-  breakfast: { strip: "bg-accent", header: "bg-accent/10" },
-  lunch: { strip: "bg-blue", header: "bg-blue/10" },
-  dinner: { strip: "bg-purple", header: "bg-purple/10" },
-  snacks: { strip: "bg-accent", header: "bg-accent/10" },
-};
+import { BTN_BLUE, BTN_PURPLE } from "./styles";
 
 export default function SectionCard({
   section,
@@ -33,27 +25,24 @@ export default function SectionCard({
   const label = SECTION_LABELS[section];
   const entries = day.sections[section];
   const calories = sectionMacros(day, section, store).calories;
-  const accent = ACCENTS[section];
 
   return (
-    <article className={`${CARD} flex flex-col overflow-hidden`} data-testid={`section-${section}`}>
-      <div className={`h-2 ${accent.strip}`} aria-hidden="true" />
+    <article className="section-card d-flex flex-column" data-section={section} data-testid={`section-${section}`}>
+      <div className="section-strip" aria-hidden="true" />
 
-      <header
-        className={`flex items-baseline justify-between gap-3 border-b border-hairline px-5 py-4 ${accent.header}`}
-      >
-        <h2 className="text-lg font-semibold tracking-tight text-navy">{label}</h2>
-        <p className="text-sm text-muted">
-          <span className="font-semibold tabular-nums text-navy" data-testid={`section-${section}-calories`}>
+      <header className="section-head d-flex align-items-baseline justify-content-between gap-3 px-4 py-3">
+        <h2 className="h5 fw-semibold mb-0">{label}</h2>
+        <p className="mb-0 small text-muted-brand">
+          <span className="fw-semibold tabular" data-testid={`section-${section}-calories`}>
             {formatCalories(calories)}
           </span>{" "}
           kcal
         </p>
       </header>
 
-      <ul className="flex-1 divide-y divide-hairline">
+      <ul className="list-unstyled mb-0 flex-grow-1">
         {entries.length === 0 ? (
-          <li className="px-5 py-8 text-center text-sm text-muted">Nothing logged yet.</li>
+          <li className="px-4 py-5 text-center small text-muted-brand">Nothing logged yet.</li>
         ) : (
           entries.map((entry) => (
             <EntryRow
@@ -67,23 +56,13 @@ export default function SectionCard({
         )}
       </ul>
 
-      <footer className="flex flex-wrap gap-2 border-t border-hairline bg-white px-5 py-3">
-        <button
-          type="button"
-          aria-label={`Add food to ${label}`}
-          onClick={() => onAddFood(section)}
-          className={BTN_BLUE}
-        >
-          <Plus className="size-3.5" aria-hidden="true" />
+      <footer className="d-flex flex-wrap gap-2 border-top px-4 py-3">
+        <button type="button" aria-label={`Add food to ${label}`} onClick={() => onAddFood(section)} className={BTN_BLUE}>
+          <Plus size={14} aria-hidden="true" />
           Food
         </button>
-        <button
-          type="button"
-          aria-label={`Add meal to ${label}`}
-          onClick={() => onAddMeal(section)}
-          className={BTN_PURPLE}
-        >
-          <UtensilsCrossed className="size-3.5" aria-hidden="true" />
+        <button type="button" aria-label={`Add meal to ${label}`} onClick={() => onAddMeal(section)} className={BTN_PURPLE}>
+          <UtensilsCrossed size={14} aria-hidden="true" />
           Meal
         </button>
       </footer>

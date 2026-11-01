@@ -30,6 +30,7 @@ whole of Phase 1 (scaffold, lint, Vitest, Playwright, .gitignore).
 - R13 Palette and its per-colour assignment, exactly as `AGENTS.md` documents
 - R14 Latest library versions; never over-engineer; no unnecessary defensive programming; no extra
   features; no emojis anywhere; minimal README
+- R15 Bootstrap is the styling framework for the whole UI (`AGENTS.md`: "Use Bootstrap")
 
 ## Decisions taken (recorded, per D-numbers)
 
@@ -49,6 +50,15 @@ whole of Phase 1 (scaffold, lint, Vitest, Playwright, .gitignore).
   a "meal" is a named group of foods that can be logged into any of them.
 - **D6 — PEP 8 is inert here.** There is no Python in this project (R10 is Next.js only), so the
   coding standard's style gate is ESLint instead. Flagged rather than silently ignored.
+- **D7 — Bootstrap is the framework, not a layer on top of another one.** R15 arrived after the UI
+  was built, so the earlier utility-CSS theme and its build integration were removed rather than
+  left underneath Bootstrap; two styling systems would be exactly the over-engineering R14 bans.
+  The palette survives as CSS custom properties in `app/globals.css`, bridged into Bootstrap's own
+  `--bs-*` variables, so the colour assignment in `AGENTS.md` still holds.
+- **D8 — Bootstrap's CSS, not its JavaScript.** Plain `bootstrap/dist/css/bootstrap.min.css` imported
+  in the layout, with the dialog markup built from Bootstrap's `modal-*` classes and our own
+  overlay and focus handling. That drops a JS bundle and a hydration surface for four components we
+  already control. Icons stay with lucide-react, which is orthogonal to the CSS framework.
 
 ## Phase 1 — Scaffold · complete in v1, unchanged
 
@@ -97,7 +107,24 @@ the independently computed figures · P4.4 delete guards demonstrably refuse.
 **Success criteria:** P5.1 README accurate · P5.2 `curl` on the served URL returns the app ·
 P5.3 screenshots captured · P5.4 completion report lists each criterion with its evidence.
 
-## Status — v2 (current)
+## Status — v3 (current)
+
+Verified 2026-11-01 on a production build (`npm run build`, then `npm start` on :3000):
+
+- R15 met: `bootstrap@5.3.8` is the only styling dependency; the previous utility framework and its
+  Turbopack loader are gone from `package.json`, `next.config.ts` and `app/globals.css`. Bootstrap is
+  loaded by the layout and the palette is bridged into `--bs-*`, so the colour assignment is intact.
+- Re-verified after the migration: build exit 0, lint exit 0, 55 unit and component tests, 14
+  Playwright tests, zero console errors in every e2e test, phone viewport clean.
+- One defect the screenshots caught and the tests did not: Bootstrap's `.modal-content` takes its
+  background from `--bs-modal-bg`, which Bootstrap only defines on `.modal`. Our overlay is not a
+  `.modal`, so the dialog rendered transparent with an invisible title. Fixed by declaring the
+  `--bs-modal-*` variables on the overlay, and **P4.5** now asserts the computed background of
+  `.modal-content` is opaque, so the class of defect cannot come back silently.
+- Also corrected during the migration: the meal expand label had become a blue link and `min-w-0`
+  (a utility the old framework provided) had silently stopped doing anything.
+
+## Status — v2 (superseded, kept as history)
 
 Verified 2026-11-01 on a production build (`npm run build`, then `npm start` on :3000):
 

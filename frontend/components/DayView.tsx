@@ -32,47 +32,41 @@ export default function DayView({
 
   return (
     <>
-      <section aria-label="Days" className="flex flex-wrap gap-2" data-testid="day-switcher">
-        {store.days.map((candidate) => {
-          const active = candidate.id === day.id;
-          return (
-            <button
-              key={candidate.id}
-              type="button"
-              aria-pressed={active}
-              data-testid={`day-${candidate.id}`}
-              onClick={() => onSelectDay(candidate.id)}
-              className={`flex flex-col items-start rounded-2xl border px-4 py-2 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
-                active
-                  ? "border-navy bg-navy text-white shadow-md shadow-navy/20"
-                  : "border-hairline bg-white text-navy hover:border-blue"
-              }`}
-            >
-              <span className="text-sm font-semibold">{dayLabel(candidate.date, todayIso)}</span>
-              <span className={`text-xs tabular-nums ${active ? "text-accent" : "text-muted"}`}>
-                <span data-testid={`day-${candidate.id}-calories`}>
-                  {formatCalories(dayMacros(candidate, store).calories)}
-                </span>{" "}
-                kcal
-              </span>
-            </button>
-          );
-        })}
+      <section aria-label="Days" className="d-flex flex-wrap gap-2" data-testid="day-switcher">
+        {store.days.map((candidate) => (
+          <button
+            key={candidate.id}
+            type="button"
+            aria-pressed={candidate.id === day.id}
+            data-testid={`day-${candidate.id}`}
+            onClick={() => onSelectDay(candidate.id)}
+            className="day-chip"
+          >
+            <span className="d-block fw-semibold small">{dayLabel(candidate.date, todayIso)}</span>
+            <span className="day-chip-kcal">
+              <span data-testid={`day-${candidate.id}-calories`}>
+                {formatCalories(dayMacros(candidate, store).calories)}
+              </span>{" "}
+              kcal
+            </span>
+          </button>
+        ))}
       </section>
 
       <DaySummary macros={dayMacros(day, store)} targets={DAILY_TARGETS} />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="row g-4">
         {SECTIONS.map((section) => (
-          <SectionCard
-            key={section}
-            section={section}
-            day={day}
-            store={store}
-            onAddFood={(target) => setOpenDialog({ kind: "food", section: target })}
-            onAddMeal={(target) => setOpenDialog({ kind: "meal", section: target })}
-            onRemoveEntry={onRemoveEntry}
-          />
+          <div key={section} className="col-12 col-lg-6">
+            <SectionCard
+              section={section}
+              day={day}
+              store={store}
+              onAddFood={(target) => setOpenDialog({ kind: "food", section: target })}
+              onAddMeal={(target) => setOpenDialog({ kind: "meal", section: target })}
+              onRemoveEntry={onRemoveEntry}
+            />
+          </div>
         ))}
       </div>
 
@@ -82,12 +76,7 @@ export default function DayView({
           store={store}
           onClose={() => setOpenDialog(null)}
           onAdd={(foodId, quantity) =>
-            onAddEntry(openDialog.section, {
-              id: createId("entry"),
-              kind: "food",
-              foodId,
-              quantity,
-            })
+            onAddEntry(openDialog.section, { id: createId("entry"), kind: "food", foodId, quantity })
           }
         />
       )}

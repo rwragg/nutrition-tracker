@@ -20,6 +20,7 @@
 - No persistence
 - No user management for the MVP
 - Use popular libraries
+- Use Bootstrap
 - As simple as possible but with an elegant UI
 
 ## Color Scheme

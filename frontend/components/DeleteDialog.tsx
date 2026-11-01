@@ -24,7 +24,7 @@ export default function DeleteDialog({
       title={title}
       onClose={onClose}
       footer={
-        <div className="flex items-center justify-end gap-3">
+        <div className="d-flex justify-content-end gap-2 w-100">
           <button type="button" onClick={onClose} className={BTN_GHOST} data-testid="close-dialog">
             {blocked ? "Close" : "Cancel"}
           </button>
@@ -44,7 +44,7 @@ export default function DeleteDialog({
         </div>
       }
     >
-      <p className="text-sm text-navy" data-testid="delete-message">
+      <p className="mb-0" data-testid="delete-message">
         {body}
       </p>
     </Dialog>

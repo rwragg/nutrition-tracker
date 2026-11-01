@@ -8,7 +8,7 @@ import type { Food, Store } from "@/lib/types";
 import { describeFoodUsage } from "@/lib/usage";
 import DeleteDialog from "./DeleteDialog";
 import FoodFormDialog from "./FoodFormDialog";
-import { BTN_OUTLINE, BTN_PRIMARY, CARD } from "./styles";
+import { BTN_NEUTRAL, BTN_PRIMARY } from "./styles";
 
 type Dialog =
   | { kind: "new" }
@@ -28,37 +28,37 @@ export default function FoodsView({
 
   return (
     <>
-      <section className={`${CARD} overflow-hidden`} data-testid="foods-view">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline bg-accent/10 px-5 py-4">
-          <h2 className="text-lg font-semibold tracking-tight text-navy">
-            Foods <span className="text-sm font-normal text-muted">({store.foods.length})</span>
+      <section className="brand-list" data-testid="foods-view">
+        <header className="brand-list-head d-flex flex-wrap align-items-center justify-content-between gap-3 px-4 py-3">
+          <h2 className="h5 fw-semibold mb-0">
+            Foods <span className="small fw-normal text-muted-brand">({store.foods.length})</span>
           </h2>
           <button
             type="button"
             data-testid="new-food"
             onClick={() => setDialog({ kind: "new" })}
-            className={BTN_PRIMARY}
+            className={`${BTN_PRIMARY} d-inline-flex align-items-center gap-2`}
           >
-            <Plus className="size-3.5" aria-hidden="true" />
+            <Plus size={14} aria-hidden="true" />
             New food
           </button>
         </header>
 
         {store.foods.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-muted">
+          <p className="text-center small text-muted-brand px-4 py-5 mb-0">
             No foods yet. Create one, then log it on a day.
           </p>
         ) : (
-          <ul className="divide-y divide-hairline">
+          <ul className="list-unstyled mb-0">
             {store.foods.map((food) => (
               <li
                 key={food.id}
                 data-testid={`food-row-${food.id}`}
-                className="flex flex-wrap items-center gap-3 px-5 py-3"
+                className="brand-row d-flex flex-wrap align-items-center gap-3 px-4 py-3"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-navy">{food.name}</p>
-                  <p className="text-xs tabular-nums text-muted">
+                <div className="flex-grow-1 min-w-0">
+                  <p className="fw-semibold mb-0">{food.name}</p>
+                  <p className="small tabular text-muted-brand mb-0">
                     per {formatQuantity(1, food.unit)} · {formatCalories(food.macros.calories)} kcal · P{" "}
                     {formatGrams(food.macros.protein)} · C {formatGrams(food.macros.carbs)} · F{" "}
                     {formatGrams(food.macros.fat)}
@@ -68,7 +68,7 @@ export default function FoodsView({
                   type="button"
                   aria-label={`Edit ${food.name}`}
                   onClick={() => setDialog({ kind: "edit", food })}
-                  className={BTN_OUTLINE}
+                  className={BTN_NEUTRAL}
                 >
                   Edit
                 </button>
@@ -76,7 +76,7 @@ export default function FoodsView({
                   type="button"
                   aria-label={`Delete ${food.name}`}
                   onClick={() => setDialog({ kind: "delete", food })}
-                  className={BTN_OUTLINE}
+                  className={BTN_NEUTRAL}
                 >
                   Delete
                 </button>
@@ -101,28 +101,50 @@ export default function FoodsView({
         />
       )}
 
-      {dialog?.kind === "delete" &&
-        (() => {
-          const usage = foodUsage(store, dialog.food.id);
-          const used = usage.total > 0;
-          return (
-            <DeleteDialog
-              title={used ? `${dialog.food.name} is in use` : `Delete ${dialog.food.name}?`}
-              body={
-                used
-                  ? `This food cannot be deleted while something still refers to it - ${describeFoodUsage(
-                      usage.meals,
-                      usage.days,
-                      todayIso,
-                    )}. Remove it from those first.`
-                  : `This removes ${dialog.food.name} from your food list. Nothing logged or built from it right now.`
-              }
-              confirmLabel="Delete food"
-              onConfirm={used ? undefined : () => dispatch({ type: "food/delete", foodId: dialog.food.id })}
-              onClose={() => setDialog(null)}
-            />
-          );
-        })()}
+      {dialog?.kind === "delete" && (
+        <DeleteFoodConfirm
+          store={store}
+          food={dialog.food}
+          todayIso={todayIso}
+          onClose={() => setDialog(null)}
+          onConfirm={() => dispatch({ type: "food/delete", foodId: dialog.food.id })}
+        />
+      )}
     </>
+  );
+}
+
+function DeleteFoodConfirm({
+  store,
+  food,
+  todayIso,
+  onConfirm,
+  onClose,
+}: {
+  store: Store;
+  food: Food;
+  todayIso: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const usage = foodUsage(store, food.id);
+  const used = usage.total > 0;
+
+  return (
+    <DeleteDialog
+      title={used ? `${food.name} is in use` : `Delete ${food.name}?`}
+      body={
+        used
+          ? `This food cannot be deleted while something still refers to it - ${describeFoodUsage(
+              usage.meals,
+              usage.days,
+              todayIso,
+            )}. Remove it from those first.`
+          : `This removes ${food.name} from your food list. Nothing logged or built from it right now.`
+      }
+      confirmLabel="Delete food"
+      onConfirm={used ? undefined : onConfirm}
+      onClose={onClose}
+    />
   );
 }

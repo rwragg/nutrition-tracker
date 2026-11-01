@@ -1,20 +1,17 @@
-/** Shared button and surface styles, so the visual language stays in one place. */
+/** Bootstrap button variants, named for the palette role each one plays. */
 
-export const FOCUS_RING =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue";
+/** Key action: blue. */
+export const BTN_BLUE = "btn btn-sm btn-brand-blue d-inline-flex align-items-center gap-2";
 
-export const BTN_OUTLINE = `inline-flex items-center justify-center gap-1.5 rounded-full border border-hairline bg-white px-3.5 py-1.5 text-sm font-medium text-navy transition-colors hover:border-blue hover:text-blue ${FOCUS_RING}`;
+/** Primary/submit action: purple. */
+export const BTN_PURPLE = "btn btn-sm btn-brand-purple d-inline-flex align-items-center gap-2";
 
-/** Add-ingredient: blue, the palette's key-action colour. Fills on hover. */
-export const BTN_BLUE = `inline-flex items-center justify-center gap-1.5 rounded-full border border-blue/40 bg-blue/5 px-3.5 py-1.5 text-sm font-semibold text-blue transition-colors hover:bg-blue hover:text-white hover:border-blue ${FOCUS_RING}`;
+/** The solid commit button in a dialog footer. */
+export const BTN_PRIMARY = "btn btn-brand-solid d-inline-flex align-items-center gap-2";
 
-/** Add-meal: purple, the palette's submit/primary colour. Fills on hover. */
-export const BTN_PURPLE = `inline-flex items-center justify-center gap-1.5 rounded-full border border-purple/40 bg-purple/5 px-3.5 py-1.5 text-sm font-semibold text-purple transition-colors hover:bg-purple hover:text-white hover:border-purple ${FOCUS_RING}`;
+/** Neutral row actions: edit, delete. */
+export const BTN_NEUTRAL = "btn btn-sm btn-outline-secondary";
 
-export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-full bg-purple px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-purple/25 transition-colors hover:bg-purple/90 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`;
+export const BTN_GHOST = "btn btn-quiet";
 
-export const BTN_GHOST = `inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:text-navy ${FOCUS_RING}`;
-
-export const BTN_ICON = `inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted opacity-0 transition-opacity hover:bg-canvas hover:text-navy focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 ${FOCUS_RING}`;
-
-export const CARD = "rounded-2xl border border-hairline bg-white shadow-sm";
+export const BTN_ICON = "btn btn-sm btn-quiet entry-action p-0 d-inline-flex align-items-center justify-content-center";

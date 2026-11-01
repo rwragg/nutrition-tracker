@@ -26,9 +26,9 @@ export default function App() {
 
 function Shell() {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:py-12">
+    <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
       <TitleBar />
-      <div className="h-56 rounded-3xl bg-navy/10" />
+      <div className="day-panel" style={{ height: "14rem", opacity: 0.15 }} />
     </main>
   );
 }
@@ -41,28 +41,20 @@ function Tracker() {
   const day = store.days.find((candidate) => candidate.id === selectedDayId) ?? store.days[0];
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:py-12">
+    <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
       <TitleBar>
-        <nav
-          aria-label="Views"
-          className="flex items-center gap-1 rounded-full border border-hairline bg-white p-1 shadow-sm"
-        >
-          {VIEWS.map((item) => {
-            const active = item.id === view;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setView(item.id)}
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue ${
-                  active ? "bg-navy text-white" : "text-muted hover:text-navy"
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
+        <nav aria-label="Views" className="view-nav nav gap-1">
+          {VIEWS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="nav-link"
+              aria-pressed={item.id === view}
+              onClick={() => setView(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
         </nav>
       </TitleBar>
 
@@ -83,7 +75,7 @@ function Tracker() {
       {view === "foods" && <FoodsView store={store} dispatch={dispatch} />}
       {view === "meals" && <MealsView store={store} dispatch={dispatch} />}
 
-      <p className="text-center text-xs text-muted">
+      <p className="text-center small text-muted-brand mb-0">
         Nothing is saved. Reload the page to start again from the sample days.
       </p>
     </main>
@@ -92,12 +84,12 @@ function Tracker() {
 
 function TitleBar({ children }: { children?: React.ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-xl bg-navy text-accent shadow-md shadow-navy/20 ring-2 ring-accent/40">
-          <Apple className="size-5" aria-hidden="true" />
+    <header className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div className="d-flex align-items-center gap-3">
+        <span className="app-mark">
+          <Apple size={20} aria-hidden="true" />
         </span>
-        <h1 className="text-xl font-semibold tracking-tight text-navy">Nutrition Tracker</h1>
+        <h1 className="h4 fw-semibold mb-0">Nutrition Tracker</h1>
       </div>
       {children}
     </header>

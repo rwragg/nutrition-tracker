@@ -26,44 +26,45 @@ export default function EntryRow({
   const sectionLabel = SECTION_LABELS[section];
 
   return (
-    <li className="group flex items-start gap-3 px-5 py-3" data-testid={`entry-${entry.id}`}>
-      <div className="min-w-0 flex-1">
+    <li className="section-entry d-flex align-items-start gap-3 px-4 py-3" data-testid={`entry-${entry.id}`}>
+      <div className="flex-grow-1 min-w-0">
         {meal ? (
           <button
             type="button"
             aria-expanded={expanded}
             aria-label={`${expanded ? "Hide" : "Show"} foods in ${name}`}
             onClick={() => setExpanded((open) => !open)}
-            className="flex items-center gap-1.5 text-left font-semibold text-navy hover:text-blue focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+            className="entry-toggle"
           >
             {name}
             <ChevronDown
-              className={`size-4 text-blue transition-transform ${expanded ? "rotate-180" : ""}`}
+              size={16}
               aria-hidden="true"
+              className={`entry-chevron ${expanded ? "entry-chevron-open" : ""}`}
             />
           </button>
         ) : (
-          <p className="truncate font-semibold text-navy">{name}</p>
+          <p className="fw-semibold mb-0 text-truncate">{name}</p>
         )}
-        <p className="text-xs text-muted">{detail}</p>
+        <p className="small text-muted-brand mb-0">{detail}</p>
 
         {expanded && (
-          <ul className="mt-2 space-y-1 border-l-2 border-blue/30 pl-3">
+          <ul className="list-unstyled entry-expand ps-3 mt-2 mb-0">
             {breakdown.map((item, index) => (
-              <li key={index} className="flex items-baseline justify-between gap-3 text-xs">
-                <span className="text-navy">
-                  {item.name} <span className="text-muted">{item.detail}</span>
+              <li key={index} className="d-flex align-items-baseline justify-content-between gap-3 small">
+                <span>
+                  {item.name} <span className="text-muted-brand">{item.detail}</span>
                 </span>
-                <span className="tabular-nums text-muted">{formatCalories(item.calories)}</span>
+                <span className="tabular text-muted-brand">{formatCalories(item.calories)}</span>
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="shrink-0 text-right">
-        <p className="font-semibold tabular-nums text-navy">{formatCalories(macros.calories)}</p>
-        <p className="text-xs tabular-nums text-muted">
+      <div className="text-end flex-shrink-0">
+        <p className="fw-semibold tabular mb-0">{formatCalories(macros.calories)}</p>
+        <p className="small tabular text-muted-brand mb-0">
           P {formatGrams(macros.protein)} · C {formatGrams(macros.carbs)} · F {formatGrams(macros.fat)}
         </p>
       </div>
@@ -74,7 +75,7 @@ export default function EntryRow({
         onClick={() => onRemove(entry.id)}
         className={BTN_ICON}
       >
-        <X className="size-4" aria-hidden="true" />
+        <X size={16} aria-hidden="true" />
       </button>
     </li>
   );
