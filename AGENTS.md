@@ -25,8 +25,6 @@
 
 ## Color Scheme
 
-Defined once as Tailwind tokens in `frontend/app/globals.css`; no component hardcodes a hex value.
-
 - Accent Yellow: `#ecad0a` - accent lines, highlights
 - Blue Primary: `#209dd7` - links, key sections
 - Purple Secondary: `#753991` - submit buttons, important actions
@@ -42,8 +40,8 @@ Surface tokens for the light UI:
 Where each colour goes:
 
 - **Dark Navy** is the day summary panel - the one dark surface in the app. White numbers, a yellow label, and an accent-yellow calorie ring with a soft glow. Everything else sits on white cards.
-- **Accent Yellow** marks the headline figure of a block: the ring arc, the "Today" label, the over-target number, the logo mark and the sample-day chip. In the section grid it is the top strip and header wash for Breakfast and Snacks.
-- **Blue Primary** carries key actions and the expandable: the add-ingredient button (fills solid on hover), the meal chevron, the ingredient breakdown rule, and the strip and header wash for Lunch.
+- **Accent Yellow** marks the headline figure of a block: the ring arc, the "Today" label, the over-target number and the logo mark. In the section grid it is the top strip and header wash for Breakfast and Snacks.
+- **Blue Primary** carries key actions and the expandable: the add-food button (fills solid on hover), the meal chevron, the list of foods inside a meal, and the strip and header wash for Lunch.
 - **Purple Secondary** is the commit action: the add-meal button and the confirm button in every dialog, plus the strip and header wash for Dinner.
 - **Gray Text** carries quantities, per-entry macro summaries and supporting copy.
 - Macro bars are fixed by nutrient: protein blue, carbs yellow, fat purple - and on the navy panel they run white labels over a white/15 track.
