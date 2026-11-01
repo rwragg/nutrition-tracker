@@ -35,7 +35,7 @@ export default function NutritionTracker() {
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:py-12">
       <header className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-navy text-accent">
+          <span className="flex size-10 items-center justify-center rounded-xl bg-navy text-accent shadow-md shadow-navy/20 ring-2 ring-accent/40">
             <Apple className="size-5" aria-hidden="true" />
           </span>
           <div>
@@ -43,7 +43,8 @@ export default function NutritionTracker() {
             <p className="text-sm text-muted">{today || "\u00a0"}</p>
           </div>
         </div>
-        <span className="hidden rounded-full border border-hairline bg-white px-3 py-1 text-xs font-medium uppercase tracking-wider text-muted sm:inline">
+        <span className="hidden items-center gap-1.5 rounded-full border border-accent/60 bg-accent/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-navy sm:inline-flex">
+          <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
           Sample day
         </span>
       </header>

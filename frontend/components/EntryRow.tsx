@@ -31,11 +31,11 @@ export default function EntryRow({
             aria-expanded={expanded}
             aria-label={`${expanded ? "Hide" : "Show"} ingredients of ${name}`}
             onClick={() => setExpanded((open) => !open)}
-            className="flex items-center gap-1.5 text-left font-medium text-navy hover:text-blue focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+            className="flex items-center gap-1.5 text-left font-semibold text-navy hover:text-blue focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
           >
             {name}
             <ChevronDown
-              className={`size-4 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+              className={`size-4 text-blue transition-transform ${expanded ? "rotate-180" : ""}`}
               aria-hidden="true"
             />
           </button>
@@ -45,7 +45,7 @@ export default function EntryRow({
         <p className="text-xs text-muted">{detail}</p>
 
         {expanded && (
-          <ul className="mt-2 space-y-1 border-l border-hairline pl-3">
+          <ul className="mt-2 space-y-1 border-l-2 border-blue/30 pl-3">
             {breakdown.map((item, index) => (
               <li key={index} className="flex items-baseline justify-between gap-3 text-xs">
                 <span className="text-navy">

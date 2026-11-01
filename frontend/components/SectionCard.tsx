@@ -5,7 +5,15 @@ import { formatCalories } from "@/lib/format";
 import { totalMacros } from "@/lib/nutrition";
 import { SECTION_LABELS, type LogEntry, type Section } from "@/lib/types";
 import EntryRow from "./EntryRow";
-import { BTN_OUTLINE, CARD } from "./styles";
+import { BTN_BLUE, BTN_PURPLE, CARD } from "./styles";
+
+/** Each section carries one palette colour as a strip and a wash behind its title. */
+const ACCENTS: Record<Section, { strip: string; header: string }> = {
+  breakfast: { strip: "bg-accent", header: "bg-accent/10" },
+  lunch: { strip: "bg-blue", header: "bg-blue/10" },
+  dinner: { strip: "bg-purple", header: "bg-purple/10" },
+  snacks: { strip: "bg-accent", header: "bg-accent/10" },
+};
 
 export default function SectionCard({
   section,
@@ -22,13 +30,21 @@ export default function SectionCard({
 }) {
   const label = SECTION_LABELS[section];
   const calories = totalMacros(entries).calories;
+  const accent = ACCENTS[section];
 
   return (
-    <article className={`${CARD} flex flex-col`} data-testid={`section-${section}`}>
-      <header className="flex items-baseline justify-between gap-3 border-b border-hairline px-5 py-4">
+    <article
+      className={`${CARD} flex flex-col overflow-hidden`}
+      data-testid={`section-${section}`}
+    >
+      <div className={`h-2 ${accent.strip}`} aria-hidden="true" />
+
+      <header
+        className={`flex items-baseline justify-between gap-3 border-b border-hairline px-5 py-4 ${accent.header}`}
+      >
         <h2 className="text-lg font-semibold tracking-tight text-navy">{label}</h2>
         <p className="text-sm text-muted">
-          <span className="font-medium tabular-nums text-navy" data-testid={`section-${section}-calories`}>
+          <span className="font-semibold tabular-nums text-navy" data-testid={`section-${section}-calories`}>
             {formatCalories(calories)}
           </span>{" "}
           kcal
@@ -50,12 +66,12 @@ export default function SectionCard({
         )}
       </ul>
 
-      <footer className="flex flex-wrap gap-2 border-t border-hairline px-5 py-3">
+      <footer className="flex flex-wrap gap-2 border-t border-hairline bg-white px-5 py-3">
         <button
           type="button"
           aria-label={`Add ingredient to ${label}`}
           onClick={() => onAddIngredient(section)}
-          className={BTN_OUTLINE}
+          className={BTN_BLUE}
         >
           <Plus className="size-3.5" aria-hidden="true" />
           Ingredient
@@ -64,7 +80,7 @@ export default function SectionCard({
           type="button"
           aria-label={`Add meal to ${label}`}
           onClick={() => onAddMeal(section)}
-          className={BTN_OUTLINE}
+          className={BTN_PURPLE}
         >
           <UtensilsCrossed className="size-3.5" aria-hidden="true" />
           Meal

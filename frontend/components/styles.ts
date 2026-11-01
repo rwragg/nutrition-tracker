@@ -5,7 +5,13 @@ export const FOCUS_RING =
 
 export const BTN_OUTLINE = `inline-flex items-center justify-center gap-1.5 rounded-full border border-hairline bg-white px-3.5 py-1.5 text-sm font-medium text-navy transition-colors hover:border-blue hover:text-blue ${FOCUS_RING}`;
 
-export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-full bg-purple px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple/90 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`;
+/** Add-ingredient: blue, the palette's key-action colour. Fills on hover. */
+export const BTN_BLUE = `inline-flex items-center justify-center gap-1.5 rounded-full border border-blue/40 bg-blue/5 px-3.5 py-1.5 text-sm font-semibold text-blue transition-colors hover:bg-blue hover:text-white hover:border-blue ${FOCUS_RING}`;
+
+/** Add-meal: purple, the palette's submit/primary colour. Fills on hover. */
+export const BTN_PURPLE = `inline-flex items-center justify-center gap-1.5 rounded-full border border-purple/40 bg-purple/5 px-3.5 py-1.5 text-sm font-semibold text-purple transition-colors hover:bg-purple hover:text-white hover:border-purple ${FOCUS_RING}`;
+
+export const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-full bg-purple px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-purple/25 transition-colors hover:bg-purple/90 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS_RING}`;
 
 export const BTN_GHOST = `inline-flex items-center justify-center rounded-full px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:text-navy ${FOCUS_RING}`;
 
