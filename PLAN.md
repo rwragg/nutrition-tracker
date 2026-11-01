@@ -23,7 +23,8 @@ whole of Phase 1 (scaffold, lint, Vitest, Playwright, .gitignore).
 - R6 Track days over time, and dig into a day
 - R7 Nothing else: no archive, no search/filter. Keep it simple.
 - R8 Priority is a slick professional UI/UX over feature count
-- R9 App opens populated with dummy data for a sample day
+- R9 App opens populated with dummy data for a few sample days, so the day history is visible
+  immediately
 - R10 Next.js, client-rendered, in `frontend/`
 - R11 No persistence, no user management
 - R12 Popular libraries, elegant but simple
@@ -31,6 +32,12 @@ whole of Phase 1 (scaffold, lint, Vitest, Playwright, .gitignore).
 - R14 Latest library versions; never over-engineer; no unnecessary defensive programming; no extra
   features; no emojis anywhere; minimal README
 - R15 Bootstrap is the styling framework for the whole UI (`AGENTS.md`: "Use Bootstrap")
+- R16 "Tracking days" is a history of days to move between and open — not an archive screen, saved
+  views or filters over that history
+- R17 Each day is summarised against targets of 2,200 kcal / 140 g protein / 250 g carbs / 70 g fat,
+  held in one place (`lib/targets.ts`)
+- R18 A food or a meal still in use is never deleted silently: the delete is refused and the app says
+  where the record is referenced. Nothing cascades
 
 ## Decisions taken (recorded, per D-numbers)
 
