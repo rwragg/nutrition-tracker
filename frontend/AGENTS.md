@@ -19,6 +19,11 @@ A Next.js 16 app with three views — Day, Foods, Meals — over a single in-mem
 network call of any kind** and persists nothing: the store is seeded on load and resets on reload.
 Sign-in and storage are the backend's job later.
 
+It is built as a **static export** (`output: "export"` in `next.config.ts`) and served by the FastAPI
+backend at `/`, so there is no Next.js server in the deployment. Export mode rules out partial
+prefetching and the `cacheComponents` machinery that enables it; neither is used here, so the app holds
+no data-fetching or caching behaviour that the export loses.
+
 ## Layout
 
 - `app/` — `layout.tsx` imports Bootstrap's CSS and `globals.css` and sets `data-bs-theme="dark"` on
@@ -63,8 +68,14 @@ Sign-in and storage are the backend's job later.
 ```
 cd frontend
 npm install
-npm run dev        # development
+npm run dev        # development server, for working on the UI
+npm run build      # static export to out/ - this is what the image serves
 npm test           # 55 unit and component tests (Vitest + Testing Library)
-npm run test:e2e   # 14 Playwright tests, against a production build on :3100
+npm run test:e2e   # 14 Playwright tests, against the container on :8000 (needs docker)
 npm run lint
 ```
+
+`npm run test:e2e` starts the stack itself with `docker compose up --build --wait` and stops it again,
+so it tests the built image rather than a `next start` server. Locally it reuses a stack that is already
+running; in CI it always builds fresh. `next start` is no longer used anywhere — the app is a static
+export, and `next start` does not serve one.

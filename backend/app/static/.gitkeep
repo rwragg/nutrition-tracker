@@ -1,0 +1,5 @@
+# Keeps backend/app/static in the repository.
+#
+# The frontend's static export is copied here when the image is built, so this
+# directory is empty in a checkout. Starlette checks a StaticFiles directory on
+# every request, so the directory itself has to exist.

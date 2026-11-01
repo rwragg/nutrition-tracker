@@ -33,12 +33,14 @@ On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http:
 ## Tests
 
 ```bash
-cd frontend
-npm install
-npm test          # unit and component tests (Vitest + Testing Library)
-npm run test:e2e  # end-to-end tests (Playwright, serves the production build on :3100)
+cd backend && uv run pytest          # 7 tests: API routes, plus the container tests
+cd frontend && npm install
+npm test                             # 55 unit and component tests
+npm run test:e2e                     # 14 Playwright tests, against the container on :8000
 npm run lint
 ```
 
-55 unit and component tests, 14 Playwright tests. The browser tests compute their expected figures
-from the app's own pure functions, so a failure means the page and the model disagree.
+The backend's container tests, and the Playwright suite, both exercise the built image rather than a
+development server: they bring the stack up themselves and check the app that the container actually
+serves. The browser tests compute their expected figures from the app's own pure functions, so a
+failure means the page and the model disagree.

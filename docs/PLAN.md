@@ -161,9 +161,9 @@ All six criteria met, each verified by running it rather than by reading the cod
 The brief: the frontend is statically built and served so the tracker appears at `/`, with
 comprehensive unit and integration tests.
 
-- [ ] Configure the Next app for static export and build it inside the image
-- [ ] FastAPI serves the exported assets at `/`, client routes still resolving
-- [ ] Confirm the palette and all three views survive being served from a different origin than `next start`
+- [x] Configure the Next app for static export and build it inside the image
+- [x] FastAPI serves the exported assets at `/`, client routes still resolving
+- [x] Confirm the palette and all three views survive being served from a different origin than `next start`
 
 **Tests:** the existing 55 unit/component tests and 14 Playwright tests keep passing · Playwright now
 runs against the container rather than `next start` · a test asserting `/` returns the app's HTML and
@@ -172,6 +172,36 @@ not a directory listing.
 **Success criteria:** P3.1 the tracker renders at `http://localhost:<port>/` from the container ·
 P3.2 all three views work · P3.3 zero console errors · P3.4 the frontend's own suites are still green ·
 P3.5 no change to the frontend's state handling (D1).
+
+### Status — Part 3, complete 2026-11-01
+
+All five criteria met:
+
+- **P3.1** `/` returns 200 `text/html` (8,765 bytes) with `<title>Nutrition Tracker</title>` and the
+  layout's shell class, and the hashed `_next` bundles it references all return 200 with the right
+  content types — HTML alone would prove nothing, so the bundle check is a test of its own.
+- **P3.2** all three views render from the container: the Day view shows the seeded day's 2,208 kcal,
+  Foods lists the 31 seeded foods, Meals lists the 5 seeded meals; checked in a browser against the
+  container rather than against `next start`.
+- **P3.3** zero console errors — the existing e2e spec attaches console and pageerror listeners to
+  every test, so this is asserted 14 times over.
+- **P3.4** 55 unit and component tests, and **14 Playwright tests, all passing against the container**;
+  backend suite 7 passed.
+- **P3.5** the frontend's only changes this part are `next.config.ts` and `playwright.config.ts` —
+  `components/` and `lib/` are untouched, so the in-memory store is exactly as Part 2 left it.
+
+**Three things learned here:**
+
+- **Export mode rules out PPR, and the error is not obvious.** `output: "export"` fails the build with
+  *"Invariant: PPR cannot be enabled in export mode"*. The cause was `partialPrefetching: true`, and
+  then `cacheComponents: true` (which enables the same machinery). Both were dropped: the app holds its
+  data in memory and uses no `use cache` directives, so neither was load-bearing.
+- **`check_dir=False` does not make StaticFiles tolerate a missing directory.** Starlette re-checks the
+  directory on every request, so a bare checkout would have raised a 500 rather than answering 404. The
+  fix is to keep the directory itself in the repository with a `.gitkeep`. The unit test caught this.
+- **A browser suite that manages its own stack collides with one already running.** `reuseExistingServer`
+  is now false only in CI: locally the browser tests use the stack that is up, and CI builds fresh so
+  the committed source is what gets tested.
 
 ## Part 4 — Fake sign-in
 

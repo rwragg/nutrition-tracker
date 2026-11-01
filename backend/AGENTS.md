@@ -1,20 +1,23 @@
 # Backend
 
-FastAPI app that serves the static site at `/` and owns `/api/*`. Part 2 of `docs/PLAN.md`; the
-nutrition routes arrive in Part 6.
+FastAPI app that serves the frontend's static export at `/` and owns `/api/*`. Part 2 and Part 3 of
+`docs/PLAN.md`; the nutrition routes arrive in Part 6.
 
 ## Layout
 
-- `app/main.py` - the FastAPI app: `/` serves the page, and `/api/health` and `/api/hello` are the
-  Part 2 scaffolding routes that prove the stack runs.
-- `app/static/index.html` - the hello-world page. It calls `/api/hello` on load, which is how a
-  browser proves that static serving and the API both work.
+- `app/main.py` - the FastAPI app. The API routes are declared first and the static export is mounted
+  at `/` last, so `/api/*` wins the match. `html=True` makes the mount serve `index.html` at `/`.
+- `app/static/` - where the frontend's export lands. It holds only a `.gitkeep` in the repository; the
+  image build copies `frontend/out` in here. Starlette checks a StaticFiles directory on every request,
+  so the directory must exist even when it is empty - without it a request to `/` raises instead of
+  404ing.
 - `tests/test_app.py` - unit tests, no docker needed.
-- `tests/test_container.py` - integration: builds the image, runs the container, checks it answers.
-  Skipped when the docker daemon is unreachable, so the unit suite still runs anywhere.
+- `tests/test_container.py` - integration: builds the image, runs the container, checks that `/` serves
+  the app and that the hashed bundles load. Skipped when the docker daemon is unreachable.
 - `pyproject.toml` and `uv.lock` - dependencies, managed with uv.
-- `Dockerfile` - based on the official uv image, installing with `--frozen` so the image matches the
-  lock file exactly.
+- `Dockerfile` - two stages: `node:26-bookworm-slim` builds the frontend, then the official uv image
+  installs the backend and copies the export in. **The build context is the project root, not this
+  directory**, because the frontend is part of the build: `docker build -f backend/Dockerfile .`
 
 ## Running
 

@@ -4,6 +4,7 @@ Skipped when the docker CLI is missing or the daemon is unreachable, so the unit
 suite stays runnable on a machine without docker.
 """
 
+import re
 import shutil
 import subprocess
 import time
@@ -14,6 +15,7 @@ from urllib.request import urlopen
 import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = BACKEND_DIR.parent
 IMAGE = "nutrition-backend:test"
 CONTAINER = "nutrition-backend-test"
 BASE_URL = "http://127.0.0.1:8123"
@@ -52,8 +54,17 @@ def wait_until_ready(timeout: float = 60.0) -> None:
 
 @pytest.fixture(scope="module")
 def container() -> Iterator[str]:
-    """Build the image, run it, and wait for the health check."""
-    subprocess.run(["docker", "build", "-t", IMAGE, "."], cwd=BACKEND_DIR, check=True, capture_output=True)
+    """Build the image, run it, and wait for the health check.
+
+    The build context is the project root, not backend/ - the Dockerfile builds the
+    frontend first and copies its export in, so it needs both directories.
+    """
+    subprocess.run(
+        ["docker", "build", "-f", "backend/Dockerfile", "-t", IMAGE, "."],
+        cwd=ROOT_DIR,
+        check=True,
+        capture_output=True,
+    )
     subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
     subprocess.run(
         ["docker", "run", "-d", "--name", CONTAINER, "-p", "8123:8000", IMAGE],
@@ -68,11 +79,23 @@ def container() -> Iterator[str]:
         subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
 
 
-def test_container_serves_the_page(container: str) -> None:
+def test_container_serves_the_app_at_root(container: str) -> None:
     response = urlopen(container, timeout=5)
+    body = response.read().decode()
 
     assert response.status == 200
-    assert "Hello world" in response.read().decode()
+    assert response.headers["content-type"].startswith("text/html")
+    assert "<title>Nutrition Tracker</title>" in body
+
+
+def test_container_serves_the_built_bundles(container: str) -> None:
+    """The HTML alone proves little - the hashed Next bundles must be served too."""
+    body = urlopen(container, timeout=5).read().decode()
+    assets = re.findall(r'src="(/_next/[^"]+)"', body)
+
+    assert assets, "the exported HTML references no Next assets"
+    for path in assets[:3]:
+        assert urlopen(f"{container}{path}", timeout=5).status == 200
 
 
 def test_container_answers_the_api(container: str) -> None:

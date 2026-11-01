@@ -1,13 +1,13 @@
 """FastAPI application for the nutrition tracker.
 
-Part 2 of the plan: prove the stack runs - a static hello-world page served at
-"/" and an API route the page calls. The nutrition routes arrive in Part 6.
+Serves the statically exported frontend at "/" and owns the API under /api.
+The export is built by `next build` and copied into app/static when the image is
+built, so this module never runs a build itself.
 """
 
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -23,14 +23,13 @@ def health() -> dict[str, str]:
 
 @app.get("/api/hello")
 def hello() -> dict[str, str]:
-    """Example API route, called by the hello-world page to prove the API answers."""
+    """Example route from Part 2, kept while the nutrition routes arrive in Part 6."""
     return {"message": "Hello from the API"}
 
 
-@app.get("/")
-def index() -> FileResponse:
-    """The hello-world page."""
-    return FileResponse(STATIC_DIR / "index.html")
-
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Mounted last, so the API routes above win the match. html=True serves index.html
+# at "/". The directory exists in a bare checkout (it holds a .gitkeep) and its
+# contents arrive when the image is built, so an unbuilt checkout answers 404
+# rather than raising: Starlette re-checks the directory on every request, which is
+# why check_dir=False at construction time is not enough on its own.
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="site")

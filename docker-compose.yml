@@ -1,7 +1,14 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     image: nutrition-tracker:local
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "uv", "run", "--no-sync", "--no-dev", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped

@@ -1,0 +1,19 @@
+# Build inputs only: the image builds the frontend and installs the backend, so
+# dependencies, build output and the virtualenv are all regenerated inside it.
+**/node_modules
+**/.next
+**/out
+**/.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+
+# Not needed to build, and keeps the context small.
+.git
+.idea
+backend/tests
+docs
+scripts
+README.md
+*.db
+.env*
