@@ -2,6 +2,9 @@
 
 ## Business Requirements
 
+- A user can sign in
+- New users will register with a telegram id and a email
+- When signed in the user can only see their information
 - An MVP of a Nutrition Tracker application as a web app  
 - The web app should be able to log daily meals
 - The meals can be stored as individual foods, such as a cup of rice
@@ -16,6 +19,12 @@
 - The priority is a slick, professional, gorgeous UI/UX with very simple features
 - The app should open with dummy data populated for a few sample days, so the history is visible from the first screen
 
+## Limitations
+
+For the MVP, there will only be a user sign in (hardcoded to 'user' and 'password') but the database will support multiple users for future.
+For the MVP, there will only be 1 Kanban board per signed in user.
+For the MVP, this will run locally (in a docker container)
+
 ## Technical Details
 
 - Implemented as a modern NextJS app, client rendered
@@ -25,6 +34,16 @@
 - Use popular libraries
 - Use Bootstrap
 - As simple as possible but with an elegant UI
+- Python FastAPI backend, including serving the static NextJS site at /
+- Everything packaged into a Docker container
+- Use "uv" as the package manager for python in the Docker container
+- Use OpenRouter for the AI calls. An OPENROUTER_API_KEY is in .env in the project root
+- Use openai/gpt-oss-120b as the model
+- Use SQLLite local database for the database, creating a new db if it doesn't exist
+- Start and Stop server scripts for Mac, PC, Linux in scripts/
+
+## Starting Point
+A working MVP of the frontend has been built and is already in frontend. This is not yet designed for the Docker setup. It's a pure frontend-only demo.
 
 ## Color Scheme
 
@@ -70,4 +89,7 @@ Contrast rule, measured rather than eyeballed: every text and surface pair in th
 3. Be concise. Keep README minimal. IMPORTANT: no emojis ever
 4. Use PEP 8
 
-   There is no Python in this project - the app is Next.js only - so this standard has nothing to bite on. ESLint is the equivalent gate, and it must pass.
+## Working documentation
+All documents for planning and executing this project will be in the docs/ directory. Please review the docs/PLAN.md document before proceeding.
+
+   
