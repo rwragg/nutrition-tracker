@@ -109,13 +109,13 @@ explicit and no part before Part 7 depends on storage · P1.4 approval recorded.
 The brief: stand up Docker, the FastAPI backend in `backend/`, and start/stop scripts in `scripts/`;
 serve a hello-world page and make an API call to prove it runs locally.
 
-- [ ] Harden `.gitignore` first (D8): `node_modules/`, `.next/`, `out/`, `*.db`, `.env*`, `__pycache__/`, `.venv/`
-- [ ] `backend/` FastAPI app on `uv`: `pyproject.toml`, a health route, one example `/api/` route
-- [ ] `Dockerfile` plus a compose file (or a documented `docker run`) building the backend
-- [ ] `scripts/`: `start` and `stop` for Mac/Linux plus Windows `.bat`, all driving the same container
-- [ ] A static hello-world page served at `/`, and the example API route answering
-- [ ] `backend/AGENTS.md` and `scripts/AGENTS.md` filled in: purpose, layout, how to run
-- [ ] README updated: how to start and stop the stack
+- [x] Harden `.gitignore` first (D8): `node_modules/`, `.next/`, `out/`, `*.db`, `.env*`, `__pycache__/`, `.venv/`
+- [x] `backend/` FastAPI app on `uv`: `pyproject.toml`, a health route, one example `/api/` route
+- [x] `Dockerfile` plus a compose file (or a documented `docker run`) building the backend
+- [x] `scripts/`: `start` and `stop` for Mac/Linux plus Windows `.bat`, all driving the same container
+- [x] A static hello-world page served at `/`, and the example API route answering
+- [x] `backend/AGENTS.md` and `scripts/AGENTS.md` filled in: purpose, layout, how to run
+- [x] README updated: how to start and stop the stack
 
 **Tests:** `pytest` unit tests for the routes through FastAPI's test client · one integration test that
 builds the image, starts the container, and asserts both `/` and the API route answer · `docker build`
@@ -124,6 +124,37 @@ is part of the test run.
 **Success criteria:** P2.1 `docker build` exits 0 · P2.2 one script starts it, one stops it · P2.3 `/`
 returns the hello-world page · P2.4 the API route returns 200 with a JSON body · P2.5 backend tests
 green · P2.6 after a run, `git status` shows no build output, database file or `.env` staged.
+
+### Status — Part 2, complete 2026-11-01
+
+All six criteria met, each verified by running it rather than by reading the code:
+
+- **P2.1** `docker build` exits 0; the image has the expected layers (`uv sync --frozen --no-dev`,
+  `COPY app`, the uvicorn `CMD`).
+- **P2.2** `scripts/start.sh` exits 0 in 2.6s — it builds, starts, waits for the health check and
+  prints the URL; `scripts/stop.sh` exits 0 and the container is gone afterwards. Both scripts exit 1
+  with a message when docker is unreachable, which was tested by running them while it was.
+- **P2.3** `/` returns 200, `text/html`, with the page's title — from inside the container and through
+  the published port.
+- **P2.4** `/api/health` and `/api/hello` return 200 with JSON; an unknown path returns 404.
+- **P2.5** `uv run pytest` → **7 passed**: 5 unit tests, and 2 that build the image, run the container,
+  check it answers and remove it afterwards.
+- **P2.6** after a full build and run, `git status` shows nothing but intended edits, and there are no
+  stray database files.
+
+**Two things learned here, worth keeping:**
+
+- **Docker access on this machine needed an ACL, not group membership.** The docker snap's daemon is
+  started with `--group docker`, but the socket still comes up `root:root`, and with `linger` enabled a
+  logout does not refresh the group list the gateway runs under. An ACL for the user's own uid works
+  immediately and is narrower than the group would be. The socket is recreated whenever the daemon
+  restarts, so the ACL is re-applied by a oneshot `docker-socket-acl.service` ordered after the snap's
+  unit — which should also carry `PartOf=snap.docker.dockerd.service` so a docker snap refresh does not
+  leave the ACL behind.
+- **A readiness loop must catch `OSError`, not `URLError`.** Docker's port proxy accepts connections as
+  soon as the port is published and resets them until the app inside is listening, so an early attempt
+  fails with `ConnectionResetError` — which is not a `URLError`. That bug made the container tests error
+  on their first run against a container that was in fact healthy.
 
 ## Part 3 — Add in the frontend
 

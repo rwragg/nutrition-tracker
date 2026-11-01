@@ -9,7 +9,6 @@ import subprocess
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from urllib.error import URLError
 from urllib.request import urlopen
 
 import pytest
@@ -32,6 +31,25 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def wait_until_ready(timeout: float = 60.0) -> None:
+    """Wait for the container to answer.
+
+    Docker's port proxy accepts a connection as soon as the port is published,
+    before uvicorn is listening, and then resets it - so an early attempt can fail
+    with a reset rather than a refusal. Both are OSError, so retry on any of them.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urlopen(f"{BASE_URL}/api/health", timeout=1) as response:
+                if response.status == 200:
+                    return
+        except OSError:
+            pass
+        time.sleep(1)
+    raise AssertionError(f"the container never answered on {BASE_URL} within {timeout:.0f}s")
+
+
 @pytest.fixture(scope="module")
 def container() -> Iterator[str]:
     """Build the image, run it, and wait for the health check."""
@@ -43,16 +61,11 @@ def container() -> Iterator[str]:
         capture_output=True,
     )
 
-    for _ in range(60):
-        try:
-            urlopen(f"{BASE_URL}/api/health", timeout=1)
-            break
-        except URLError:
-            time.sleep(1)
-
-    yield BASE_URL
-
-    subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
+    try:
+        wait_until_ready()
+        yield BASE_URL
+    finally:
+        subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
 
 
 def test_container_serves_the_page(container: str) -> None:
