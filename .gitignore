@@ -1,2 +1,18 @@
 # IDE
 .idea/
+
+# Node / Next
+node_modules/
+.next/
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local data and secrets
+*.db
+*.sqlite3
+.env*
+!.env.example

@@ -19,6 +19,17 @@ sample days and resets on reload.
 
 Nothing is saved: the sample data is seeded in memory on load.
 
+## Running the whole stack
+
+One container: FastAPI serves the frontend at `/` and owns the API.
+
+```bash
+./scripts/start.sh    # builds and starts; exits 0 once the health check answers
+./scripts/stop.sh     # stops it
+```
+
+On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http://localhost:8000/.
+
 ## Tests
 
 ```bash

@@ -1,0 +1,7 @@
+services:
+  backend:
+    build: ./backend
+    image: nutrition-tracker:local
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nutrition Tracker — backend check</title>
+    <style>
+      :root {
+        --ink: #0a0d12;
+        --surface: #12161f;
+        --hairline: #384355;
+        --text: #eaf0f7;
+        --muted: #8b95a7;
+        --volt: #c8ff4d;
+        --cyan: #38d9f5;
+        --ember: #ff6b4a;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: var(--ink);
+        color: var(--text);
+        font: 16px/1.5 ui-sans-serif, system-ui, sans-serif;
+      }
+      main {
+        width: min(560px, calc(100% - 3rem));
+        border: 1px solid var(--hairline);
+        background: var(--surface);
+        padding: 2rem;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.5rem;
+      }
+      p {
+        margin: 0 0 1.5rem;
+        color: var(--muted);
+      }
+      #result {
+        border-top: 1px solid var(--hairline);
+        padding-top: 1rem;
+        font-family: ui-monospace, monospace;
+      }
+      #result.ok {
+        color: var(--volt);
+      }
+      #result.failed {
+        color: var(--ember);
+      }
+      a {
+        color: var(--cyan);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Hello world</h1>
+      <p>The backend is serving this page. It is calling the API on load.</p>
+      <div id="result">Calling /api/hello…</div>
+      <p style="margin: 1rem 0 0">
+        <a href="/api/health">/api/health</a> · <a href="/api/hello">/api/hello</a>
+      </p>
+    </main>
+    <script>
+      fetch("/api/hello")
+        .then((response) => response.json())
+        .then((data) => {
+          const result = document.getElementById("result");
+          result.textContent = "API said: " + data.message;
+          result.className = "ok";
+        })
+        .catch(() => {
+          const result = document.getElementById("result");
+          result.textContent = "The API call failed.";
+          result.className = "failed";
+        });
+    </script>
+  </body>
+</html>
