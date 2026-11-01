@@ -69,7 +69,7 @@ export default function AddFoodDialog({
           No foods yet. Add one from the Foods view first.
         </p>
       ) : (
-        <ul className="list-unstyled mb-0 overflow-y-auto d-flex flex-column gap-1" style={{ maxHeight: "18rem" }} role="listbox" aria-label="Foods">
+        <ul className="list-unstyled mb-0 overflow-y-auto dark-scroll d-flex flex-column gap-1" style={{ maxHeight: "18rem" }} role="listbox" aria-label="Foods">
           {store.foods.map((food) => (
             <li key={food.id}>
               <button

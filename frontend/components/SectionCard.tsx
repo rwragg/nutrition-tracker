@@ -5,7 +5,7 @@ import { formatCalories } from "@/lib/format";
 import { sectionMacros } from "@/lib/nutrition";
 import { SECTION_LABELS, type Day, type Section, type Store } from "@/lib/types";
 import EntryRow from "./EntryRow";
-import { BTN_BLUE, BTN_PURPLE } from "./styles";
+import { BTN_ACTION, BTN_COMMIT } from "./styles";
 
 export default function SectionCard({
   section,
@@ -57,11 +57,11 @@ export default function SectionCard({
       </ul>
 
       <footer className="d-flex flex-wrap gap-2 border-top px-4 py-3">
-        <button type="button" aria-label={`Add food to ${label}`} onClick={() => onAddFood(section)} className={BTN_BLUE}>
+        <button type="button" aria-label={`Add food to ${label}`} onClick={() => onAddFood(section)} className={BTN_ACTION}>
           <Plus size={14} aria-hidden="true" />
           Food
         </button>
-        <button type="button" aria-label={`Add meal to ${label}`} onClick={() => onAddMeal(section)} className={BTN_PURPLE}>
+        <button type="button" aria-label={`Add meal to ${label}`} onClick={() => onAddMeal(section)} className={BTN_COMMIT}>
           <UtensilsCrossed size={14} aria-hidden="true" />
           Meal
         </button>

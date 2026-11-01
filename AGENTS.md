@@ -28,28 +28,33 @@
 
 ## Color Scheme
 
-- Accent Yellow: `#ecad0a` - accent lines, highlights
-- Blue Primary: `#209dd7` - links, key sections
-- Purple Secondary: `#753991` - submit buttons, important actions
-- Dark Navy: `#032147` - main headings
-- Gray Text: `#888888` - supporting text, labels
+Dark, dense, sharp-cornered. Bootstrap runs in its own dark theme (`data-bs-theme="dark"` on `<html>`), and the palette below is defined once as CSS custom properties in `frontend/app/globals.css` and bridged into Bootstrap's `--bs-*` variables. No component hardcodes a colour value.
 
-Surface tokens for the light UI:
+- Accent Volt: `#c8ff4d` - accent lines, highlights, active states
+- Blue Primary: `#38d9f5` - links, key actions
+- Violet Secondary: `#9b7bff` - submit buttons, important actions
+- Near Black Ink: `#0a0d12` - the page base and the text on any solid accent fill
+- Gray Text: `#8b95a7` - supporting text, labels
+- Ember: `#ff6b4a` - the one status colour: a day over its calorie target
 
-- Canvas `#f4f6f9` - page background
-- Canvas wash `#e7eef8` - a soft gradient across the top of the page
-- Hairline `#e6e9ee` - card borders and dividers
+Surface tokens:
+
+- Ink `#0a0d12` - page background
+- Surface `#12161f` - cards, panels, list rows, dialog
+- Surface raised `#1a202b` - inputs, hover and active row fills
+- Hairline `#384355` - borders and dividers, chosen so a line reads against every surface (1.6:1 or better) without shouting
 
 Where each colour goes:
 
-- **Dark Navy** is the day summary panel - the one dark surface in the app. White numbers, a yellow label, and an accent-yellow calorie ring with a soft glow. Everything else sits on white cards.
-- **Accent Yellow** marks the headline figure of a block: the ring arc, the "Today" label, the over-target number and the logo mark. In the section grid it is the top strip and header wash for Breakfast and Snacks.
-- **Blue Primary** carries key actions and the expandable: the add-food button (fills solid on hover), the meal chevron, the list of foods inside a meal, and the strip and header wash for Lunch.
-- **Purple Secondary** is the commit action: the add-meal button and the confirm button in every dialog, plus the strip and header wash for Dinner.
+- **Ink** is the page itself, and the text colour inside any solid fill - a volt or cyan button carries ink text, never white.
+- **Volt** marks the live figure or the live control: the calorie ring arc and the day total, the "Today" label, the active view tab, the selected day chip's border, the logo mark, and the strips and header wash for Breakfast and Snacks.
+- **Cyan** carries links and key actions: the add-food button (fills cyan on hover), the meal chevron, the list of foods inside a meal, the selected row in a picker, focus rings, and the strip and header wash for Lunch.
+- **Violet** is the commit action: the add-meal button and the confirm button in every dialog, plus the strip and header wash for Dinner.
 - **Gray Text** carries quantities, per-entry macro summaries and supporting copy.
-- Macro bars are fixed by nutrient: protein blue, carbs yellow, fat purple - and on the navy panel they run white labels over a white/15 track.
+- **Ember** appears once, on the over-target figure.
+- Macro bars are fixed by nutrient: protein cyan, carbs volt, fat violet, over a raised track.
 
-Contrast rule: yellow never carries text on a white or light surface (`#ecad0a` on white is about 1.9:1). It appears as text only on navy, or as a large decorative mark - ring, strip, bar. Section subtotals therefore stay navy on their tinted headers.
+Contrast rule, measured rather than eyeballed: every text and surface pair in the app is at least 4.5:1, the AA threshold for body text - text `#eaf0f7` is 16.9:1 on ink and 15.8:1 on a card, gray `#8b95a7` is 6.4:1 and 6.0:1, volt 16.6:1, cyan 11.5:1, violet 6.2:1. Two consequences worth stating, because they are easy to undo: white text on the violet commit button would be 2.7:1 and therefore fails, so solid violet carries ink text; and a solid accent fill always takes ink text rather than a lighter one.
 
 ## Strategy
 

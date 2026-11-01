@@ -268,7 +268,7 @@ test("opens the dialog as an opaque Bootstrap modal", async ({ page, consoleErro
   const background = await dialog
     .locator(".modal-content")
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(background).toBe("rgb(255, 255, 255)");
+  expect(background).toBe("rgb(18, 22, 31)");
 
   expectQuiet(consoleErrors);
 });

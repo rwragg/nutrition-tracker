@@ -59,7 +59,7 @@ export default function DaySummary({ macros, targets }: { macros: Macros; target
                 {formatCalories(targets.calories)}
               </span>{" "}
               kcal target ·{" "}
-              <span className={`fw-semibold ${over ? "text-warning" : "text-white"}`}>
+              <span className={`fw-semibold ${over ? "text-ember" : "text-white"}`}>
                 {formatCalories(Math.abs(remaining))} {over ? "over" : "left"}
               </span>
             </p>

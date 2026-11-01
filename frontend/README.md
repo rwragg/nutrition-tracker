@@ -42,11 +42,15 @@ says where it is used. The same applies to a meal logged on a day.
 
 ## Styling
 
-Bootstrap 5 is the framework: its stylesheet is imported in `app/layout.tsx`, the components use its
-grid, nav, form, modal and button classes, and its `--bs-*` variables are bridged to the palette in
+Bootstrap 5 is the framework, running in its dark theme (`data-bs-theme="dark"`), and it is the only
+styling dependency. Its stylesheet is imported in `app/layout.tsx`, the components use its grid, nav,
+form, modal and button classes, and its `--bs-*` variables are bridged to the palette in
 `app/globals.css`. Anything Bootstrap has no class for - the day panel, the calorie ring, the macro
 bars, the coloured section strips, the attribute-driven row actions - lives in that same file as a
 short, named set of rules.
+
+Every text and surface pair is at least 4.5:1, measured rather than eyeballed. Solid accent fills
+carry ink text, never white.
 
 ## Layout
 

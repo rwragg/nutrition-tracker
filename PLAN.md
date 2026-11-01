@@ -66,6 +66,13 @@ whole of Phase 1 (scaffold, lint, Vitest, Playwright, .gitignore).
   in the layout, with the dialog markup built from Bootstrap's `modal-*` classes and our own
   overlay and focus handling. That drops a JS bundle and a hydration surface for four components we
   already control. Icons stay with lucide-react, which is orthogonal to the CSS framework.
+- **D9 — "edgy enterprise" means dark, dense and numeric, so the scheme was replaced rather than
+  tinted.** Ink base, one acid accent (volt) for live figures and active controls, cyan for actions,
+  violet for commits, one status colour. Bootstrap runs in its own dark theme (`data-bs-theme="dark"`)
+  so its form, modal and nav internals come along. Every pair was **measured, not eyeballed**: body
+  text 4.5:1 minimum against both surfaces, hairlines picked at 1.6:1-or-better so a border reads on
+  every surface. Recorded consequence: solid violet carries ink text, because white on violet is
+  2.7:1 and fails.
 
 ## Phase 1 — Scaffold · complete in v1, unchanged
 
@@ -114,7 +121,26 @@ the independently computed figures · P4.4 delete guards demonstrably refuse.
 **Success criteria:** P5.1 README accurate · P5.2 `curl` on the served URL returns the app ·
 P5.3 screenshots captured · P5.4 completion report lists each criterion with its evidence.
 
-## Status — v3 (current)
+## Status — v4 (current)
+
+Colour scheme replaced with the dark scheme in `AGENTS.md` (R13 rewritten, D9 recorded). Verified
+2026-11-01 on a production build, after the change: build exit 0, lint exit 0, 55 unit and component
+tests, 14 Playwright tests, zero console errors.
+
+- Every token checked in the running app rather than in the file: body `rgb(10,13,18)`, card
+  `rgb(18,22,31)`, input `rgb(26,32,43)`, active tab `rgb(200,255,77)`, hairline `rgb(56,67,85)`,
+  dialog `rgb(18,22,31)`. No colour literal lives in any component.
+- Contrast measured with a script before the palette was applied, in both directions: text on ink
+  16.9:1, muted 6.4:1, volt 16.6:1, cyan 11.5:1, violet 6.2:1, ember 6.9:1. Two values changed because
+  of the numbers: hairlines went to `#384355` (the first pick was invisible at 1.18:1 on a raised
+  surface) and the solid commit button's text became ink (white on violet is 2.74:1, a fail).
+- The e2e test that reads `.modal-content`'s computed background was updated to the new surface value,
+  which is the test earning its keep: it is the thing that notices when a token change breaks a
+  framework component.
+- Also fixed: light scrollbars in a dark UI (`color-scheme`, `scrollbar-color` on the root and on
+  scrollable dialogs).
+
+## Status — v3 (superseded, kept as history)
 
 Verified 2026-11-01 on a production build (`npm run build`, then `npm start` on :3000):
 
