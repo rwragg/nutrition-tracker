@@ -7,6 +7,7 @@
   --color-accent: #ecad0a;
   --color-muted: #888888;
   --color-canvas: #f4f6f9;
+  --color-canvas-wash: #e7eef8;
   --color-hairline: #e6e9ee;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
@@ -15,7 +16,7 @@
 
 body {
   background-color: var(--color-canvas);
-  background-image: linear-gradient(180deg, #e7eef8 0%, var(--color-canvas) 340px);
+  background-image: linear-gradient(180deg, var(--color-canvas-wash) 0%, var(--color-canvas) 340px);
   background-repeat: no-repeat;
   color: var(--color-navy);
   font-family: var(--font-sans);

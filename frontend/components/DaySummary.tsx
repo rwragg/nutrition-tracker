@@ -39,7 +39,10 @@ export default function DaySummary({ macros, targets }: { macros: Macros; target
               strokeLinecap="round"
               strokeDasharray={`${arc} ${CIRCUMFERENCE}`}
               className="stroke-accent transition-[stroke-dasharray] duration-500"
-              style={{ filter: "drop-shadow(0 0 5px rgba(236, 173, 10, 0.55))" }}
+              style={{
+                filter:
+                  "drop-shadow(0 0 5px color-mix(in srgb, var(--color-accent) 55%, transparent))",
+              }}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
