@@ -4,8 +4,11 @@
 
 - An MVP of a Nutrition Tracker application as a web app  
 - The web app should be able to log daily meals
-- The meals can be stored as individual ingredients, such as a cup of rice
+- The meals can be stored as individual foods, such as a cup of rice
 - The meals can be stored as meals, for example a typical breakfast
+- The system must be able to create, read, update and delete a food.
+- The system must be able to create, read, update and delete a meal.
+- The system must be able to track days over time, and should be able to dig into a day.
 - No more functionality: no archive, no search/filter. Keep it simple.
 - The priority is a slick, professional, gorgeous UI/UX with very simple features
 - The app should open with dummy data populated for a sample day

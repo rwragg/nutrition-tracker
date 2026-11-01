@@ -1,96 +1,129 @@
-# Nutrition Tracker MVP — Plan
+# Nutrition Tracker — Plan (v2)
 
-Source of truth for requirements: `AGENTS.md` (numbered below as R#).
-Deliverable: Next.js client-rendered web app in `frontend/`, no persistence, no auth,
-dummy data for one sample day on first paint. Server running at the end.
+Source of truth: `AGENTS.md`. Deliverable: Next.js client-rendered web app in `frontend/`, no
+persistence, no auth, seeded with dummy history, server running at the end.
+
+**v1 is superseded.** It was built against the brief as it stood on 2026-11-01 (single sample day,
+frozen food catalogue and meal templates, search box in the add-food dialog). The brief then gained
+three requirements — CRUD on foods, CRUD on meals, and tracking days over time — and renamed
+"ingredient" to "food". v1 satisfied R1–R3 and R5–R11; it did not satisfy R4–R6. Its **data layer is
+scrapped** (frozen `lib/foods.ts`, `lib/meals.ts`, `lib/day.ts`, `lib/dummy-day.ts` and the
+single-day state shape) and its **views are extended** rather than rewritten. What survives: the
+colour scheme and layout of the day view, the day summary panel, `MacroBar`, `EntryRow`, `Dialog`,
+the macro maths in `lib/nutrition.ts`, `lib/format.ts`, `lib/targets.ts`, the test harness and the
+whole of Phase 1 (scaffold, lint, Vitest, Playwright, .gitignore).
 
 ## Requirements checklist (from AGENTS.md)
 
 - R1 Log daily meals
-- R2 Entries can be individual ingredients (e.g. "1 cup rice")
-- R3 Entries can be meals — a named group of ingredients (e.g. "typical breakfast")
-- R4 Nothing else: no archive, no search/filter screens beyond in-form lookup, no history
-- R5 Priority is a slick professional UI/UX over feature count
-- R6 App opens populated with dummy data for one sample day
-- R7 Next.js, client-rendered, in `frontend/`
-- R8 No persistence, no user management
-- R9 Popular libraries, elegant but simple
-- R10 Palette: yellow #ecad0a, blue #209dd7, purple #753991, navy #032147, gray #888888
-- R11 Latest library versions, idiomatic, no over-engineering, no emojis, minimal README
+- R2 Entries can be individual foods (e.g. "1 cup rice")
+- R3 Entries can be meals — a named group of foods (e.g. "typical breakfast")
+- R4 Create, read, update and delete a **food**
+- R5 Create, read, update and delete a **meal**
+- R6 Track days over time, and dig into a day
+- R7 Nothing else: no archive, no search/filter. Keep it simple.
+- R8 Priority is a slick professional UI/UX over feature count
+- R9 App opens populated with dummy data for a sample day
+- R10 Next.js, client-rendered, in `frontend/`
+- R11 No persistence, no user management
+- R12 Popular libraries, elegant but simple
+- R13 Palette and its per-colour assignment, exactly as `AGENTS.md` documents
+- R14 Latest library versions; never over-engineer; no unnecessary defensive programming; no extra
+  features; no emojis anywhere; minimal README
 
-## Phase 1 — Scaffold
+## Decisions taken (recorded, per D-numbers)
 
-- create-next-app (TypeScript, App Router, Tailwind, ESLint) in `frontend/`
-- `.gitignore` covering node_modules, .next, build output, playwright artefacts
-- Vitest + React Testing Library wired up; `npm test` green on a smoke test
-- `npm run lint` and `npm run build` clean
+- **D1 — searched the food list no longer.** R7 says no search/filter, and R4 now lets the food list
+  grow. The v1 search box inside the add-food dialog is deleted; the list scrolls instead.
+- **D2 — delete is guarded, not cascading.** A food that a meal or a day log refers to cannot be
+  deleted; the dialog says where it is used and names it. Same for a meal logged in a day. Blocking
+  is one pure function both the reducer and the dialog read, versus a cascade that silently rewrites
+  meals and day logs.
+- **D3 — days are seeded, not created.** R6 asks to track days over time and dig into a day, not to
+  invent new ones, and R7 caps the feature list. Three days ship with dummy data; every one is a
+  live, editable log, and the day switcher moves between them.
+- **D4 — the app renders client-side behind a client gate.** Every date on screen is derived from
+  "now", which a prerendered page cannot know without a hydration mismatch. The shell renders on the
+  server, the app itself only on the client. This is also the literal reading of R10.
+- **D5 — sections stay.** Breakfast / lunch / dinner / snacks remain the structure of a day's log;
+  a "meal" is a named group of foods that can be logged into any of them.
+- **D6 — PEP 8 is inert here.** There is no Python in this project (R10 is Next.js only), so the
+  coding standard's style gate is ESLint instead. Flagged rather than silently ignored.
 
-**Success criteria:** P1.1 frontend/ exists on Next.js latest · P1.2 `npm run build` exits 0 ·
-P1.3 `npm test` runs and passes · P1.4 `npm run lint` exits 0 · P1.5 .gitignore present.
+## Phase 1 — Scaffold · complete in v1, unchanged
 
-## Phase 2 — Domain + dummy data
+**Success criteria (all met, evidence in v1 status below):** P1.1–P1.5.
 
-- `lib/types.ts` — Food (ingredient with base amount/unit/macros), MealEntry, LogEntry
-- `lib/foods.ts` — small ingredient catalogue with real per-unit nutrition
-- `lib/meals.ts` — meal templates ("Typical Breakfast", etc.)
-- `lib/dummy-day.ts` — a fully populated sample day
-- `lib/nutrition.ts` — pure functions: entry macros, meal macros, day totals, targets
+## Phase 2 — Domain model (v2, replaces v1's)
 
-**Success criteria:** P2.1 types compile · P2.2 sample day totals computed by pure function ·
-P2.3 unit tests cover totals + edge cases (empty day, fractional qty).
+- `lib/types.ts` — `Food`, `Meal` (ingredients reference foods by id), `LogEntry` (a food with a
+  quantity, or a meal), `Day` (id, date, four sections), `Store` (foods, meals, days)
+- `lib/seed.ts` — seed foods, seed meals, three seeded days (today, yesterday, two days ago)
+- `lib/store.ts` — reducer for food CRUD, meal CRUD, log entries, plus `foodUsage` / `mealUsage`
+- `lib/nutrition.ts` — pure maths over the store: entry, section, meal and day macros
 
-## Phase 3 — UI
+**Success criteria:** P2.1 types compile · P2.2 every macro figure derived from the store, nothing
+hardcoded · P2.3 unit tests cover food CRUD, meal CRUD, the delete guards, entry add/remove, day
+totals for a day other than the selected one, an empty food list and fractional quantities.
 
-- Header: date, day calorie total vs target, macro bars (protein/carbs/fat)
-- Four meal sections (Breakfast/Lunch/Dinner/Snacks) as cards, each listing its entries
-  with per-entry calories and macros, plus a section subtotal
-- Meal entries render as an expandable named group of ingredients
-- Add ingredient: modal, pick from catalogue, set quantity, choose section
-- Add meal: modal, pick a template
-- Remove entry
-- Palette exactly as R10; typography and spacing deliberate; responsive 360px→desktop
-- Zero console errors
+## Phase 3 — UI (v2)
 
-**Success criteria:** P3.1 all four sections render with dummy data · P3.2 ingredient add
-changes totals · P3.3 meal add adds a group · P3.4 remove works · P3.5 no console errors ·
-P3.6 keyboard-focusable controls with visible focus.
+- View switcher: Day · Foods · Meals
+- **Day**: day switcher listing the seeded days with each day's calories; the navy summary panel;
+  four section cards; add food / add meal / remove entry
+- **Foods**: list every food with its unit and per-unit macros; create, edit, delete
+- **Meals**: list every meal with calories and ingredient count; create, edit, delete; the meal
+  form composes it from foods and their quantities
+- Guarded deletes explained in a dialog rather than silently refused
+- Palette and per-colour assignment exactly as R13; responsive from 360px; zero console errors
+
+**Success criteria:** P3.1 the seeded day renders with its dummy data · P3.2 a new food can be
+created and used · P3.3 a food can be edited and the change flows into meals and day totals ·
+P3.4 deleting an unused food works; deleting a used food is refused with a reason · P3.5 the same for
+meals · P3.6 a meal can be composed from foods · P3.7 switching day switches the log and the totals ·
+P3.8 no console errors · P3.9 every control keyboard reachable with visible focus.
 
 ## Phase 4 — Integration testing (Playwright)
 
-- Playwright against the production build (`next start`)
-- Cover: initial render + dummy data, add ingredient flow, add meal flow, remove flow,
-  totals arithmetic cross-checked against the pure functions, mobile viewport, console errors
+- Against the production build on :3100; expected numbers computed from the app's own pure functions
+- Cover: seeded day, food CRUD end to end, meal CRUD end to end, both delete guards, day switching,
+  mobile viewport, console/page errors on every run
 
-**Success criteria:** P4.1 suite green · P4.2 zero console errors/page errors during runs ·
-P4.3 totals shown in the UI equal the numbers computed independently.
+**Success criteria:** P4.1 suite green · P4.2 zero console and page errors · P4.3 UI figures equal
+the independently computed figures · P4.4 delete guards demonstrably refuse.
 
 ## Phase 5 — Handover
 
-- README (minimal, no emojis) with run instructions
-- Dev server running in the background, verified reachable
-- Screenshot of the finished app
-
 **Success criteria:** P5.1 README accurate · P5.2 `curl` on the served URL returns the app ·
-P5.3 screenshot captured · P5.4 completion report lists each criterion and its evidence.
+P5.3 screenshots captured · P5.4 completion report lists each criterion with its evidence.
 
-## Status — all phases complete
+## Status — v2 (current)
 
-Verified on 2026-11-01, on a production build (`npm run build` then `npm start`):
+Verified 2026-11-01 on a production build (`npm run build`, then `npm start` on :3000):
 
-- P1.1 Next.js 16.4.3 / React 19.3 / Tailwind 4 in `frontend/` · P1.2 `npm run build` exit 0 ·
-  P1.3 `npm test` 26 passed (3 files) · P1.4 `npm run lint` exit 0 · P1.5 .gitignore extended with
-  Playwright output.
-- P2.1 `tsc` clean as part of the build · P2.2 sample day rendered straight from `dayMacros()` ·
-  P2.3 unit tests cover zero/empty day, fractional quantities, unknown ids, meal sums.
-- P3.1 four sections render with dummy data · P3.2/P3.3/P3.4 add ingredient, add meal and remove all
-  covered by tests at both levels · P3.5 zero console errors asserted in every e2e test · P3.6 all
-  controls are real buttons/inputs with focus-visible rings and an Escape-closing, labelled dialog.
-- P4.1 `npm run test:e2e` 6 passed · P4.2 no console or page errors during any run · P4.3 expected
-  numbers in the specs are computed from `lib/nutrition.ts`, so the page and the model are checked
-  against each other rather than against hardcoded strings.
-- P5.1 README rewritten for this app · P5.2 `curl http://127.0.0.1:3000/` returns 200 · P5.3 desktop
-  and phone screenshots captured · P5.4 report delivered.
+- P1.1-P1.5 unchanged from v1 (Next.js 16.4.3 / React 19.3 / Tailwind 4; build, lint and the test
+  harness all green).
+- P2.1-P2.3 `lib/` is types, `seed.ts` (31 foods, 5 meals, 3 days), `store.ts` (reducer + the two
+  usage guards), `dates.ts`, `nutrition.ts`. 55 unit and component tests pass, covering food CRUD,
+  meal CRUD, both guards refusing, entry add/remove, day totals per day, an empty food list,
+  fractional quantities, unknown ids and the immutability of the input store.
+- P3.1-P3.9 the day view renders the seeded day; foods and meals each have a working create, edit and
+  delete; deletes that would break a reference are refused with the reason; day switching changes the
+  log and the totals; every e2e test asserts the console stayed quiet.
+- P4.1-P4.4 `npm run test:e2e` 13 passed, expected figures computed from the app's own functions,
+  both guards demonstrably refusing, phone viewport clean.
+- P5.1 README rewritten for the three views; P5.2 `curl` on :3000 returns 200; P5.3 screenshots of all
+  three views captured; P5.4 report delivered.
 
-Sample day as computed by the app's own maths: 2,208 kcal · 121 g protein · 303 g carbs · 68 g fat
-(breakfast 490, lunch 738, dinner 624, snacks 356), against a 2,200 kcal / 140 g protein target.
+Two deviations worth naming: R4/R5 ask for CRUD, which needs a create/edit/delete control per record —
+that is more surface than v1 had, not an optional extra. And `createSeedStore()` is called from a
+client-only branch: Next 16 refuses `new Date()` during prerender, so the tracker renders after the
+client gate rather than inside it.
 
+## Status — v1 (superseded, kept as history)
+
+Verified 2026-11-01 on a production build: P1.1 Next.js 16.4.3 / React 19.3 / Tailwind 4 ·
+P1.2 build exit 0 · P1.3 26 unit tests · P1.4 lint exit 0 · P1.5 .gitignore extended.
+Sample day: 2,208 kcal · 121 g protein · 303 g carbs · 68 g fat (breakfast 490, lunch 738,
+dinner 624, snacks 356) against 2,200 kcal / 140 g protein. e2e: 6 passed. Commits `5f2462e`,
+`0a24b7e`, `4cebd30`.

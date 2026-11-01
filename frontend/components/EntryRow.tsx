@@ -3,33 +3,36 @@
 import { useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { formatCalories, formatGrams } from "@/lib/format";
-import { entryLabel, entryMacros, mealBreakdown } from "@/lib/nutrition";
-import { SECTION_LABELS, type LogEntry, type Section } from "@/lib/types";
+import { entryLabel, entryMacros, findMeal, mealBreakdown } from "@/lib/nutrition";
+import { SECTION_LABELS, type LogEntry, type Section, type Store } from "@/lib/types";
 import { BTN_ICON } from "./styles";
 
 export default function EntryRow({
   entry,
   section,
+  store,
   onRemove,
 }: {
   entry: LogEntry;
   section: Section;
+  store: Store;
   onRemove: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const { name, detail } = entryLabel(entry);
-  const macros = entryMacros(entry);
-  const breakdown = entry.kind === "meal" ? mealBreakdown(entry.mealId) : [];
+  const { name, detail } = entryLabel(entry, store);
+  const macros = entryMacros(entry, store);
+  const meal = entry.kind === "meal" ? findMeal(store, entry.mealId) : undefined;
+  const breakdown = meal ? mealBreakdown(meal, store) : [];
   const sectionLabel = SECTION_LABELS[section];
 
   return (
     <li className="group flex items-start gap-3 px-5 py-3" data-testid={`entry-${entry.id}`}>
       <div className="min-w-0 flex-1">
-        {entry.kind === "meal" ? (
+        {meal ? (
           <button
             type="button"
             aria-expanded={expanded}
-            aria-label={`${expanded ? "Hide" : "Show"} ingredients of ${name}`}
+            aria-label={`${expanded ? "Hide" : "Show"} foods in ${name}`}
             onClick={() => setExpanded((open) => !open)}
             className="flex items-center gap-1.5 text-left font-semibold text-navy hover:text-blue focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
           >
@@ -40,7 +43,7 @@ export default function EntryRow({
             />
           </button>
         ) : (
-          <p className="truncate font-medium text-navy">{name}</p>
+          <p className="truncate font-semibold text-navy">{name}</p>
         )}
         <p className="text-xs text-muted">{detail}</p>
 

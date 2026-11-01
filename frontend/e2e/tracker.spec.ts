@@ -1,18 +1,17 @@
 import { expect, test as base, type Page } from "@playwright/test";
-import { dummyDay } from "../lib/dummy-day";
-import { formatCalories, formatGrams } from "../lib/format";
-import { addMacros, dayMacros, entryMacros, totalMacros } from "../lib/nutrition";
-import { DAILY_TARGETS } from "../lib/targets";
-import type { Section } from "../lib/types";
+import { formatCalories } from "../lib/format";
+import { dayMacros, entryMacros, sectionMacros } from "../lib/nutrition";
+import { createSeedStore } from "../lib/seed";
+import { SECTIONS, type Section } from "../lib/types";
 
 /**
- * The expected numbers are computed from the same pure functions the app uses,
- * so a failure here means the rendered page and the model disagree.
+ * Expected numbers come from the app's own pure functions, so a failure means the
+ * rendered page and the model disagree. The page seeds itself on load with the same
+ * days, so the ids and dates line up.
  */
-const SAMPLE = dummyDay();
-const ingredient = (foodId: string, quantity: number) =>
-  entryMacros({ id: "", kind: "ingredient", foodId, quantity });
-const meal = (mealId: string) => entryMacros({ id: "", kind: "meal", mealId });
+const store = createSeedStore();
+const today = store.days[0];
+const yesterday = store.days[1];
 
 const test = base.extend<{ consoleErrors: string[] }>({
   consoleErrors: async ({ page }, run) => {
@@ -25,111 +24,233 @@ const test = base.extend<{ consoleErrors: string[] }>({
   },
 });
 
-const openAddIngredient = (page: Page, section: string) =>
-  page.getByRole("button", { name: `Add ingredient to ${section}` }).click();
-
-const openAddMeal = (page: Page, section: string) =>
-  page.getByRole("button", { name: `Add meal to ${section}` }).click();
-
 const expectQuiet = (errors: string[]) => expect(errors).toEqual([]);
 
-test("opens with the sample day already logged", async ({ page, consoleErrors }) => {
+const openView = (page: Page, label: string) =>
+  page.getByRole("button", { name: label, exact: true }).click();
+
+test("opens on the seeded day with its log", async ({ page, consoleErrors }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("day-total-calories")).toHaveText(
-    formatCalories(dayMacros(SAMPLE).calories),
+    formatCalories(dayMacros(today, store).calories),
   );
-  await expect(page.getByTestId("day-target-calories")).toHaveText(
-    formatCalories(DAILY_TARGETS.calories),
-  );
-
-  for (const section of ["breakfast", "lunch", "dinner", "snacks"] as Section[]) {
+  for (const section of SECTIONS) {
     await expect(page.getByTestId(`section-${section}-calories`)).toHaveText(
-      formatCalories(totalMacros(SAMPLE[section]).calories),
+      formatCalories(sectionMacros(today, section, store).calories),
     );
   }
-
-  await expect(page.getByTestId("macro-protein")).toHaveText(
-    formatGrams(dayMacros(SAMPLE).protein),
-  );
+  await expect(page.getByTestId("day-switcher").getByText("Today")).toBeVisible();
+  await expect(page.getByTestId("day-switcher").getByText("Yesterday")).toBeVisible();
   await expect(page.getByTestId("section-breakfast").getByText("Typical breakfast")).toBeVisible();
-  await expect(page.getByTestId("section-breakfast").getByText("Blueberries")).toBeVisible();
 
   expectQuiet(consoleErrors);
 });
 
-test("adds an ingredient with a quantity and updates both totals", async ({ page, consoleErrors }) => {
-  const before = dayMacros(SAMPLE);
-  const added = ingredient("hummus", 2);
+test("tracks days over time and digs into one", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+
+  await expect(page.getByTestId(`day-${yesterday.id}-calories`)).toHaveText(
+    formatCalories(dayMacros(yesterday, store).calories),
+  );
+
+  await page.getByTestId(`day-${yesterday.id}`).click();
+
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(dayMacros(yesterday, store).calories),
+  );
+  await expect(page.getByTestId("section-breakfast").getByText("Post-workout shake")).toBeVisible();
+  await expect(page.getByTestId("section-dinner").getByText("Nothing logged yet.")).toBeVisible();
+
+  await page.getByTestId(`day-${today.id}`).click();
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(dayMacros(today, store).calories),
+  );
+
+  expectQuiet(consoleErrors);
+});
+
+test("logs a food with a quantity onto the selected day", async ({ page, consoleErrors }) => {
+  const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 2 }, store);
+  const snacks = sectionMacros(today, "snacks", store).calories;
 
   await page.goto("/");
-  await openAddIngredient(page, "Snacks");
-  await page.getByLabel("Search ingredients").fill("hummus");
+  await page.getByRole("button", { name: "Add food to Snacks" }).click();
   await page.getByTestId("food-hummus").click();
   await page.getByRole("spinbutton", { name: "Quantity" }).fill("2");
-  await page.getByTestId("confirm-add-ingredient").click();
+  await page.getByTestId("confirm-add-food").click();
 
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByTestId("day-total-calories")).toHaveText(
-    formatCalories(addMacros(before, added).calories),
-  );
   await expect(page.getByTestId("section-snacks-calories")).toHaveText(
-    formatCalories(totalMacros(SAMPLE.snacks).calories + added.calories),
+    formatCalories(snacks + added.calories),
   );
-  await expect(
-    page.getByTestId("section-snacks").getByText("Hummus", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByTestId("section-snacks").getByText("2 tbsps")).toBeVisible();
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(dayMacros(today, store).calories + added.calories),
+  );
+  await expect(page.getByTestId("section-snacks").getByText("Hummus", { exact: true })).toBeVisible();
 
   expectQuiet(consoleErrors);
 });
 
-test("adds a meal as one entry and expands to its ingredients", async ({ page, consoleErrors }) => {
-  const after = addMacros(dayMacros(SAMPLE), meal("post-workout-shake"));
-
+test("logs a meal and expands it into its foods", async ({ page, consoleErrors }) => {
   await page.goto("/");
-  await openAddMeal(page, "Dinner");
+  await page.getByRole("button", { name: "Add meal to Dinner" }).click();
   await page.getByTestId("meal-post-workout-shake").click();
   await page.getByTestId("confirm-add-meal").click();
 
   const dinner = page.getByTestId("section-dinner");
   await expect(dinner.getByText("Post-workout shake")).toBeVisible();
-  await expect(dinner.getByText("3 ingredients")).toBeVisible();
-  await expect(page.getByTestId("day-total-calories")).toHaveText(
-    formatCalories(after.calories),
-  );
+  await expect(dinner.getByText("3 foods")).toBeVisible();
 
-  await dinner.getByRole("button", { name: "Show ingredients of Post-workout shake" }).click();
+  await dinner.getByRole("button", { name: "Show foods in Post-workout shake" }).click();
   await expect(dinner.getByText("Whey protein")).toBeVisible();
-  await expect(dinner.getByText("1 scoop")).toBeVisible();
 
   expectQuiet(consoleErrors);
 });
 
-test("removes an entry and updates the totals", async ({ page, consoleErrors }) => {
-  const removed = ingredient("almonds", 1);
+test("removes a logged entry", async ({ page, consoleErrors }) => {
+  const removed = entryMacros({ id: "", kind: "food", foodId: "almonds", quantity: 1 }, store);
 
   await page.goto("/");
   await page.getByRole("button", { name: "Remove Almonds from Snacks" }).click();
 
   await expect(page.getByTestId("day-total-calories")).toHaveText(
-    formatCalories(dayMacros(SAMPLE).calories - removed.calories),
+    formatCalories(dayMacros(today, store).calories - removed.calories),
   );
   await expect(page.getByTestId("section-snacks").getByText("Almonds")).toHaveCount(0);
 
   expectQuiet(consoleErrors);
 });
 
-test("closes the dialog with Escape without changing the day", async ({ page, consoleErrors }) => {
+test("creates a food, then logs it on a day", async ({ page, consoleErrors }) => {
   await page.goto("/");
-  const total = await page.getByTestId("day-total-calories").textContent();
+  await openView(page, "Foods");
 
-  await openAddIngredient(page, "Breakfast");
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByTestId("new-food").click();
+  await page.getByTestId("food-name").fill("Cup of rice");
+  await page.getByTestId("food-unit").selectOption("cup");
+  await page.getByTestId("food-calories").fill("205");
+  await page.getByTestId("food-protein").fill("4.3");
+  await page.getByTestId("food-carbs").fill("44.5");
+  await page.getByTestId("food-fat").fill("0.4");
+  await page.getByTestId("save-food").click();
 
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByTestId("day-total-calories")).toHaveText(total ?? "");
+  await expect(page.getByTestId("foods-view").getByText("Cup of rice")).toBeVisible();
+
+  await openView(page, "Day");
+  await page.getByRole("button", { name: "Add food to Lunch" }).click();
+  await page.getByRole("listbox", { name: "Foods" }).getByText("Cup of rice").click();
+  await page.getByTestId("confirm-add-food").click();
+
+  await expect(page.getByTestId("section-lunch").getByText("Cup of rice")).toBeVisible();
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(dayMacros(today, store).calories + 205),
+  );
+
+  expectQuiet(consoleErrors);
+});
+
+test("edits a food and every day that logs it follows", async ({ page, consoleErrors }) => {
+  const before = dayMacros(today, store).calories;
+
+  await page.goto("/");
+  await openView(page, "Foods");
+
+  await page.getByRole("button", { name: "Edit Almonds" }).click();
+  await page.getByTestId("food-calories").fill("200");
+  await page.getByTestId("save-food").click();
+
+  await openView(page, "Day");
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(before + (200 - 164)),
+  );
+
+  expectQuiet(consoleErrors);
+});
+
+test("creates a meal from foods and logs it", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+  await openView(page, "Meals");
+
+  await page.getByTestId("new-meal").click();
+  await page.getByTestId("meal-name").fill("Rice and beans");
+  await page.getByTestId("row-food-0").selectOption("black-beans");
+  await page.getByTestId("add-row").click();
+  await page.getByTestId("row-food-1").selectOption("white-rice");
+  await page.getByTestId("save-meal").click();
+
+  const row = page.getByTestId("meals-view").getByText("Rice and beans").locator("xpath=../..");
+  await expect(row).toContainText("Black beans, cooked 1 cup");
+  await expect(row).toContainText("White rice, cooked 1 cup");
+
+  await openView(page, "Day");
+  await page.getByRole("button", { name: "Add meal to Lunch" }).click();
+  await page.getByRole("listbox", { name: "Meals" }).getByText("Rice and beans").click();
+  await page.getByTestId("confirm-add-meal").click();
+
+  await expect(page.getByTestId("section-lunch").getByText("Rice and beans")).toBeVisible();
+
+  expectQuiet(consoleErrors);
+});
+
+test("deletes a food nothing uses", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+  await openView(page, "Foods");
+
+  await page.getByTestId("new-food").click();
+  await page.getByTestId("food-name").fill("Temporary food");
+  await page.getByTestId("save-food").click();
+
+  await page.getByRole("button", { name: "Delete Temporary food" }).click();
+  await page.getByTestId("confirm-delete").click();
+
+  await expect(page.getByTestId("foods-view").getByText("Temporary food")).toHaveCount(0);
+
+  expectQuiet(consoleErrors);
+});
+
+test("deletes a meal nothing logs", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+  await openView(page, "Meals");
+
+  await page.getByTestId("new-meal").click();
+  await page.getByTestId("meal-name").fill("Temporary meal");
+  await page.getByTestId("save-meal").click();
+
+  await page.getByRole("button", { name: "Delete Temporary meal" }).click();
+  await page.getByTestId("confirm-delete").click();
+
+  await expect(page.getByTestId("meals-view").getByText("Temporary meal")).toHaveCount(0);
+
+  expectQuiet(consoleErrors);
+});
+
+test("refuses to delete a food that meals still use, and names them", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+  await openView(page, "Foods");
+
+  await page.getByRole("button", { name: "Delete Banana" }).click();
+
+  await expect(page.getByTestId("delete-message")).toContainText("cannot be deleted");
+  await expect(page.getByTestId("delete-message")).toContainText("Typical breakfast");
+  await expect(page.getByTestId("delete-message")).toContainText("Post-workout shake");
+  await expect(page.getByTestId("confirm-delete")).toHaveCount(0);
+
+  await page.getByTestId("close-dialog").click();
+  await expect(page.getByRole("button", { name: "Delete Banana" })).toBeVisible();
+
+  expectQuiet(consoleErrors);
+});
+
+test("refuses to delete a meal that a day logs", async ({ page, consoleErrors }) => {
+  await page.goto("/");
+  await openView(page, "Meals");
+
+  await page.getByRole("button", { name: "Delete Typical breakfast" }).click();
+
+  await expect(page.getByTestId("delete-message")).toContainText("cannot be deleted");
+  await expect(page.getByTestId("delete-message")).toContainText("Today");
+  await expect(page.getByTestId("confirm-delete")).toHaveCount(0);
 
   expectQuiet(consoleErrors);
 });
@@ -139,7 +260,7 @@ test("lays out on a phone viewport without horizontal overflow", async ({ page, 
   await page.goto("/");
 
   await expect(page.getByTestId("day-total-calories")).toBeVisible();
-  for (const section of ["breakfast", "lunch", "dinner", "snacks"] as Section[]) {
+  for (const section of SECTIONS as readonly Section[]) {
     await expect(page.getByTestId(`section-${section}`)).toBeVisible();
   }
 

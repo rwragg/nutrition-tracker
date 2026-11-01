@@ -2,8 +2,8 @@
 
 import { Plus, UtensilsCrossed } from "lucide-react";
 import { formatCalories } from "@/lib/format";
-import { totalMacros } from "@/lib/nutrition";
-import { SECTION_LABELS, type LogEntry, type Section } from "@/lib/types";
+import { sectionMacros } from "@/lib/nutrition";
+import { SECTION_LABELS, type Day, type Section, type Store } from "@/lib/types";
 import EntryRow from "./EntryRow";
 import { BTN_BLUE, BTN_PURPLE, CARD } from "./styles";
 
@@ -17,26 +17,26 @@ const ACCENTS: Record<Section, { strip: string; header: string }> = {
 
 export default function SectionCard({
   section,
-  entries,
-  onAddIngredient,
+  day,
+  store,
+  onAddFood,
   onAddMeal,
-  onRemove,
+  onRemoveEntry,
 }: {
   section: Section;
-  entries: LogEntry[];
-  onAddIngredient: (section: Section) => void;
+  day: Day;
+  store: Store;
+  onAddFood: (section: Section) => void;
   onAddMeal: (section: Section) => void;
-  onRemove: (section: Section, id: string) => void;
+  onRemoveEntry: (section: Section, entryId: string) => void;
 }) {
   const label = SECTION_LABELS[section];
-  const calories = totalMacros(entries).calories;
+  const entries = day.sections[section];
+  const calories = sectionMacros(day, section, store).calories;
   const accent = ACCENTS[section];
 
   return (
-    <article
-      className={`${CARD} flex flex-col overflow-hidden`}
-      data-testid={`section-${section}`}
-    >
+    <article className={`${CARD} flex flex-col overflow-hidden`} data-testid={`section-${section}`}>
       <div className={`h-2 ${accent.strip}`} aria-hidden="true" />
 
       <header
@@ -60,7 +60,8 @@ export default function SectionCard({
               key={entry.id}
               entry={entry}
               section={section}
-              onRemove={(id) => onRemove(section, id)}
+              store={store}
+              onRemove={(entryId) => onRemoveEntry(section, entryId)}
             />
           ))
         )}
@@ -69,12 +70,12 @@ export default function SectionCard({
       <footer className="flex flex-wrap gap-2 border-t border-hairline bg-white px-5 py-3">
         <button
           type="button"
-          aria-label={`Add ingredient to ${label}`}
-          onClick={() => onAddIngredient(section)}
+          aria-label={`Add food to ${label}`}
+          onClick={() => onAddFood(section)}
           className={BTN_BLUE}
         >
           <Plus className="size-3.5" aria-hidden="true" />
-          Ingredient
+          Food
         </button>
         <button
           type="button"

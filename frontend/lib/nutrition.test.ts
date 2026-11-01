@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { dummyDay } from "@/lib/dummy-day";
 import { formatCalories, formatGrams, formatQuantity } from "@/lib/format";
 import {
   addMacros,
@@ -7,89 +6,106 @@ import {
   entryLabel,
   entryMacros,
   mealBreakdown,
+  mealMacros,
   percentOfTarget,
   scaleMacros,
+  sectionMacros,
   totalMacros,
   ZERO,
 } from "@/lib/nutrition";
-import type { Macros } from "@/lib/types";
+import { createSeedStore } from "@/lib/seed";
+import type { Macros, Store } from "@/lib/types";
+
+const TODAY = new Date(2026, 10, 1);
+const store = (): Store => createSeedStore(TODAY);
 
 const egg: Macros = { calories: 72, protein: 6.3, carbs: 0.4, fat: 4.8 };
 
 describe("macros", () => {
-  it("scales an ingredient by quantity", () => {
-    expect(entryMacros({ id: "a", kind: "ingredient", foodId: "egg", quantity: 2 })).toEqual(
+  it("scales a food by quantity", () => {
+    expect(entryMacros({ id: "a", kind: "food", foodId: "egg", quantity: 2 }, store())).toEqual(
       scaleMacros(egg, 2),
     );
   });
 
   it("scales fractionally", () => {
-    const half = entryMacros({ id: "a", kind: "ingredient", foodId: "oats", quantity: 0.5 });
+    const half = entryMacros({ id: "a", kind: "food", foodId: "oats", quantity: 0.5 }, store());
     expect(half.calories).toBeCloseTo(150);
     expect(half.protein).toBeCloseTo(5);
   });
 
-  it("returns zeros for an unknown ingredient rather than throwing", () => {
-    expect(entryMacros({ id: "a", kind: "ingredient", foodId: "nope", quantity: 3 })).toEqual(ZERO);
-  });
+  it("sums a meal from the foods in it", () => {
+    const current = store();
+    const meal = current.meals.find((candidate) => candidate.id === "typical-breakfast")!;
 
-  it("sums a meal from its ingredients", () => {
-    const meal = entryMacros({ id: "a", kind: "meal", mealId: "typical-breakfast" });
-    const manual = [
-      { foodId: "oats", quantity: 0.5 },
-      { foodId: "banana", quantity: 1 },
-      { foodId: "whole-milk", quantity: 1 },
-      { foodId: "coffee", quantity: 1 },
-    ].reduce(
+    const manual = meal.ingredients.reduce(
       (total, ingredient) =>
-        addMacros(total, entryMacros({ id: "", kind: "ingredient", ...ingredient })),
+        addMacros(
+          total,
+          entryMacros({ id: "", kind: "food", foodId: ingredient.foodId, quantity: ingredient.quantity }, current),
+        ),
       ZERO,
     );
 
-    expect(meal).toEqual(manual);
-    expect(meal.calories).toBeGreaterThan(400);
+    expect(mealMacros(meal, current)).toEqual(manual);
+    expect(mealMacros(meal, current).calories).toBeGreaterThan(400);
   });
 
   it("totals an empty day as zero", () => {
-    expect(dayMacros({ breakfast: [], lunch: [], dinner: [], snacks: [] })).toEqual(ZERO);
+    const current = store();
+    const empty = { id: "empty", date: "2026-11-05", sections: { breakfast: [], lunch: [], dinner: [], snacks: [] } };
+    expect(dayMacros(empty, current)).toEqual(ZERO);
   });
 
-  it("totals every section of the sample day", () => {
-    const day = dummyDay();
-    const bySection = Object.values(day).map((entries) => totalMacros(entries));
-    const expected = bySection.reduce((total, macros) => addMacros(total, macros), ZERO);
+  it("totals a day from its sections", () => {
+    const current = store();
+    const day = current.days[0];
+    const summed = (["breakfast", "lunch", "dinner", "snacks"] as const).reduce(
+      (total, section) => addMacros(total, sectionMacros(day, section, current)),
+      ZERO,
+    );
+    const whole = dayMacros(day, current);
 
-    expect(dayMacros(day)).toEqual(expected);
-    expect(dayMacros(day).calories).toBeGreaterThan(0);
+    // Summation order differs, so compare each figure to a tolerance.
+    expect(whole.calories).toBeCloseTo(summed.calories);
+    expect(whole.protein).toBeCloseTo(summed.protein);
+    expect(whole.carbs).toBeCloseTo(summed.carbs);
+    expect(whole.fat).toBeCloseTo(summed.fat);
   });
 
-  it("drops a section's worth of macros when its entries are removed", () => {
-    const day = dummyDay();
-    const dinnerCalories = dayMacros(day).calories - dayMacros({ ...day, dinner: [] }).calories;
-    expect(dinnerCalories).toBeCloseTo(totalMacros(day.dinner).calories);
+  it("reports zero for a missing food rather than throwing", () => {
+    expect(entryMacros({ id: "a", kind: "food", foodId: "gone", quantity: 3 }, store())).toEqual(ZERO);
+  });
+
+  it("computes percentages against a target", () => {
+    expect(percentOfTarget(1100, 2200)).toBe(50);
+    expect(percentOfTarget(0, 2200)).toBe(0);
   });
 });
 
 describe("labels and formatting", () => {
-  it("labels ingredients with their quantity", () => {
-    expect(entryLabel({ id: "a", kind: "ingredient", foodId: "oats", quantity: 0.5 })).toEqual({
+  it("labels a food with its quantity", () => {
+    expect(entryLabel({ id: "a", kind: "food", foodId: "oats", quantity: 0.5 }, store())).toEqual({
       name: "Rolled oats, dry",
       detail: "1/2 cup",
     });
   });
 
-  it("labels meals with their ingredient count", () => {
-    expect(entryLabel({ id: "a", kind: "meal", mealId: "light-dinner" })).toEqual({
+  it("labels a meal with how many foods it holds", () => {
+    expect(entryLabel({ id: "a", kind: "meal", mealId: "light-dinner" }, store())).toEqual({
       name: "Light dinner",
-      detail: "4 ingredients",
+      detail: "4 foods",
     });
   });
 
-  it("breaks a meal into ingredient lines that add up to the meal", () => {
-    const lines = mealBreakdown("light-dinner");
+  it("breaks a meal into lines that add up to the meal", () => {
+    const current = store();
+    const meal = current.meals.find((candidate) => candidate.id === "light-dinner")!;
+    const lines = mealBreakdown(meal, current);
     const summed = lines.reduce((total, line) => total + line.calories, 0);
+
     expect(lines).toHaveLength(4);
-    expect(summed).toBeCloseTo(entryMacros({ id: "a", kind: "meal", mealId: "light-dinner" }).calories);
+    expect(summed).toBeCloseTo(mealMacros(meal, current).calories);
   });
 
   it("writes common fractions as fractions", () => {
@@ -106,10 +122,34 @@ describe("labels and formatting", () => {
     expect(formatGrams(6.3)).toBe("6.3");
     expect(formatGrams(15.24)).toBe("15");
   });
+});
 
-  it("computes percentages against a target", () => {
-    expect(percentOfTarget(1100, 2200)).toBe(50);
-    expect(percentOfTarget(0, 2200)).toBe(0);
-    expect(percentOfTarget(5, 0)).toBe(0);
+describe("totals over the whole store", () => {
+  it("totals every seeded day without touching the others", () => {
+    const current = store();
+    const totals = current.days.map((day) => dayMacros(day, current).calories);
+
+    expect(totals).toHaveLength(3);
+    expect(totals.every((calories) => calories > 0)).toBe(true);
+    expect(Math.max(...totals)).toBe(totals[0]);
+  });
+
+  it("totals a section only from that section", () => {
+    const current = store();
+    const day = current.days[0];
+    expect(sectionMacros(day, "dinner", current).calories).toBeGreaterThan(0);
+    expect(totalMacros([], current)).toEqual(ZERO);
+  });
+});
+
+describe("the seeded sample day", () => {
+  it("matches the figures the app reports for it", () => {
+    const current = store();
+    const today = dayMacros(current.days[0], current);
+
+    expect(formatCalories(today.calories)).toBe("2,208");
+    expect(formatGrams(today.protein)).toBe("121");
+    expect(formatGrams(today.carbs)).toBe("303");
+    expect(formatGrams(today.fat)).toBe("68");
   });
 });

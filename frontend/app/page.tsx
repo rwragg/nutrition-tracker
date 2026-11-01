@@ -1,7 +1,7 @@
 "use client";
 
-import NutritionTracker from "@/components/NutritionTracker";
+import App from "@/components/App";
 
 export default function Page() {
-  return <NutritionTracker />;
+  return <App />;
 }
