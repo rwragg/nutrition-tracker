@@ -16,8 +16,9 @@ parts of the plan; what is here now is a client-rendered app over an in-memory s
 ## What it is
 
 A Next.js 16 app with three views — Day, Foods, Meals — over a single in-memory store. It makes **no
-network call of any kind** and persists nothing: the store is seeded on load and resets on reload.
-Sign-in and storage are the backend's job later.
+network call of any kind** except one: it asks `/api/session` who is signed in before it renders
+anything. Signed out it shows the sign-in screen; signed in it shows the tracker with a log-out control
+in the header. It persists nothing: the store is seeded on load and resets on reload.
 
 It is built as a **static export** (`output: "export"` in `next.config.ts`) and served by the FastAPI
 backend at `/`, so there is no Next.js server in the deployment. Export mode rules out partial
@@ -29,12 +30,15 @@ no data-fetching or caching behaviour that the export loses.
 - `app/` — `layout.tsx` imports Bootstrap's CSS and `globals.css` and sets `data-bs-theme="dark"` on
   the document; `page.tsx` renders `App`; `globals.css` holds every palette token and the bridge into
   Bootstrap's `--bs-*` variables.
-- `components/` — `App.tsx` is the shell: the client gate and the view switcher. `DayView`,
+- `components/` — `App.tsx` is the shell: the session gate, the client gate and the view switcher.
+  `SignIn.tsx` is the sign-in screen, and `TitleBar.tsx` the header both share. `DayView`,
   `FoodsView` and `MealsView` are the three views. `DaySummary` renders the day's ring and figures,
   `MacroBar` a single nutrient bar, `SectionCard` a meal section, `EntryRow` a logged entry. `Dialog`
   is the overlay every dialog is built on; `AddFoodDialog`, `AddMealDialog`, `FoodFormDialog` and
   `MealFormDialog` are the add and edit flows, and `DeleteDialog` the guarded-delete flow. `styles.ts`
   holds the shared class-name constants and `use-is-client.ts` the hook that gates client rendering.
+- `test/fetch-stub.ts` — the fetch the unit tests run against. Signed in by default; a test that needs
+  the signed-out screen or a refused sign-in overrides the handler it cares about.
 - `lib/` — `types.ts` (`Unit`, `Macros`, `Food`, `Meal`, `LogEntry`, `Day`, `Store`, `View`),
   `seed.ts` (31 foods, 5 meals, 3 seeded days), `store.ts` (the reducer), `nutrition.ts` (all macro
   maths, pure), `dates.ts`, `format.ts`, `targets.ts` (the four targets, in one place), `usage.ts`.
@@ -42,6 +46,10 @@ no data-fetching or caching behaviour that the export loses.
 
 ## How it works
 
+- **The session comes first.** `App` asks `/api/session` before it renders anything: while the answer is
+  pending it shows the shell, on a 401 it shows `SignIn`, and on a user it shows the tracker. The
+  protection is not this screen — it is the guard on every `/api` route, which refuses without a session
+  whatever the page chooses to render.
 - **State.** `useReducer(storeReducer, null, () => createSeedStore())` in `App.tsx`. One store,
   immutable updates, eight reducer cases. Nothing is written anywhere.
 - **The client gate.** `App` returns `useIsClient() ? <Tracker/> : <Shell/>`. Every date on screen is

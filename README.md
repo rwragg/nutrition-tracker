@@ -10,6 +10,7 @@ sample days and resets on reload.
 
 ## What it does
 
+- Sign in with `user` / `password` (dummy credentials for the MVP), and log out
 - Three views behind a header switcher: **Day**, **Foods**, **Meals**
 - Log a day from individual foods with a quantity, or from a whole meal
 - Create, edit and delete foods and meals; a meal is composed from foods

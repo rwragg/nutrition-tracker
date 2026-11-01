@@ -208,17 +208,62 @@ All five criteria met:
 The brief: hitting `/` requires the dummy credentials `user` / `password` to see the tracker, and you
 can log out.
 
-- [ ] A sign-in screen, with a session cookie issued by the backend (R1)
-- [ ] Log out clears the session
-- [ ] Unauthenticated requests to `/` get the sign-in screen; the tracker is not served
-- [ ] The session carries a user id, so R2 holds and R3 can land later (D4)
+- [x] A sign-in screen, with a session cookie issued by the backend (R1)
+- [x] Log out clears the session
+- [x] While signed out the app shows the sign-in screen and **every `/api` route refuses**
+      (restatement of the original wording — see the note under this part's criteria)
+- [x] The session carries a user id, so R2 holds and R3 can land later (D4)
 
-**Tests:** backend tests for the auth route — correct, incorrect and absent credentials · Playwright:
-sign in, use the app, log out, and navigate to `/` while signed out.
+**Tests:** backend tests for the auth route — correct, incorrect and absent credentials · a test that
+each protected route refuses without a session · Playwright: sign in, use the app, log out, and a
+direct navigation to `/` while signed out.
 
-**Success criteria:** P4.1 `user`/`password` gets in; anything else does not · P4.2 the tracker is
-unreachable while signed out · P4.3 log out works and is tested · P4.4 no credentials are hardcoded in
-the frontend bundle · P4.5 the frontend's existing tests still pass.
+**Success criteria:** P4.1 `user`/`password` gets in; anything else does not · P4.2 while signed out the
+app renders the sign-in screen and every `/api` route returns 401 — **the data is unreachable, not the
+markup** (see below) · P4.3 log out works and is tested · P4.4 no credentials are hardcoded in the
+frontend bundle · P4.5 the frontend's existing tests still pass.
+
+**On P4.2, stated precisely.** As first written this read "the tracker is unreachable while signed
+out". A static export cannot promise that: the HTML shell and the JavaScript are served by the static
+mount, and no server-side gate can hide a file that the browser must download. What *can* be protected
+is the data — so the promise is that while signed out the app renders the sign-in screen, **every
+`/api` route refuses without a session**, and by Part 7 the tracker's data only ever arrives through
+those routes. A container test asserts the restated behaviour so it stays a decision rather than an
+accident.
+
+### Status — Part 4, complete 2026-11-01
+
+All five criteria met, and the restatement above is what was built:
+
+- **P4.1** `user` / `password` signs in; a wrong password, an unknown user and a malformed body are all
+  refused (401, 401, 422), asserted in the backend suite; the browser tests sign in for real over HTTP
+  with a cookie jar.
+- **P4.2** while signed out the app renders the sign-in screen and **both protected routes return 401**
+  (`/api/session`, `/api/hello`), asserted in the unit suite, in the container tests against the running
+  image, and in the browser. The e2e suite also asserts *by name* that the shell is public, so the
+  restatement stays a decision rather than drifting into an accident.
+- **P4.3** logging out clears the session: `/api/session` and `/api/hello` both go back to 401, and the
+  app returns to the sign-in screen — covered in the unit suite, the browser suite and the API tests.
+- **P4.4** the credentials exist in exactly one place, `backend/app/main.py`. Checked rather than
+  assumed: no credential literal appears anywhere in the frontend source, and the only `password`
+  strings in the served bundles are React's own input-type handling (verified against the chunks the
+  container actually serves). The one frontend reference is in `test/fetch-stub.ts`, which never ships.
+- **P4.5** 59 unit and component tests pass (55 before, 4 new for the gate) and 19 Playwright tests pass
+  against the container (14 existing, now signing in first, plus 5 for the gate).
+
+**Four things learned here:**
+
+- **A 401 is logged as a console error by the browser.** The suite's "no console errors" assertion failed
+  on the session probe's own 401 — the app working, not failing. The fix was to make the assertion
+  *precise* (ignore the 401 from `/api/session` and `/api/login` only) rather than to drop it.
+- **Next.js ships its own `role="alert"` route announcer.** `getByRole("alert")` matched two elements and
+  failed in strict mode while the app was behaving correctly. Scope such selectors to the panel.
+- **`replace_all` can rewrite the helper you just added.** Replacing every `page.goto("/")` with a call to
+  the new `openTracker()` also rewrote the one inside `openTracker` itself, making it recurse. The diff
+  showed it; nothing else would have.
+- **A session check changes the timing of every existing frontend test.** The app no longer renders the
+  tracker synchronously, so the 14 component tests now await the session, and every browser test signs in
+  first.
 
 ## Part 5 — Database modelling
 

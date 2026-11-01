@@ -9,12 +9,22 @@ import type { Store } from "@/lib/types";
 
 const store = (): Store => createSeedStore();
 
+/**
+ * The app asks the server who is signed in before it renders the tracker, so every
+ * test here waits for that answer before it asserts anything. The signed-out screen
+ * has its own tests in session-gate.test.tsx.
+ */
+const renderApp = async () => {
+  render(<App />);
+  await screen.findByTestId("day-total-calories");
+};
+
 const openView = async (user: ReturnType<typeof userEvent.setup>, label: string) =>
   user.click(screen.getByRole("button", { name: label }));
 
 describe("App", () => {
-  it("opens on the seeded day with its log and totals", () => {
-    render(<App />);
+  it("opens on the seeded day with its log and totals", async () => {
+    await renderApp();
     const seed = store();
 
     expect(screen.getByTestId("day-total-calories")).toHaveTextContent(
@@ -26,8 +36,8 @@ describe("App", () => {
     expect(within(screen.getByTestId("section-breakfast")).getByText("Typical breakfast")).toBeInTheDocument();
   });
 
-  it("shows three seeded days with their calories", () => {
-    render(<App />);
+  it("shows three seeded days with their calories", async () => {
+    await renderApp();
     const seed = store();
     const switcher = within(screen.getByTestId("day-switcher"));
 
@@ -42,7 +52,7 @@ describe("App", () => {
 
   it("switches day and shows that day's log", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     const seed = store();
     const yesterday = seed.days[1];
 
@@ -57,7 +67,7 @@ describe("App", () => {
 
   it("logs a food onto the selected day", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     const seed = store();
     // One press of the stepper raises the default quantity of 1 by 0.25.
     const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 1.25 }, seed);
@@ -83,7 +93,7 @@ describe("App", () => {
 
   it("logs a meal onto the selected day and expands it", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Add meal to Dinner" }));
     await user.click(screen.getByTestId("meal-post-workout-shake"));
@@ -99,7 +109,7 @@ describe("App", () => {
 
   it("removes a logged entry", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Remove Blueberries from Breakfast" }));
 
@@ -108,7 +118,7 @@ describe("App", () => {
 
   it("creates a food and then logs it", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await openView(user, "Foods");
     await user.click(screen.getByTestId("new-food"));
@@ -135,7 +145,7 @@ describe("App", () => {
 
   it("edits a food and the day totals follow", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
     const seed = store();
     const before = dayMacros(seed.days[0], seed).calories;
 
@@ -153,7 +163,7 @@ describe("App", () => {
 
   it("refuses to delete a food that is in use, and says where", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await openView(user, "Foods");
     await user.click(screen.getByRole("button", { name: "Delete Banana" }));
@@ -167,7 +177,7 @@ describe("App", () => {
 
   it("deletes an unused food", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await openView(user, "Foods");
     await user.click(screen.getByTestId("new-food"));
@@ -182,7 +192,7 @@ describe("App", () => {
 
   it("builds a meal from foods", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await openView(user, "Meals");
     await user.click(screen.getByTestId("new-meal"));
@@ -198,7 +208,7 @@ describe("App", () => {
 
   it("refuses to delete a meal that a day logs", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await openView(user, "Meals");
     await user.click(screen.getByRole("button", { name: "Delete Typical breakfast" }));
@@ -210,7 +220,7 @@ describe("App", () => {
 
   it("deletes a meal that no day logs", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await openView(user, "Meals");
     await user.click(screen.getByTestId("new-meal"));
@@ -225,7 +235,7 @@ describe("App", () => {
 
   it("closes a dialog with Escape", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderApp();
 
     await user.click(screen.getByRole("button", { name: "Add food to Snacks" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();

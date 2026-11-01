@@ -4,13 +4,17 @@ Skipped when the docker CLI is missing or the daemon is unreachable, so the unit
 suite stays runnable on a machine without docker.
 """
 
+import http.cookiejar
+import json
 import re
 import shutil
 import subprocess
 import time
+import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -79,7 +83,12 @@ def container() -> Iterator[str]:
         subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
 
 
-def test_container_serves_the_app_at_root(container: str) -> None:
+def test_container_serves_the_shell_without_a_session(container: str) -> None:
+    """P4.2 as restated: the markup is public, the data is what the session protects.
+
+    A static export is a file the browser must download, so no server-side gate can
+    hide it. The next two tests assert the guard that does the protecting.
+    """
     response = urlopen(container, timeout=5)
     body = response.read().decode()
 
@@ -98,8 +107,44 @@ def test_container_serves_the_built_bundles(container: str) -> None:
         assert urlopen(f"{container}{path}", timeout=5).status == 200
 
 
-def test_container_answers_the_api(container: str) -> None:
-    response = urlopen(f"{container}/api/hello", timeout=5)
+def test_container_refuses_the_api_without_a_session(container: str) -> None:
+    with pytest.raises(HTTPError) as refusal:
+        urlopen(f"{container}/api/hello", timeout=5)
 
-    assert response.status == 200
-    assert b"Hello from the API" in response.read()
+    assert refusal.value.code == 401
+
+
+def test_container_serves_the_api_with_a_session(container: str) -> None:
+    """Sign in for real, over HTTP, with a cookie jar - then the guard lets the call through."""
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+    )
+    body = json.dumps({"username": "user", "password": "password"}).encode()
+    login = Request(
+        f"{container}/api/login",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    assert opener.open(login, timeout=5).status == 200
+
+    with opener.open(f"{container}/api/hello", timeout=5) as response:
+        assert response.status == 200
+        assert b"Hello from the API" in response.read()
+
+
+def test_container_refuses_a_wrong_password(container: str) -> None:
+    """The credential check is the server's, not the page's."""
+    body = json.dumps({"username": "user", "password": "wrong"}).encode()
+    login = Request(
+        f"{container}/api/login",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with pytest.raises(HTTPError) as refusal:
+        urlopen(login, timeout=5)
+
+    assert refusal.value.code == 401

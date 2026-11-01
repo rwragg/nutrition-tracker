@@ -17,7 +17,17 @@ const test = base.extend<{ consoleErrors: string[] }>({
   consoleErrors: async ({ page }, run) => {
     const errors: string[] = [];
     page.on("console", (message) => {
-      if (message.type() === "error") errors.push(message.text());
+      if (message.type() !== "error") return;
+
+      // The browser logs every failed HTTP response as a console error. A 401 from the
+      // session probe, or from a deliberately refused sign-in, is the app working - the
+      // signed-out path. Anything else counts.
+      const url = message.location().url ?? "";
+      const expected401 =
+        message.text().includes("401") && (url.endsWith("/api/session") || url.endsWith("/api/login"));
+      if (expected401) return;
+
+      errors.push(message.text());
     });
     page.on("pageerror", (error) => errors.push(error.message));
     await run(errors);
@@ -29,8 +39,26 @@ const expectQuiet = (errors: string[]) => expect(errors).toEqual([]);
 const openView = (page: Page, label: string) =>
   page.getByRole("button", { name: label, exact: true }).click();
 
-test("opens on the seeded day with its log", async ({ page, consoleErrors }) => {
+/**
+ * The app asks the server who is signed in before it renders the tracker, so every test
+ * starts by signing in. The gate itself - what a signed-out visitor sees, and what a
+ * refused sign-in looks like - has its own tests at the end of this file.
+ */
+async function openTracker(page: Page) {
   await page.goto("/");
+
+  const signIn = page.getByTestId("sign-in");
+  if (await signIn.isVisible()) {
+    await page.getByLabel("Username").fill("user");
+    await page.getByLabel("Password").fill("password");
+    await page.getByTestId("sign-in-submit").click();
+  }
+
+  await expect(page.getByTestId("day-total-calories")).toBeVisible();
+}
+
+test("opens on the seeded day with its log", async ({ page, consoleErrors }) => {
+  await openTracker(page);
 
   await expect(page.getByTestId("day-total-calories")).toHaveText(
     formatCalories(dayMacros(today, store).calories),
@@ -48,7 +76,7 @@ test("opens on the seeded day with its log", async ({ page, consoleErrors }) => 
 });
 
 test("tracks days over time and digs into one", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
 
   await expect(page.getByTestId(`day-${yesterday.id}-calories`)).toHaveText(
     formatCalories(dayMacros(yesterday, store).calories),
@@ -74,7 +102,7 @@ test("logs a food with a quantity onto the selected day", async ({ page, console
   const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 2 }, store);
   const snacks = sectionMacros(today, "snacks", store).calories;
 
-  await page.goto("/");
+  await openTracker(page);
   await page.getByRole("button", { name: "Add food to Snacks" }).click();
   await page.getByTestId("food-hummus").click();
   await page.getByRole("spinbutton", { name: "Quantity" }).fill("2");
@@ -93,7 +121,7 @@ test("logs a food with a quantity onto the selected day", async ({ page, console
 });
 
 test("logs a meal and expands it into its foods", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await page.getByRole("button", { name: "Add meal to Dinner" }).click();
   await page.getByTestId("meal-post-workout-shake").click();
   await page.getByTestId("confirm-add-meal").click();
@@ -111,7 +139,7 @@ test("logs a meal and expands it into its foods", async ({ page, consoleErrors }
 test("removes a logged entry", async ({ page, consoleErrors }) => {
   const removed = entryMacros({ id: "", kind: "food", foodId: "almonds", quantity: 1 }, store);
 
-  await page.goto("/");
+  await openTracker(page);
   await page.getByRole("button", { name: "Remove Almonds from Snacks" }).click();
 
   await expect(page.getByTestId("day-total-calories")).toHaveText(
@@ -123,7 +151,7 @@ test("removes a logged entry", async ({ page, consoleErrors }) => {
 });
 
 test("creates a food, then logs it on a day", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Foods");
 
   await page.getByTestId("new-food").click();
@@ -153,7 +181,7 @@ test("creates a food, then logs it on a day", async ({ page, consoleErrors }) =>
 test("edits a food and every day that logs it follows", async ({ page, consoleErrors }) => {
   const before = dayMacros(today, store).calories;
 
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Foods");
 
   await page.getByRole("button", { name: "Edit Almonds" }).click();
@@ -169,7 +197,7 @@ test("edits a food and every day that logs it follows", async ({ page, consoleEr
 });
 
 test("creates a meal from foods and logs it", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Meals");
 
   await page.getByTestId("new-meal").click();
@@ -194,7 +222,7 @@ test("creates a meal from foods and logs it", async ({ page, consoleErrors }) =>
 });
 
 test("deletes a food nothing uses", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Foods");
 
   await page.getByTestId("new-food").click();
@@ -210,7 +238,7 @@ test("deletes a food nothing uses", async ({ page, consoleErrors }) => {
 });
 
 test("deletes a meal nothing logs", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Meals");
 
   await page.getByTestId("new-meal").click();
@@ -226,7 +254,7 @@ test("deletes a meal nothing logs", async ({ page, consoleErrors }) => {
 });
 
 test("refuses to delete a food that meals still use, and names them", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Foods");
 
   await page.getByRole("button", { name: "Delete Banana" }).click();
@@ -243,7 +271,7 @@ test("refuses to delete a food that meals still use, and names them", async ({ p
 });
 
 test("refuses to delete a meal that a day logs", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await openView(page, "Meals");
 
   await page.getByRole("button", { name: "Delete Typical breakfast" }).click();
@@ -256,7 +284,7 @@ test("refuses to delete a meal that a day logs", async ({ page, consoleErrors })
 });
 
 test("opens the dialog as an opaque Bootstrap modal", async ({ page, consoleErrors }) => {
-  await page.goto("/");
+  await openTracker(page);
   await page.getByRole("button", { name: "Add food to Breakfast" }).click();
 
   const dialog = page.getByRole("dialog");
@@ -275,7 +303,7 @@ test("opens the dialog as an opaque Bootstrap modal", async ({ page, consoleErro
 
 test("lays out on a phone viewport without horizontal overflow", async ({ page, consoleErrors }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await openTracker(page);
 
   await expect(page.getByTestId("day-total-calories")).toBeVisible();
   for (const section of SECTIONS as readonly Section[]) {
@@ -288,4 +316,53 @@ test("lays out on a phone viewport without horizontal overflow", async ({ page, 
   expect(overflow).toBeLessThanOrEqual(1);
 
   expectQuiet(consoleErrors);
+});
+
+test.describe("the sign-in gate", () => {
+  test("asks for credentials when nobody is signed in", async ({ page, consoleErrors }) => {
+    await page.goto("/");
+
+    await expect(page.getByTestId("sign-in")).toBeVisible();
+    await expect(page.getByTestId("day-total-calories")).toHaveCount(0);
+
+    expectQuiet(consoleErrors);
+  });
+
+  test("refuses the wrong password, says so, and stays put", async ({ page, consoleErrors }) => {
+    await page.goto("/");
+    await page.getByLabel("Username").fill("user");
+    await page.getByLabel("Password").fill("wrong");
+    await page.getByTestId("sign-in-submit").click();
+
+    // Scoped to the panel: Next.js ships its own role="alert" route announcer.
+    await expect(page.getByTestId("sign-in").getByRole("alert")).toContainText("did not match");
+    await expect(page.getByTestId("day-total-calories")).toHaveCount(0);
+
+    expectQuiet(consoleErrors);
+  });
+
+  test("signs in and then logs out, back to the sign-in screen", async ({ page, consoleErrors }) => {
+    await openTracker(page);
+    await expect(page.getByTestId("signed-in-as")).toHaveText("user");
+
+    await page.getByTestId("sign-out").click();
+
+    await expect(page.getByTestId("sign-in")).toBeVisible();
+    await expect(page.getByTestId("day-total-calories")).toHaveCount(0);
+
+    expectQuiet(consoleErrors);
+  });
+
+  test("the API refuses a signed-out caller", async ({ request }) => {
+    // The screen is a convenience; this is the protection.
+    expect((await request.get("/api/hello")).status()).toBe(401);
+  });
+
+  test("the data is what is protected, not the markup", async ({ page }) => {
+    // P4.2 as restated: the shell is a file the browser must download, so it is public.
+    // Asserted here on purpose, so it stays a decision rather than an accident.
+    const response = await page.goto("/");
+
+    expect(response?.status()).toBe(200);
+  });
 });
