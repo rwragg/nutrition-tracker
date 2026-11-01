@@ -1,0 +1,162 @@
+{
+  "name": "nutrition-tracker",
+  "status": "proposed - awaiting Robert's sign-off (P5.1, P5.4)",
+  "engine": "sqlite",
+  "schema_version": 1,
+  "file": "/data/nutrition.db",
+  "connection_pragmas": [
+    {
+      "pragma": "foreign_keys = ON",
+      "why": "SQLite defaults it OFF, and every delete guard in this schema is a foreign key. Without this line the storage-level guard from R11 does not exist."
+    },
+    {
+      "pragma": "busy_timeout = 5000",
+      "why": "One process writes, but a request can arrive while a write is in flight. Waiting beats an immediate SQLITE_BUSY."
+    }
+  ],
+  "tables": [
+    {
+      "name": "users",
+      "purpose": "One row per person whose log this is. Every other table carries a user_id, which is how R2 holds and how R3 can arrive later without a migration (D4).",
+      "columns": [
+        { "name": "id", "type": "TEXT", "nullable": false, "notes": "The MVP seeds one row, id = 'user'. A generated id arrives with registration." },
+        { "name": "username", "type": "TEXT", "nullable": false, "unique": true, "notes": "For the MVP this equals id; kept separate so R3 does not have to change the key." }
+      ],
+      "primary_key": ["id"]
+    },
+    {
+      "name": "foods",
+      "purpose": "A food record and the macros one unit of it contributes, matching the frontend's Food type exactly.",
+      "columns": [
+        { "name": "id", "type": "TEXT", "nullable": false, "notes": "A slug for seeded rows ('hummus'), a generated id for new ones." },
+        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT" },
+        { "name": "name", "type": "TEXT", "nullable": false },
+        { "name": "unit", "type": "TEXT", "nullable": false, "check": "one of the seven units in the app" },
+        { "name": "calories", "type": "REAL", "nullable": false, "check": ">= 0", "notes": "Per one unit. REAL because quantities are fractional." },
+        { "name": "protein", "type": "REAL", "nullable": false, "check": ">= 0" },
+        { "name": "carbs", "type": "REAL", "nullable": false, "check": ">= 0" },
+        { "name": "fat", "type": "REAL", "nullable": false, "check": ">= 0" }
+      ],
+      "primary_key": ["id"],
+      "indexes": [{ "name": "foods_by_user", "columns": ["user_id"] }],
+      "not_constrained": "No unique constraint on (user_id, name): the app allows two foods with the same name, and a constraint the UI does not enforce would fail a save that looked fine."
+    },
+    {
+      "name": "meals",
+      "purpose": "A named group of foods, e.g. 'Typical breakfast'. The name is the whole record; the contents live in meal_foods.",
+      "columns": [
+        { "name": "id", "type": "TEXT", "nullable": false },
+        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT" },
+        { "name": "name", "type": "TEXT", "nullable": false }
+      ],
+      "primary_key": ["id"],
+      "indexes": [{ "name": "meals_by_user", "columns": ["user_id"] }]
+    },
+    {
+      "name": "meal_foods",
+      "purpose": "Which foods a meal is made of, and how much of each.",
+      "columns": [
+        { "name": "id", "type": "TEXT", "nullable": false },
+        { "name": "meal_id", "type": "TEXT", "nullable": false, "references": "meals(id) ON DELETE RESTRICT" },
+        { "name": "food_id", "type": "TEXT", "nullable": false, "references": "foods(id) ON DELETE RESTRICT" },
+        { "name": "quantity", "type": "REAL", "nullable": false, "check": "> 0" }
+      ],
+      "primary_key": ["id"],
+      "indexes": [
+        { "name": "meal_foods_by_meal", "columns": ["meal_id"] },
+        { "name": "meal_foods_by_food", "columns": ["food_id"] }
+      ],
+      "not_constrained": "No unique (meal_id, food_id): the meal builder lets the same food be added twice, and forbidding it here would reject a form that the UI accepted."
+    },
+    {
+      "name": "days",
+      "purpose": "One row per calendar day of log. Its date is the identity that matters: 'today' is looked up by date, not by position.",
+      "columns": [
+        { "name": "id", "type": "TEXT", "nullable": false, "notes": "The seeded days use their ISO date as the id, as the frontend does today." },
+        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT" },
+        { "name": "date", "type": "TEXT", "nullable": false, "check": "a real ISO date", "notes": "Validated with strftime, which normalises an impossible date like 2026-02-31 and so fails the check. The comparison is IS rather than = on purpose: strftime returns NULL for a string it cannot parse, and SQLite treats a CHECK that evaluates to NULL as passing, so = would let a malformed date through. Verified by running it." }
+      ],
+      "primary_key": ["id"],
+      "unique": [{ "name": "one_day_per_user_per_date", "columns": ["user_id", "date"] }]
+    },
+    {
+      "name": "entries",
+      "purpose": "One thing logged into one section of one day: a food with a quantity, or a whole meal. This is the only table the frontend's LogEntry maps to.",
+      "columns": [
+        { "name": "id", "type": "TEXT", "nullable": false },
+        { "name": "day_id", "type": "TEXT", "nullable": false, "references": "days(id) ON DELETE RESTRICT" },
+        { "name": "section", "type": "TEXT", "nullable": false, "check": "breakfast, lunch, dinner or snacks" },
+        { "name": "food_id", "type": "TEXT", "nullable": true, "references": "foods(id) ON DELETE RESTRICT" },
+        { "name": "meal_id", "type": "TEXT", "nullable": true, "references": "meals(id) ON DELETE RESTRICT" },
+        { "name": "quantity", "type": "REAL", "nullable": true, "notes": "Set for a food entry, NULL for a meal entry - the app logs a meal as a whole, with no multiplier." }
+      ],
+      "primary_key": ["id"],
+      "checks": [
+        { "rule": "(food_id IS NOT NULL) + (meal_id IS NOT NULL) = 1", "why": "An entry is a food or a meal, never both and never neither." },
+        { "rule": "(food_id IS NULL) = (quantity IS NULL)", "why": "A quantity belongs to a food entry only." },
+        { "rule": "quantity IS NULL OR quantity > 0", "why": "No zero-quantity entries." }
+      ],
+      "indexes": [
+        { "name": "entries_by_day", "columns": ["day_id"] },
+        { "name": "entries_by_food", "columns": ["food_id"] },
+        { "name": "entries_by_meal", "columns": ["meal_id"] }
+      ],
+      "ordering": "Entries come back in insertion order (SQLite's implicit rowid). No position column: the app never reorders an entry, only adds and removes."
+    },
+    {
+      "name": "meta",
+      "purpose": "One row recording the schema version, so a database file written by a different version of this schema is refused with a clear message instead of misbehaving.",
+      "columns": [
+        { "name": "key", "type": "TEXT", "nullable": false },
+        { "name": "value", "type": "TEXT", "nullable": false }
+      ],
+      "primary_key": ["key"],
+      "rows": [{ "key": "schema_version", "value": "1" }]
+    }
+  ],
+  "ddl": [
+    "CREATE TABLE users (\n    id       TEXT PRIMARY KEY,\n    username TEXT NOT NULL UNIQUE\n)",
+    "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0)\n)",
+    "CREATE INDEX foods_by_user ON foods (user_id)",
+    "CREATE TABLE meals (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name    TEXT NOT NULL\n)",
+    "CREATE INDEX meals_by_user ON meals (user_id)",
+    "CREATE TABLE meal_foods (\n    id       TEXT PRIMARY KEY,\n    meal_id  TEXT NOT NULL REFERENCES meals (id) ON DELETE RESTRICT,\n    food_id  TEXT NOT NULL REFERENCES foods (id) ON DELETE RESTRICT,\n    quantity REAL NOT NULL CHECK (quantity > 0)\n)",
+    "CREATE INDEX meal_foods_by_meal ON meal_foods (meal_id)",
+    "CREATE INDEX meal_foods_by_food ON meal_foods (food_id)",
+    "CREATE TABLE days (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    date    TEXT NOT NULL CHECK (strftime('%Y-%m-%d', date) IS date),\n    UNIQUE (user_id, date)\n)",
+    "CREATE TABLE entries (\n    id       TEXT PRIMARY KEY,\n    day_id   TEXT NOT NULL REFERENCES days (id) ON DELETE RESTRICT,\n    section  TEXT NOT NULL CHECK (section IN ('breakfast', 'lunch', 'dinner', 'snacks')),\n    food_id  TEXT REFERENCES foods (id) ON DELETE RESTRICT,\n    meal_id  TEXT REFERENCES meals (id) ON DELETE RESTRICT,\n    quantity REAL,\n    CHECK ((food_id IS NOT NULL) + (meal_id IS NOT NULL) = 1),\n    CHECK ((food_id IS NULL) = (quantity IS NULL)),\n    CHECK (quantity IS NULL OR quantity > 0)\n)",
+    "CREATE INDEX entries_by_day ON entries (day_id)",
+    "CREATE INDEX entries_by_food ON entries (food_id)",
+    "CREATE INDEX entries_by_meal ON entries (meal_id)",
+    "CREATE TABLE meta (\n    key   TEXT PRIMARY KEY,\n    value TEXT NOT NULL\n)"
+  ],
+  "delete_policy": {
+    "rule": "Nothing cascades. Every reference is ON DELETE RESTRICT, so the database itself refuses to break a reference (R11).",
+    "why_both_layers": "The refusal a person sees has to name what still uses the record ('used in 2 meals (Typical breakfast, Pasta night)'), which is a query, not an error message. So the API checks first and explains; the foreign key is the backstop that holds even if a route forgets to check.",
+    "reported_by": [
+      { "record": "food", "must_name": "the meals that use it, and the days that log it directly" },
+      { "record": "meal", "must_name": "the days that log it" }
+    ],
+    "not_deletable_in_the_mvp": ["days", "entries", "users"],
+    "note": "The app removes an entry (that is an entry/remove, not a delete of a record), but no route deletes a day or a user. Their references are RESTRICT anyway."
+  },
+  "seed": {
+    "when": "Only when the database is empty - no rows in users. Checked before inserting anything, so a restart or a rebuild never re-seeds or duplicates.",
+    "what": "The same sample the frontend ships today: 31 foods, 5 meals, and 3 days (today, yesterday, the day before), for the MVP user.",
+    "whose": "user 'user', the only account the MVP signs in to.",
+    "source_of_truth": "This moves to the backend, because the backend is what writes it. The frontend's lib/seed.ts stops being the source of the data and is retired in Part 7; the tests that compute expectations from it are re-pointed at the API then.",
+    "dates": "The three days are relative to the date of first run, as they are now. They do not re-date themselves later, so the seeded history ages."
+  },
+  "not_in_this_schema": [
+    { "omitted": "targets (2,200 kcal / 140 g protein / 250 g carbs / 70 g fat)", "why": "R10 and R17 say one place, frontend/lib/targets.ts. Nothing stores them yet, and the API returns sums, not judgements, so the frontend keeps comparing against them." },
+    { "omitted": "created_at / updated_at", "why": "Nothing reads them. Add them when something does." },
+    { "omitted": "migrations", "why": "One version, created if absent, and a meta row that names it. A schema change before release means deleting the file; after release it means a migration, and that is a decision to take then rather than machinery to build now." },
+    { "omitted": "passwords and sessions", "why": "The MVP credential is a constant in the application (R1), and the session lives in a signed cookie. Neither is data." }
+  ],
+  "open_questions_for_sign_off": [
+    "Is TEXT id for every table acceptable, rather than integer keys? The seeded slugs ('hummus', 'post-workout-shake', and ISO dates for days) survive into the database, which is what the frontend's tests currently expect - the alternative is integers everywhere and a re-pointed test suite.",
+    "Is the meta table worth its one row, or is checking whether users is empty enough on its own?",
+    "The database file lives at /data/nutrition.db in a named volume so a rebuild does not wipe the log. Confirm that is where you want it.",
+    "Should targets become per user later? Nothing in the schema stops it, and nothing in the schema does it."
+  ]
+}

@@ -270,7 +270,7 @@ All five criteria met, and the restatement above is what was built:
 The brief: propose a schema for the nutrition tracker, saved as JSON, documented in `docs/`, with user
 sign-off.
 
-- [ ] Propose the SQLite schema — users, foods, meals, meal ingredients, days, entries — as JSON
+- [x] Propose the SQLite schema — users, foods, meals, meal ingredients, days, entries — as JSON
 - [ ] Document the approach in `docs/` and get Robert's sign-off before any code depends on it
 - [ ] State the delete behaviour: R11's refusal is enforced where the data lives, not only in the UI
 - [ ] State what the first-run seed is, and that it runs only against an empty database
@@ -281,6 +281,27 @@ refusal to cascade.
 **Success criteria:** P5.1 the schema is documented and approved · P5.2 creating the database from
 nothing works and is tested · P5.3 R11's guard exists at the storage layer · P5.4 no code is written
 against the schema before approval.
+
+### Status — Part 5, proposed · awaiting sign-off
+
+**This part is paused at its own gate.** What is written is the proposal, and no code has been written
+against it yet (P5.4):
+
+- [`docs/schema.json`](schema.json) — the schema as JSON: seven tables, the columns, keys, constraints,
+  indexes and the exact `CREATE` statements they translate to.
+- [`docs/DATABASE.md`](DATABASE.md) — the approach: what each choice buys, the delete behaviour and where
+  it is enforced, the seed rule, and what is deliberately left out.
+
+**The design was verified by running it, not by reading it.** The DDL was executed against SQLite and
+fourteen constraint probes run: thirteen rules held as intended, and **one did not** — a malformed date
+was accepted, because the rule was `strftime(...) = date` and SQLite treats a CHECK that evaluates to
+NULL as passing. Changed to `IS date`, and all three bad-date probes are now refused. The full table of
+probes is in `docs/DATABASE.md`.
+
+**Also confirmed while running it:** with `PRAGMA foreign_keys` off — SQLite's default — a food that a
+meal still uses can be deleted and the meal is left pointing at nothing. That is why the pragma is part
+of the schema's definition rather than an implementation detail, and why P5.3 will test the guard with it
+on.
 
 ## Part 6 — Backend
 
