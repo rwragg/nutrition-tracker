@@ -3,7 +3,7 @@
 ## Business Requirements
 
 - A user can sign in
-- New users will register with a telegram id and a email
+- New users will register with a telegram id and an email
 - When signed in the user can only see their information
 - An MVP of a Nutrition Tracker application as a web app  
 - The web app should be able to log daily meals
@@ -22,22 +22,22 @@
 ## Limitations
 
 For the MVP, there will only be a user sign in (hardcoded to 'user' and 'password') but the database will support multiple users for future.
-For the MVP, there will only be 1 Kanban board per signed in user.
+For the MVP, there will only be 1 Nutrition Tracker for the signed in user.
 For the MVP, this will run locally (in a docker container)
 
 ## Technical Details
 
 - Implemented as a modern NextJS app, client rendered
 - The NextJS app should be created in a subdirectory `frontend`
-- No persistence
-- No user management for the MVP
+- The frontend is in-memory only until Part 7: it is seeded on load and keeps nothing across a reload. Persistence arrives with the backend - schema (Part 5), API (Part 6), and the frontend using it (Part 7).
+- No user-management UI for the MVP: sign-in is hardcoded, and the schema carries a user id so multiple users work later.
 - Use popular libraries
 - Use Bootstrap
 - As simple as possible but with an elegant UI
 - Python FastAPI backend, including serving the static NextJS site at /
 - Everything packaged into a Docker container
 - Use "uv" as the package manager for python in the Docker container
-- Use OpenRouter for the AI calls. An OPENROUTER_API_KEY is in .env in the project root
+- AI is out of scope for this MVP: no OpenRouter call, no API key.
 - Use SQLLite local database for the database, creating a new db if it doesn't exist
 - Start and Stop server scripts for Mac, PC, Linux in scripts/
 

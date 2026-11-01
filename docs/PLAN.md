@@ -1,30 +1,230 @@
-# High level steps for project
+# Nutrition Tracker — Plan
 
-Part 1: Plan
+**Status: draft, for Robert's approval.** Part 1 of the brief is not complete until this is approved.
 
-Enrich this document to plan out each of these parts in detail, with substeps listed out as a checklist to be checked off by the agent, and with tests and success critieria for each. Also create an AGENTS.md file inside the frontend directory that describes the existing code there. Ensure the user checks and approves the plan.
+**Scope: this project is a self-contained unit of work inside this directory.** Its source of truth is
+`AGENTS.md`; this document lives in `docs/` with it. Nothing outside this directory is an input — no
+earlier plan, no other project, no vault material. What follows is derived from the brief and from
+reading the code that is actually here.
 
-Part 2: Scaffolding
+## Starting point — read off the repo, not assumed
 
-Set up the Docker infrastructure, the backend in backend/ with FastAPI, and write the start and stop scripts in the scripts/ directory. This should serve example static HTML to confirm that a 'hello world' example works running locally and also make an API call.
+Verified 2026-11-01:
 
-Part 3: Add in Frontend
+- `frontend/` is a working, tested MVP: Next.js 16.4.3, React 19.3, Bootstrap 5.3.8 (CSS only, no
+  Bootstrap JS), the dark palette from `AGENTS.md`, client-rendered behind a client gate.
+- **55 unit and component tests** (Vitest + Testing Library) and **14 Playwright tests**, all green.
+- `frontend/lib/`: `types.ts`, `seed.ts` (31 foods, 5 meals, 3 days), `store.ts` (reducer, 8 cases,
+  two usage guards), `dates.ts`, `nutrition.ts`, `format.ts`, `targets.ts`, `usage.ts`.
+- `frontend/components/`: 17 files — `App`, the three views, `DaySummary`, `MacroBar`, `SectionCard`,
+  `EntryRow`, four dialogs, `Dialog`, `styles.ts`, `use-is-client.ts`.
+- **The frontend makes no network call at all** — zero matches for `fetch(`, `axios`, `/api/`. It runs
+  `useReducer(storeReducer, null, () => createSeedStore())`: state is in memory and resets on reload.
+  That is exactly what Part 7 changes, and no part before Part 7 may depend on it changing.
+- `backend/` and `scripts/` contain placeholder `AGENTS.md` files and nothing else. There is no `.env`,
+  and the root `.gitignore` is two lines: `# IDE` and `.idea/`.
 
-Now update so that the frontend is statically built and served, so that the app has the demo Kanban board displayed at /. Comprehensive unit and integration tests.
+## Requirements
 
-Part 4: Add in a fake user sign in experience
+From `AGENTS.md`. R-numbers are assignment order, not reading order. Each is owned by a part below.
 
-Now update so that on first hitting /, you need to log in with dummy credentials ("user", "password") in order to see the Kanban, and you can log out. Comprehensive tests.
+- R1 Sign-in, hardcoded to `user` / `password` for the MVP
+- R2 A signed-in user sees only their own data
+- R3 Registration with a telegram id and an email — **deferred**, see Q1
+- R4 Log daily meals
+- R5 Entries can be individual foods (e.g. "1 cup rice")
+- R6 Entries can be meals — a named group of foods, e.g. "typical breakfast"
+- R7 Create, read, update and delete a **food**
+- R8 Create, read, update and delete a **meal**
+- R9 Track days over time and dig into a day: a history to move between and open, not an archive
+- R10 Each day summarised against 2,200 kcal / 140 g protein / 250 g carbs / 70 g fat, held in one place
+- R11 A food or meal still in use is never silently removed — the delete is refused and the app names
+  where the record is referenced. Nothing cascades
+- R12 No more functionality: no archive, no search, no filter
+- R13 Priority is a slick, professional UI over feature count
+- R14 Opens with dummy data for a few sample days, so the history is visible on the first screen
+- R15 Next.js, client-rendered, in `frontend/`
+- R16 Python FastAPI backend serving the static Next.js site at `/`
+- R17 Docker, `uv` for Python, SQLite created if it does not exist
+- R18 Start and stop scripts for Mac, PC and Linux in `scripts/`
+- R19 Popular libraries; Bootstrap; as simple as possible with an elegant UI
+- R20 The palette and its per-colour assignment exactly as `AGENTS.md` documents, contrast measured
+- R21 Latest library versions, no over-engineering, no defensive programming, no extra features, no
+  emojis anywhere, minimal README
+- R22 PEP 8 — live from Part 2 onward; there is real Python in this stage, unlike the frontend-only one
+- R23 The app persists across reloads — see D1 for when this arrives
 
-Part 5: Database modeling
+## Decisions
 
-Now propose a database schema for the Kanban, saving it as JSON. Document the database approach in docs/ and get user sign off.
+- **D1 — Persistence is phased, and nothing before Part 7 may assume it.** The frontend stays exactly
+  as it is, in-memory and seeded on load, through Parts 2, 3 and 4. The schema is designed in Part 5,
+  the API built and tested in Part 6, and the frontend moves onto the API in Part 7 — at which point
+  `createSeedStore()` becomes the database's first-run seed instead of the app's state. Why: each part
+  stays independently verifiable, and no early part is left depending on storage that does not exist
+  yet. Consequence: the brief's "No persistence" describes the *starting point*, not the finished
+  product, and has been restated in `AGENTS.md` to say so.
+- **D2 — AI is out of scope.** No OpenRouter call, no chat widget, no API key. The brief's OpenRouter
+  and `.env` lines are removed. Stated by Robert, 2026-11-01.
+- **D3 — Docker, `uv`, SQLite.** One container; the database file is created on first run if absent.
+- **D4 — Sign-in is hardcoded, the schema is not.** `user` / `password` for the MVP, but rows carry a
+  user id, so R2 holds today and R3 can arrive later without a migration.
+- **D5 — FastAPI serves the built frontend at `/`.** `next build` produces a static export; FastAPI
+  serves it and owns `/api/*`.
+- **D6 — Bootstrap CSS stays the only styling framework**, palette as custom properties bridged into
+  `--bs-*`, no colour literal in any component, contrast measured rather than eyeballed.
+- **D7 — The existing frontend is the starting point, not a rewrite.** Parts 2–4 add around it and do
+  not disturb its tests.
+- **D8 — Harden `.gitignore` as Part 2's first substep**, before anything can write a secret or a
+  database. The root file currently ignores only `.idea/`, so an untracked `.env` or `*.db` would be
+  staged by `git add -A`.
+- **D9 — `frontend/AGENTS.md` keeps Next's generated block.** `next dev` writes and re-adds a "This is
+  NOT the Next.js you know" block at the top of that file; our description of the code is added around
+  it, and the generated block is committed as-is — deleting it only recreates an uncommitted change.
+- **D10 — Planning documents live in `docs/`.** The `PLAN.md` at the project root predates this
+  document and is left untouched; it is not an input to any part here.
 
-Part 6: Backend
+## Part 1 — Plan · **in review**
 
-Now add API routes to allow the backend to read and change the Kanban for a given user; test this thoroughly with backend unit tests. The database should be created if it doesn't exist.
+The brief: enrich the step list with substeps as a checklist, tests and success criteria per part, add
+an `AGENTS.md` in `frontend/` describing the existing code, and get Robert's approval.
 
-Part 7: Frontend + Backend
+- [x] Read the repo rather than trusting the brief's description of it
+- [x] Requirements (R1–R23) and decisions (D1–D10) written down
+- [x] This document, with per-part substeps, tests and success criteria
+- [x] `AGENTS.md` reconciled with D1 and D2
+- [ ] `frontend/AGENTS.md` describing the existing code (D9)
+- [ ] **Robert approves this plan — gate: no part below starts before this**
 
-Now have the frontend actually use the backend API, so that the app is a proper persistent Kanban board. Test very throughly.
+**Success criteria:** P1.1 every requirement in `AGENTS.md` appears as a numbered R with an owning part ·
+P1.2 every part states its substeps, tests and success criteria · P1.3 the persistence sequencing is
+explicit and no part before Part 7 depends on storage · P1.4 approval recorded.
 
+## Part 2 — Scaffolding: Docker, FastAPI, scripts
+
+The brief: stand up Docker, the FastAPI backend in `backend/`, and start/stop scripts in `scripts/`;
+serve a hello-world page and make an API call to prove it runs locally.
+
+- [ ] Harden `.gitignore` first (D8): `node_modules/`, `.next/`, `out/`, `*.db`, `.env*`, `__pycache__/`, `.venv/`
+- [ ] `backend/` FastAPI app on `uv`: `pyproject.toml`, a health route, one example `/api/` route
+- [ ] `Dockerfile` plus a compose file (or a documented `docker run`) building the backend
+- [ ] `scripts/`: `start` and `stop` for Mac/Linux plus Windows `.bat`, all driving the same container
+- [ ] A static hello-world page served at `/`, and the example API route answering
+- [ ] `backend/AGENTS.md` and `scripts/AGENTS.md` filled in: purpose, layout, how to run
+- [ ] README updated: how to start and stop the stack
+
+**Tests:** `pytest` unit tests for the routes through FastAPI's test client · one integration test that
+builds the image, starts the container, and asserts both `/` and the API route answer · `docker build`
+is part of the test run.
+
+**Success criteria:** P2.1 `docker build` exits 0 · P2.2 one script starts it, one stops it · P2.3 `/`
+returns the hello-world page · P2.4 the API route returns 200 with a JSON body · P2.5 backend tests
+green · P2.6 after a run, `git status` shows no build output, database file or `.env` staged.
+
+## Part 3 — Add in the frontend
+
+The brief: the frontend is statically built and served so the tracker appears at `/`, with
+comprehensive unit and integration tests.
+
+- [ ] Configure the Next app for static export and build it inside the image
+- [ ] FastAPI serves the exported assets at `/`, client routes still resolving
+- [ ] Confirm the palette and all three views survive being served from a different origin than `next start`
+
+**Tests:** the existing 55 unit/component tests and 14 Playwright tests keep passing · Playwright now
+runs against the container rather than `next start` · a test asserting `/` returns the app's HTML and
+not a directory listing.
+
+**Success criteria:** P3.1 the tracker renders at `http://localhost:<port>/` from the container ·
+P3.2 all three views work · P3.3 zero console errors · P3.4 the frontend's own suites are still green ·
+P3.5 no change to the frontend's state handling (D1).
+
+## Part 4 — Fake sign-in
+
+The brief: hitting `/` requires the dummy credentials `user` / `password` to see the tracker, and you
+can log out.
+
+- [ ] A sign-in screen, with a session cookie issued by the backend (R1)
+- [ ] Log out clears the session
+- [ ] Unauthenticated requests to `/` get the sign-in screen; the tracker is not served
+- [ ] The session carries a user id, so R2 holds and R3 can land later (D4)
+
+**Tests:** backend tests for the auth route — correct, incorrect and absent credentials · Playwright:
+sign in, use the app, log out, and navigate to `/` while signed out.
+
+**Success criteria:** P4.1 `user`/`password` gets in; anything else does not · P4.2 the tracker is
+unreachable while signed out · P4.3 log out works and is tested · P4.4 no credentials are hardcoded in
+the frontend bundle · P4.5 the frontend's existing tests still pass.
+
+## Part 5 — Database modelling
+
+The brief: propose a schema for the nutrition tracker, saved as JSON, documented in `docs/`, with user
+sign-off.
+
+- [ ] Propose the SQLite schema — users, foods, meals, meal ingredients, days, entries — as JSON
+- [ ] Document the approach in `docs/` and get Robert's sign-off before any code depends on it
+- [ ] State the delete behaviour: R11's refusal is enforced where the data lives, not only in the UI
+- [ ] State what the first-run seed is, and that it runs only against an empty database
+
+**Tests:** a schema test creating the database from empty, asserting the tables, the keys, and the
+refusal to cascade.
+
+**Success criteria:** P5.1 the schema is documented and approved · P5.2 creating the database from
+nothing works and is tested · P5.3 R11's guard exists at the storage layer · P5.4 no code is written
+against the schema before approval.
+
+## Part 6 — Backend
+
+The brief: API routes letting the backend read and change a given user's tracker data, thoroughly
+tested with backend unit tests, creating the database if it does not exist.
+
+- [ ] CRUD routes for foods and meals (R7, R8)
+- [ ] Routes for days and entries, including the day's summary figures (R4–R6, R9, R10)
+- [ ] Both delete guards, returning *where* the record is referenced (R11)
+- [ ] Every route scoped to the signed-in user (R2)
+- [ ] Database created if absent (R17)
+
+**Tests:** `pytest` per route; each guard refusing and naming the reference; a second user unable to
+see the first user's data; the day's totals computed independently of the API and compared.
+
+**Success criteria:** P6.1 every route has tests · P6.2 both guards demonstrably refuse and name the
+reference · P6.3 user isolation tested with two users · P6.4 the database is created when absent ·
+P6.5 the frontend is unchanged and still green.
+
+## Part 7 — Frontend + Backend · **persistence lands here**
+
+The brief: the frontend actually uses the backend API, so the app is a properly persistent nutrition
+tracker, tested thoroughly.
+
+- [ ] Replace `useReducer` + `createSeedStore()` with calls to the API
+- [ ] The seed becomes a first-run database seed rather than app state (D1, R14)
+- [ ] Loading and error states for the calls that now exist
+- [ ] Re-point the tests that assert against the pure reducer — expect the shape of three test files to
+      change, not only their assertions
+
+**Tests:** the full Playwright suite against the container · a reload test proving data survives (the
+definition of R23) · both delete guards end to end · a second browser session seeing the same data.
+
+**Success criteria:** P7.1 data survives a reload and a container restart · P7.2 all three views still
+work · P7.3 both guards still refuse with the reason shown · P7.4 zero console errors · P7.5 no
+in-memory store remains as a source of truth.
+
+## Part 8 — Handover
+
+- [ ] README accurate: start, stop, and where the database file lives
+- [ ] `curl` on the served URL returns the app
+- [ ] Screenshots of all three views plus the sign-in screen
+- [ ] A completion report listing every success criterion above with its evidence
+- [ ] Server left running and ready
+
+**Success criteria:** P8.1 the README matches reality · P8.2 `curl` returns the app · P8.3 screenshots
+captured · P8.4 every P-criterion accounted for, met or explicitly not met.
+
+## Open questions
+
+- **Q1 — Registration is deferred, not dropped.** `AGENTS.md` asks for registration with a telegram id
+  and an email; its Limitations say the MVP has hardcoded sign-in. Part 4 satisfies R1 and leaves R3 to
+  a later stage, with the schema shaped for it (D4). Confirm that reading.
+- **Q2 — Configuration.** With AI out of scope there is no key to hold today. If one arrives later it
+  goes in `.env` at the project root, and by then D8's ignore rule covers it.
+- **Q3 — `docs/PLAN.md` Part 7 says "persistent nutrition tracker board"** — "board" is a leftover from
+  the wording this brief was adapted from. Harmless, but it is the phrase that made the persistence
+  contradiction visible, so it is worth correcting while the file is open.
