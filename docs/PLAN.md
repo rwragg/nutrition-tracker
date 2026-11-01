@@ -2,6 +2,11 @@
 
 **Status: draft, for Robert's approval.** Part 1 of the brief is not complete until this is approved.
 
+**Provenance:** this file previously held the brief's terse step list — Parts 1–7, one paragraph each.
+It has been replaced by the enriched plan below, in which every part states its own instruction from
+the brief and then the detail, the tests and the criteria. The original wording is in git history at
+`21f3f7c` if you would rather have it kept verbatim as an appendix.
+
 **Scope: this project is a self-contained unit of work inside this directory.** Its source of truth is
 `AGENTS.md`; this document lives in `docs/` with it. Nothing outside this directory is an input — no
 earlier plan, no other project, no vault material. What follows is derived from the brief and from
@@ -225,6 +230,3 @@ captured · P8.4 every P-criterion accounted for, met or explicitly not met.
   a later stage, with the schema shaped for it (D4). Confirm that reading.
 - **Q2 — Configuration.** With AI out of scope there is no key to hold today. If one arrives later it
   goes in `.env` at the project root, and by then D8's ignore rule covers it.
-- **Q3 — `docs/PLAN.md` Part 7 says "persistent nutrition tracker board"** — "board" is a leftover from
-  the wording this brief was adapted from. Harmless, but it is the phrase that made the persistence
-  contradiction visible, so it is worth correcting while the file is open.
