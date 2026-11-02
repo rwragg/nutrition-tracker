@@ -27,8 +27,8 @@ npm run test:e2e                        # 22 passed, builds its own stack on :81
 docker compose --profile bot run --rm bot   # exits 1 with a reason: no token set
 ```
 
-Current commits: this repository is HEAD here (Part 9, 2026-11-02), hermes-home `da5c9d2`,
-hermes-skills (its HEAD), hermes-notes `84aa0c7`, pm `ae223d6`. Tags
+Current commits: this repository is HEAD here (Part 9, 2026-11-02), hermes-home `64da0d7`,
+hermes-skills `f81a1e6`, hermes-notes `264f04a`, pm `ae223d6`. Tags
 `snapshot-2026-11-02-pre-telegram` (before this work) and `skeleton-2026-11-02-grams-and-bot` (after it)
 sit on the four repositories. `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses
 with 403 — the token has no write on that repo (see Open items).
@@ -125,6 +125,9 @@ Frontend: 96.1% statements, 82.5% branches.
 - **The tests were right and the parser was wrong, three times.** `cups` for `cup` (people type plurals),
   a dictated name without the comma in a stored one ("greek yogurt weighed" against "Greek yogurt,
   weighed"), and a two-token command with no food. Fix the code, not the expectation.
+- **A meal entry's `quantity` is NULL, not 1.** A total written as `e.quantity * mf.quantity *
+  f.calories` silently drops every meal — 2026-11-02 reads 520 kcal instead of 2,207.5, with no error.
+  The join needs `COALESCE(e.quantity, 1)`.
 - **`TestClient` runs on one thread; a real server does not.** A per-request SQLite connection closed in
   a FastAPI dependency finalises on a different threadpool thread, so it raises `ProgrammingError` and
   answers 500 intermittently. Fixed with `check_same_thread=False` in `db.connect`. The 80 backend tests
