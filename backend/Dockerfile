@@ -27,6 +27,10 @@ RUN uv sync --frozen --no-dev
 COPY backend/app ./app
 COPY --from=frontend /frontend/out ./app/static
 
+# Where the database lives. A named volume is mounted here in docker-compose.yml, so the
+# log survives a rebuild; creating it in the image means a bare `docker run` works too.
+RUN mkdir -p /data
+
 EXPOSE 8000
 
 CMD ["uv", "run", "--no-sync", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

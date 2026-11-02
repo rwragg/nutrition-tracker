@@ -271,9 +271,9 @@ The brief: propose a schema for the nutrition tracker, saved as JSON, documented
 sign-off.
 
 - [x] Propose the SQLite schema — users, foods, meals, meal ingredients, days, entries — as JSON
-- [ ] Document the approach in `docs/` and get Robert's sign-off before any code depends on it
-- [ ] State the delete behaviour: R11's refusal is enforced where the data lives, not only in the UI
-- [ ] State what the first-run seed is, and that it runs only against an empty database
+- [x] Document the approach in `docs/` and get Robert's sign-off before any code depends on it
+- [x] State the delete behaviour: R11's refusal is enforced where the data lives, not only in the UI
+- [x] State what the first-run seed is, and that it runs only against an empty database
 
 **Tests:** a schema test creating the database from empty, asserting the tables, the keys, and the
 refusal to cascade.
@@ -282,26 +282,31 @@ refusal to cascade.
 nothing works and is tested · P5.3 R11's guard exists at the storage layer · P5.4 no code is written
 against the schema before approval.
 
-### Status — Part 5, proposed · awaiting sign-off
+### Status — Part 5, complete 2026-11-01
 
-**This part is paused at its own gate.** What is written is the proposal, and no code has been written
-against it yet (P5.4):
+Approved as proposed (all four decisions at the end of `docs/DATABASE.md`), then implemented and
+verified:
 
-- [`docs/schema.json`](schema.json) — the schema as JSON: seven tables, the columns, keys, constraints,
-  indexes and the exact `CREATE` statements they translate to.
-- [`docs/DATABASE.md`](DATABASE.md) — the approach: what each choice buys, the delete behaviour and where
-  it is enforced, the seed rule, and what is deliberately left out.
+- **P5.1** the schema is documented (`docs/schema.json`, `docs/DATABASE.md`) and approved.
+- **P5.2** creating the database from nothing works: a missing file becomes all seven tables and all
+  seven indexes, the version row is written, and the seed fills it — 31 foods, 5 meals, 19 meal
+  ingredients, 3 days, 17 entries, dated today and the two days before. Opening it again re-seeds
+  nothing.
+- **P5.3** R11's guard exists at the storage layer: with `PRAGMA foreign_keys = ON`, deleting a food a
+  meal uses, a food a day logs, or a meal a day logs each raise; deleting a food nothing references is
+  allowed. Asserted directly against the database, with nothing above it checking.
+- **P5.4** no code was written against the schema before approval — the proposal was committed
+  (`9bc9cae`) and the implementation came after.
 
-**The design was verified by running it, not by reading it.** The DDL was executed against SQLite and
-fourteen constraint probes run: thirteen rules held as intended, and **one did not** — a malformed date
-was accepted, because the rule was `strftime(...) = date` and SQLite treats a CHECK that evaluates to
-NULL as passing. Changed to `IS date`, and all three bad-date probes are now refused. The full table of
-probes is in `docs/DATABASE.md`.
+**Verified in the running container, not only in tests:** the image creates and seeds `/data/nutrition.db`
+on startup (98304 bytes, schema version 1, 31 foods, 3 days); the guard refuses inside it; a marker row
+I wrote survived a full `compose down` + image rebuild + restart; and the seed did **not** re-run across
+that rebuild (32 foods with the marker, not 63; 3 days, not 6; 17 entries, not 34). That is the volume
+decision and the seed-once rule both proven on the artifact.
 
-**Also confirmed while running it:** with `PRAGMA foreign_keys` off — SQLite's default — a food that a
-meal still uses can be deleted and the meal is left pointing at nothing. That is why the pragma is part
-of the schema's definition rather than an implementation detail, and why P5.3 will test the guard with it
-on.
+**One thing this part found:** the schema test that compares `db.py` with `docs/schema.json` is the
+reason to keep the proposal in the repository — the two are now checked against each other, so the
+document cannot quietly drift from what runs.
 
 ## Part 6 — Backend
 

@@ -1,6 +1,8 @@
 # Database approach
 
-**Status: proposed — needs Robert's sign-off before any code depends on it (P5.1, P5.4).**
+**Status: approved and implemented (Part 5 of `docs/PLAN.md`).** Robert approved the four decisions at
+the end of this document as proposed, on 2026-11-01. The schema, the seed and the delete guards are in
+`backend/app/db.py`; the routes that use them arrive in Part 6.
 
 The machine-readable form of this schema is [`schema.json`](schema.json), which carries the tables, the
 columns, the constraints and the exact `CREATE` statements they translate to. This document is the

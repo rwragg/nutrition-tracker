@@ -6,12 +6,16 @@ built, so this module never runs a build itself.
 """
 
 import secrets
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
+
+from app.db import initialise
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -25,7 +29,14 @@ CREDENTIALS = {"user": "password"}
 # in Part 5/6 rather than in the image.
 SESSION_SECRET = secrets.token_hex(32)
 
-app = FastAPI(title="Nutrition Tracker")
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Create the database if it is absent, and seed it the first time (R17, R14)."""
+    initialise().close()
+    yield
+
+
+app = FastAPI(title="Nutrition Tracker", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,

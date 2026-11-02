@@ -18,18 +18,21 @@ sample days and resets on reload.
 - Total each day against calorie and macronutrient targets
 - Deleting a record that a meal or a day still refers to is refused, with the reason
 
-Nothing is saved: the sample data is seeded in memory on load.
+Nothing is saved yet: the data lives in the browser and resets on reload. The database is in place and
+seeded, but the app does not read or write it until the parts that rewire the frontend onto the API.
 
 ## Running the whole stack
 
-One container: FastAPI serves the frontend at `/` and owns the API.
+One container: FastAPI serves the frontend at `/`, owns the API, and keeps a SQLite database at
+`/data/nutrition.db` in a named volume, so it survives a rebuild.
 
 ```bash
 ./scripts/start.sh    # builds and starts; exits 0 once the health check answers
 ./scripts/stop.sh     # stops it
 ```
 
-On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http://localhost:8000/.
+On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http://localhost:8000/, and
+you sign in with `user` / `password`. The database approach is documented in [`docs/DATABASE.md`](docs/DATABASE.md).
 
 ## Tests
 
