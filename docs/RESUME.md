@@ -40,10 +40,12 @@ npm run test:e2e                        # 24 passed, builds its own stack on :81
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
 ```
 
-Current commits, read back rather than assumed: this repository is `5ca385f` (Part 10 step 2, 2026-11-02),
-hermes-home `64da0d7`, hermes-skills `f81a1e6`, hermes-notes `6dd2338`, pm `ae223d6`. Tags
-`snapshot-2026-11-02-pre-telegram` (before the Telegram work), `skeleton-2026-11-02-grams-and-bot` (the
-skeleton and the gram basis) and `linked-chats-2026-11-02` (step 2) sit on the four repositories, and
+Current commits, read back rather than assumed: tag `linked-chats-2026-11-02` marks **the code state** —
+nutrition `5ca385f`, hermes-notes `6dd2338`, hermes-home `64da0d7`, hermes-skills `f81a1e6`, pm `ae223d6`.
+**Everything committed after that tag in this repository is documentation only** — including the two
+commits that corrected these hashes and the stale sentences a grep turned up — so the tag, not `HEAD`, is
+the state to check out. The earlier tags are `skeleton-2026-11-02-grams-and-bot` (the skeleton and the
+gram basis) and `snapshot-2026-11-02-pre-telegram` (before the Telegram work), and
 `~/backups/nutrition/2026-11-02-linked-chats/` holds a database copy with a `SNAPSHOT.md` beside it.
 `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with 403 — the token has no write
 on that repo (see Open items).
