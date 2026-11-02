@@ -12,10 +12,17 @@ Part 7.
   makes the mount serve `index.html` at `/`.
 - `app/auth.py` - accounts and the guard: `POST /api/register`, `POST /api/login`, `POST /api/logout`,
   `GET /api/session`, and `current_user` - the dependency every protected route takes to get the user id
-  or a 401 (R2). The connection dependency (`Connection`) lives here too, because both routers take it.
+  or a 401 (R2). **A caller is either a browser session or the bot speaking for a bound chat** (R26):
+  `X-Bot-Secret` proves it is the bot and `X-Telegram-Chat` says which log, with the app resolving that
+  chat to an account. The connection dependency (`Connection`) and the guarded-caller alias (`User`) live
+  here too, because both routers take them.
 - `app/passwords.py` - how a password is stored and checked: pbkdf2-sha256 with a salt per password,
   constant-time comparison, and a value that is missing or malformed fails closed. Standard library only,
   so there is no new dependency to keep patched for calling two functions from one.
+- `app/telegram.py` - linking a chat to an account (R26, D18): `POST /api/telegram/code` (signed in: the
+  app shows this), `POST /api/telegram/bind` (the bot redeems it), and `GET`/`DELETE /api/telegram/link`.
+  A code is six characters from an alphabet without I/L/O/0/1, lives fifteen minutes, and is single use -
+  which is why it is a row rather than a signature.
 - `app/api.py` - the nutrition routes. Twelve of them: foods and meals CRUD, and the dates and entries.
 - `app/db.py` - the schema, the connection settings and the first-run seed. Read `docs/DATABASE.md` for
   the reasoning; `docs/schema.json` is the approved proposal, and a test asserts the two still describe
@@ -63,6 +70,9 @@ Part 7.
 - `tests/test_app.py` - the health check, the session and the guard: unit tests, no docker needed.
 - `tests/test_accounts.py` - registration, the refusals, password storage, and the isolation between two
   accounts (R24, R25): R2's promise proved against a second user, which is the only way it can be.
+- `tests/test_telegram.py` - linking a chat to an account (R26): minting and spending codes, expiry, the
+  one-chat-one-account rules, and the bot's door into the nutrition routes - including that an unbound
+  chat reaches nothing at all and two bound chats cannot see each other's log.
 - `tests/test_api.py` - the nutrition routes: each one, both guards, and user isolation. Every expected
   figure is computed here in Python from the raw records.
 - `tests/test_db.py` - the schema, the seed and the storage-level guards, straight against the database.

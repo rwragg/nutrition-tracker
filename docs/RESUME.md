@@ -2,32 +2,42 @@
 
 Everything needed to resume without re-reading a long conversation. Written 2026-11-01, when Parts 1–7
 were complete and Part 8 had not started; updated the same day when Part 8 was closed out; **updated
-2026-11-02 when Part 9 was built — the Telegram skeleton, the gram basis and the first migration — and
-again the same day when Part 10's first step (real accounts) was built.**
+2026-11-02 three times — for Part 9 (the Telegram skeleton, the gram basis, the first migration), for
+Part 10 step 1 (real accounts) and for Part 10 step 2 (linking a chat to an account).** This revision
+is the handover: the work is being picked up by a different model, so it leans on what to do next.
 
 ## Where it stands
 
-**All nine parts of `docs/PLAN.md` are done**, and **Part 10 is drafted with its first step built**.
-Parts 1–8 are the finished MVP, and `docs/COMPLETION-REPORT.md` carries every criterion from P1.1 to
-P8.4 with its evidence. Part 9 is the Telegram front end plus the gram basis and the first migration.
-Part 10 is "other people": its step 1 — real accounts, registration and the isolation tests — is built
-and verified; its steps 2 (the bot binding a chat to an account), 3 (voice) and 4 (leaving, hosting) are
-not started, and D16, D17 and D18 are still open.
+**All nine parts of `docs/PLAN.md` are done**, and **Part 10 is drafted with its first two steps built**.
+Parts 1–8 are the finished MVP and `docs/COMPLETION-REPORT.md` carries every criterion from P1.1 to P8.4
+with its evidence. Part 9 is the Telegram front end plus the gram basis and the first migration. Part 10
+is "other people":
 
-The app is a Next.js 16 frontend served by a FastAPI backend in one container, the log in SQLite,
-sign-in gated with real accounts, all three views reading and writing the API, tested at three levels.
-The bot is a second client of the same API, behind a compose profile, with tests of its own.
+- **Step 1 — accounts (R24, R25): done.** Registration with an email and a telegram id, passwords stored
+  as hashes, and the isolation between two accounts proved.
+- **Step 2 — linking a chat to an account (R26): done at the API and the bot, *not* in the UI.** The app
+  can mint a pairing code and the bot can redeem it; **nothing in the frontend shows a code yet**, so
+  linking currently needs the API by hand. This is the first task for the next session: see "What is
+  left" below. `docs/PLAN.md` states the same thing where the step is recorded.
+- **Steps 3 (voice) and 4 (leaving, hosting): not started.** D16 (what transcribes a voice note), D17
+  (what the email is for) and the "how many other people" question are still open. **D18 is taken:** the
+  code comes from the app, never a password typed into Telegram.
+
+The app is a Next.js 16 frontend served by a FastAPI backend in one container, the log in SQLite at
+schema version 5, sign-in gated with real accounts, all three views reading and writing the API, tested
+at three levels. The bot is a second client of the same API — it speaks **for a chat**, which the app
+resolves to an account — behind a compose profile, with tests of its own.
 
 ## Verify the state before doing anything
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 159 passed
+cd backend && uv run pytest -q          # 197 passed
 cd ../frontend && npm test              # 78 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 24 passed, builds its own stack on :8100
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
-docker compose --profile bot run --rm bot   # exits 1 with a reason: no token set
+docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
 ```
 
 Current commits: this repository is HEAD here (Part 9, 2026-11-02), hermes-home `64da0d7`,
@@ -50,6 +60,45 @@ The migration is the piece with the longest life. It establishes the rule the ne
 `docs/DATABASE.md` carries the reasoning, including the three details that are load-bearing (foreign
 keys off for the drop, outside any transaction; the copy counted before the old table goes; nothing
 interpreted).
+
+## What Part 10 step 2 did
+
+Closed out 2026-11-02. **R26** — a chat is bound to exactly one account, and an unbound chat is refused
+with how to bind — is built at the API and the bot, verified in tests and against the running stack. The
+screen that shows the code is not built; that is the first task below.
+
+- **D18 taken.** The app shows a code, the chat redeems it with `/bind`. A password is never typed into
+  Telegram: that was the whole reason for choosing this shape.
+- **Schema version 5**, `telegram_codes`: a six-character code (no I/L/O/0/1, because it is read off a
+  screen), fifteen minutes, single use, and spent together with any other code the account held. Stored
+  rather than signed, for the single-use property alone.
+- **Four routes** in `backend/app/telegram.py`: mint, bind, read the link, remove the link. Binding takes
+  the bot's secret instead of a session — the caller never chooses *which account* it binds to, only
+  which code it redeems.
+- **A second kind of caller.** `auth.current_user` now answers for a browser session **or** the bot
+  speaking for a chat (`X-Bot-Secret` + `X-Telegram-Chat`), so one place decides who is asking and the
+  bot cannot reach a route a browser cannot.
+- **The bot carries the chat id on every request** and no longer signs in. `app/bot.py` lost its
+  `ACCOUNT` constant and gained `/bind`, a preflight, and the translation of the app's 403 into the
+  instruction to link.
+- **Robert's own chat is bound** (`users.telegram_id = 8685521777`, set by hand because the screen does
+  not exist yet), so his bot kept working across the change.
+
+## What is left — start here
+
+1. **The screen that shows the pairing code.** `POST /api/telegram/code` is implemented and tested and
+   **nothing in the frontend calls it**. A small panel: a button in the header → dialog → the code, when
+   it expires, and the exact `/bind` line to send; plus "linked" state and an unlink button, which
+   `GET` / `DELETE /api/telegram/link` already answer. Then the unit test for the dialog and an e2e test
+   that shows a code (the e2e stack has no bot, so the flow stops there by design).
+2. **A migration test for 4 → 5.** The chains from 2 and from 3 are covered; a file that is already at 4
+   is not, because `rewind()` in `backend/tests/test_db.py` has no branch for it. Small, and it is the
+   only untested migration step.
+3. **Then step 3 (voice)**, gated on D16: whisper.cpp in the image, downloading a voice note from
+   Telegram, transcribing, then feeding the same commands. **Not to be handed to Claude Code** — Robert's
+   instruction, 2026-11-02: Claude Code is set up for the Hermes bot's own work (its skills, plugins and
+   configuration), not for this repository.
+4. **Then step 4 (leaving, hosting)**, gated on D17 and on how many people this is for.
 
 ## What Part 10 step 1 did
 
@@ -142,12 +191,27 @@ Frontend: 96.1% statements, 82.5% branches.
 - **A wrong username and a wrong password get the same refusal**, and a refused delete says "no such
   record" for something another account owns. Both are deliberate: the API does not tell a stranger
   which usernames or records exist.
+- **A chat is bound to exactly one account, and that is a unique index.** `users.telegram_id` is where a
+  chat is bound (R26); its uniqueness is the rule, not a convention. The bot never chooses an account —
+  it says which chat it is, and the app decides.
+- **The bot is trusted; the chat is not.** The secret proves the caller is the bot, and the binding
+  decides which log it may touch. An unbound chat gets 403 from every nutrition route.
+- **Both services need `TELEGRAM_BOT_SECRET`** — the app validates the header, the bot sends it. Setting
+  it on one side only looks like the other side being broken; the bot's preflight says which.
+- **A session beats the bot headers** when a request carries both. The bot sends no cookies, so this only
+  happens in a test, and it is stated in `auth.current_user` so it is not rediscovered.
 - **Gates.** Each part of the plan stops for Robert's approval. Do not run two parts together.
 - **Never put sensitive personal context** (depression, confidence, the immigration separation) in
   anything resume- or job-facing, or in the repo.
 
 ## Traps that cost time here — do not rediscover them
 
+- **A live session answers before the bot headers do.** Tests that check the bot's door must sign out
+  first, or the session answers for the request and the door looks open. Stated in `auth.current_user`,
+  and the tests say why they log out.
+- **A shared secret must be set on both services.** The app and the bot each read
+  `TELEGRAM_BOT_SECRET`; with it only on the bot, the app answers 503 ("no … configured") while the bot
+  looks healthy. Caught by the bot's preflight, which is there for exactly this.
 - **A dict comprehension is truthy when it has keys, not when it has values.** `{column: lookup(...)
   for ...}` as an "already taken" check made a registration on an *empty* database answer 409 for all
   three fields — a dict of three `None`s is a non-empty dict. The first test caught it. Write a list of
@@ -194,13 +258,9 @@ Frontend: 96.1% statements, 82.5% branches.
 ## Open items, honestly
 
 - **The bot's boundary is the bot's boundary.** It logs and reads; it does not edit a food or a meal,
-  does not understand a sentence, and has no voice. Each of those is a decision with a cost attached,
-  and the next one worth taking is probably voice — Robert dictates lifts already, so the same habit
-  would meet a bot that could take `/log` by ear.
-- **The bot still writes the one seeded log.** Accounts exist now (step 1), but the bot signs in as the
-  seeded account — `NUTRITION_API_USER` / `NUTRITION_API_PASSWORD`, defaulting to R1's credential — so
-  every chat allowed to talk to it writes the same log. Binding a chat to an account is R26, step 2, and
-  until then `TELEGRAM_ALLOWED_USERS` is the only thing keeping that from being anyone.
+  does not understand a sentence, and has no voice. Each of those is a decision with a cost attached, and
+  the next one worth taking is voice — Robert dictates lifts already, so the same habit would meet a bot
+  that could take `/log` by ear.
 - **Registration has no confirmation and no way back.** An account is created in one step with no email
   verification, and there is no route to change a password, change an email or leave (R29). That is
   step 1's boundary, not an oversight — but it is the list to work through before a stranger uses it.

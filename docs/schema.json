@@ -1,8 +1,8 @@
 {
   "name": "nutrition-tracker",
-  "status": "approved by Robert 2026-11-01, and implemented. Three revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), and on the same day accounts became real: email, telegram id and a stored password hash, so R3's registration is possible (3 -> 4).",
+  "status": "approved by Robert 2026-11-01, and implemented. Four revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), accounts became real: email, telegram id and a stored password hash (3 -> 4), and pairing codes arrived so a chat can be bound to an account (4 -> 5).",
   "engine": "sqlite",
-  "schema_version": 4,
+  "schema_version": 5,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -30,6 +30,18 @@
         { "name": "users_by_email", "columns": ["email"], "unique": true },
         { "name": "users_by_telegram", "columns": ["telegram_id"], "unique": true }
       ]
+    },
+    {
+      "name": "telegram_codes",
+      "purpose": "A one-time code that binds a chat to an account (R26, D18): the app shows it, the chat redeems it. Stored rather than signed so that it can be spent - a code that keeps working after it has been used is one somebody else can use.",
+      "columns": [
+        { "name": "code", "type": "TEXT", "nullable": false, "notes": "Primary key: six characters, no I/L/O/0/1, uppercased before it is stored or looked up." },
+        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT", "notes": "The account the code was minted for. The chat never chooses this." },
+        { "name": "expires", "type": "TEXT", "nullable": false, "check": "an ISO 8601 UTC stamp", "notes": "15 minutes from minting. Fixed-width UTC, so it compares correctly as a string." },
+        { "name": "used", "type": "INTEGER", "nullable": false, "check": "0 or 1", "notes": "Spent on redemption, and every other code the account held is spent with it." }
+      ],
+      "primary_key": ["code"],
+      "indexes": [{ "name": "telegram_codes_by_user", "columns": ["user_id"] }]
     },
     {
       "name": "foods",
@@ -115,6 +127,8 @@
     "CREATE TABLE users (\n    id            TEXT PRIMARY KEY,\n    username      TEXT NOT NULL UNIQUE,\n    email         TEXT,\n    telegram_id   TEXT,\n    password_hash TEXT\n)",
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users (email)",
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
+    "CREATE TABLE telegram_codes (\n    code    TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    expires TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', expires) IS expires),\n    used    INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))\n)",
+    "CREATE INDEX telegram_codes_by_user ON telegram_codes (user_id)",
     "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop', 'g')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0)\n)",
     "CREATE INDEX foods_by_user ON foods (user_id)",
     "CREATE TABLE meals (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name    TEXT NOT NULL\n)",

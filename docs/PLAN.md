@@ -696,6 +696,60 @@ work) rather than by the code. Nothing here is research; it is all work whose sh
 approves, amends or drops it before anything is built, and if it is approved it is built one numbered
 step at a time, each stopping for approval as every part before it has.
 
+**Note for whoever builds step 3:** it is not to be delegated to Claude Code, which Robert has scoped to
+the Hermes bot's own work — its skills, plugins and configuration — and not to this repository
+(2026-11-02).
+
+### Status — step 2 built, 2026-11-02
+
+**Step 2 — the bot's binding (R26) — is built at the API and bot level and verified live. What is not
+built is the screen in the app that shows the code, and without it a person cannot link a chat through
+the UI.** That is the first task for whoever picks this up; everything under it works, which is why the
+gap is stated here rather than discovered.
+
+What step 2 added: **D18 taken** — the code comes from the app and the chat redeems it, so no password
+is ever typed into Telegram; schema version 5 with `telegram_codes` (four services, four versions: 2 → 3
+rebuilds, 3 → 4 adds columns, 4 → 5 adds a table); `POST /api/telegram/code`, `POST /api/telegram/bind`,
+`GET /api/telegram/link`, `DELETE /api/telegram/link`; a second kind of caller in `auth.current_user` (a
+session **or** the bot, speaking for a bound chat); and `/bind` in the bot, which now carries the chat
+id on every request instead of signing in as one account.
+
+- **R26** met at both its clauses. *Exactly one account per chat* is `users.telegram_id`'s unique index,
+  which has been there since version 4. *An unbound chat is refused with how to bind* is a live check:
+  every nutrition route answers 403 for a chat that is not linked, and the bot turns that 403 into
+  instructions rather than a dead end. Verified against the running stack as well as in tests.
+- **D14 kept.** The bot still computes nothing: it asks the app "as this chat" and prints what comes
+  back, including the app's own refusal sentences, because the app knows why it refused and the bot
+  does not.
+- **Bound chats cannot see each other.** Two chats, two logs, and the second cannot read the first's
+  foods or log against them — the R2 promise, now proved for the bot's door as well as the browser's.
+
+**Verified by running it:** backend **197 passed** (38 new: 32 for linking and the bot's door, 6 for
+`/bind` and the unlinked refusals), frontend 78 and browser 24 unchanged (no UI change yet). The live
+volume migrated 4 → 5 in place; the bot's preflight reports *the app accepted the bot secret*; and
+`/today` run as the chat reads back the real log.
+
+**What is left in step 2, precisely:**
+
+1. **The screen that shows the code.** `POST /api/telegram/code` exists and is tested; nothing in the
+   frontend calls it. Until something does, linking needs the API by hand. It wants a small panel —
+   heading button → dialog → the code, the expiry, and the `/bind` line to send — plus a way to see
+   "already linked" and unlink, which `GET`/`DELETE /api/telegram/link` already answer.
+2. **The frontend and browser tests for it** — a unit test for the dialog, and an e2e test that shows a
+   code and (with the bot absent) leaves the flow there.
+3. **A migration test for 4 → 5.** The 2 → 5 and 3 → 5 chains are covered; a file that is already 4 is
+   not, because `rewind` in `tests/test_db.py` has no step for it.
+
+**Two things learned, both worth keeping:**
+
+- **A session beats the bot headers, and that is the right precedence.** Several tests failed because
+  the client was still signed in while asking as a chat — the session answered, and the request looked
+  like a browser's. It is now stated in `auth.current_user` and in the tests that check the bot's door:
+  the bot never sends cookies, so the two only meet in a test.
+- **Both services need the shared secret.** Setting `TELEGRAM_BOT_SECRET` only on the bot made the app
+  answer 503 *"no TELEGRAM_BOT_SECRET is configured"* while the bot looked fine. The bot's preflight
+  turns that into a startup message instead of a mystery when someone tries to log something.
+
 ### Status — step 1 built 2026-11-02
 
 Robert approved the draft and said go. **Step 1 — accounts and registration (R24) with the isolation

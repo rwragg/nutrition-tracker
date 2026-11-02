@@ -26,7 +26,6 @@ and a bot that needs no dependency is a bot the image already contains.
 
 from __future__ import annotations
 
-import http.cookiejar
 import json
 import os
 import re
@@ -36,6 +35,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date as calendar_date
+from http import HTTPStatus
 from typing import Any, Protocol
 
 from app.api import SECTIONS
@@ -44,13 +44,12 @@ from app.db import UNITS
 API = os.environ.get("NUTRITION_API", "http://127.0.0.1:8000").rstrip("/")
 TELEGRAM = "https://api.telegram.org"
 
-# The account the bot signs in as. The seeded account's documented credential (R1) while the
-# bot is one log for one person, which is D14 - and the thing R26 replaces, when a chat is bound
-# to an account of its own. Overridable, so it does not have to be the seeded one.
-ACCOUNT = (
-    os.environ.get("NUTRITION_API_USER", "user"),
-    os.environ.get("NUTRITION_API_PASSWORD", "password"),
-)
+# The bot's own identity (R26). It holds a secret rather than a password because there is nobody
+# there to type one: it speaks for whichever chat it is answering, and the app decides which account
+# that chat is - 403 until the chat has been bound with a code from the app.
+BOT_SECRET = os.environ.get("TELEGRAM_BOT_SECRET", "").strip()
+BOT_SECRET_HEADER = "X-Bot-Secret"
+BOT_CHAT_HEADER = "X-Telegram-Chat"
 
 # Where a /log with no section named lands. Snacks, because it is the section people log
 # into most often and the one least likely to be wrong about what was eaten.
@@ -98,6 +97,11 @@ def parse(text: str) -> tuple[str, dict]:
         return "today", {}
     if command in ("/help", "/start"):
         return "help", {}
+    if command in ("/bind", "/link"):
+        code = " ".join(parts[1:]).strip().upper().replace(" ", "")
+        if not code:
+            return "bind", {"error": "usage: /bind <code> — the app shows you one"}
+        return "bind", {"code": code}
     if command != "/log":
         return "unknown", {}
 
@@ -158,53 +162,66 @@ def find_food(name: str, foods: list[dict]) -> tuple[dict | None, list[dict]]:
 # the two commands against a stand-in, and a stub that satisfies this is as good as the
 # real thing.
 class Client(Protocol):
-    def foods(self) -> list[dict]: ...
-    def meals(self) -> list[dict]: ...
-    def day(self, day: str) -> dict: ...
-    def add_food_entry(self, day: str, section: str, food_id: str, quantity: float) -> dict: ...
+    """What `handle` needs: the API, understood as one particular chat."""
+
+    def foods(self, chat_id: str) -> list[dict]: ...
+    def meals(self, chat_id: str) -> list[dict]: ...
+    def day(self, chat_id: str, day: str) -> dict: ...
+    def add_food_entry(self, chat_id: str, day: str, section: str, food_id: str,
+                       quantity: float) -> dict: ...
+    def bind(self, chat_id: str, code: str) -> dict: ...
 
 
 class Api:
-    """The app's API, with the session the app issues to any other client."""
+    """The app's API, seen as whichever chat is asking.
 
-    def __init__(self, base: str = API, timeout: int = 15) -> None:
+    No sign-in: the bot has no password to sign in with, and no business holding one. Every request
+    carries the bot's secret and the chat it is speaking for, and the app decides which account that
+    is (R26) - or answers 403, which is the bot's cue to tell the person how to link.
+    """
+
+    def __init__(self, base: str = API, secret: str = BOT_SECRET, timeout: int = 15) -> None:
         self.base = base.rstrip("/")
+        self.secret = secret
         self.timeout = timeout
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
-        )
 
-    def request(self, path: str, method: str = "GET", body: dict | None = None) -> Any:
+    def request(self, path: str, chat_id: str, method: str = "GET", body: dict | None = None) -> Any:
         data = json.dumps(body).encode() if body is not None else None
+        headers = {
+            BOT_SECRET_HEADER: self.secret,
+            BOT_CHAT_HEADER: str(chat_id),
+        }
+        if data:
+            headers["Content-Type"] = "application/json"
+
         request = urllib.request.Request(
-            f"{self.base}{path}",
-            data=data,
-            method=method,
-            headers={"Content-Type": "application/json"} if data else {},
+            f"{self.base}{path}", data=data, method=method, headers=headers
         )
-        with self.opener.open(request, timeout=self.timeout) as response:
+        with urllib.request.urlopen(request, timeout=self.timeout) as response:
             payload = response.read().decode()
         return json.loads(payload) if payload else {}
 
-    def sign_in(self) -> None:
-        username, password = ACCOUNT
-        self.request("/api/login", "POST", {"username": username, "password": password})
+    def foods(self, chat_id: str) -> list[dict]:
+        return self.request("/api/foods", chat_id)
 
-    def foods(self) -> list[dict]:
-        return self.request("/api/foods")
+    def meals(self, chat_id: str) -> list[dict]:
+        return self.request("/api/meals", chat_id)
 
-    def meals(self) -> list[dict]:
-        return self.request("/api/meals")
+    def day(self, chat_id: str, day: str) -> dict:
+        return self.request(f"/api/days/{urllib.parse.quote(day)}", chat_id)
 
-    def day(self, day: str) -> dict:
-        return self.request(f"/api/days/{urllib.parse.quote(day)}")
-
-    def add_food_entry(self, day: str, section: str, food_id: str, quantity: float) -> dict:
+    def add_food_entry(self, chat_id: str, day: str, section: str, food_id: str,
+                       quantity: float) -> dict:
         return self.request(
             f"/api/days/{urllib.parse.quote(day)}/entries",
+            chat_id,
             "POST",
             {"section": section, "food_id": food_id, "quantity": quantity},
         )
+
+    def bind(self, chat_id: str, code: str) -> dict:
+        return self.request("/api/telegram/bind", chat_id, "POST",
+                            {"code": code, "chat_id": str(chat_id)})
 
 
 # ---------------------------------------------------------------------------- replies ---
@@ -242,37 +259,76 @@ def format_day(payload: dict, foods: list[dict], meals: list[dict]) -> str:
 
 def format_help() -> str:
     return (
-        "I can do two things:\n\n"
+        "I can do two things with the day, once this chat is linked to your account:\n\n"
         "/today — what is logged today\n"
         "/log <food> <quantity> <unit> [section] — log a food into today\n\n"
         "For example: /log rolled oats 40 g breakfast\n"
         f"units: {', '.join(UNITS)}\n"
-        f"sections: {', '.join(SECTIONS)} (default {DEFAULT_SECTION})"
+        f"sections: {', '.join(SECTIONS)} (default {DEFAULT_SECTION})\n\n"
+        "Not linked yet? In the app, press Telegram in the header: it gives you a code, and "
+        "/bind <code> here does the rest."
     )
 
 
-HELP_HINT = "I only do /today and /log. Send /help to see how."
+HELP_HINT = "I only do /today, /log and /bind. Send /help to see how."
+
+LINK_INSTRUCTIONS = (
+    "This chat is not linked to an account yet.\n"
+    "In the app, press Telegram in the header — it shows a code — then send me /bind <code>."
+)
 
 
-def handle(text: str, api: Client, today: str | None = None) -> str:
-    """One message in, one reply out. Never raises: a bot that dies on a bad message is
+def app_refusal(error: urllib.error.HTTPError, suffix: str = "") -> str:
+    """What to say about a refusal from the app.
+
+    The app's own sentence is used when it has one, because it knows why ("no such code", "that code
+    has expired", "this chat is already linked to another account") and this module does not. A 403 is
+    the one case with something better to say: it is not a refusal of the command but of the caller,
+    and the useful reply is how to stop being in that position.
+    """
+    if error.code == HTTPStatus.FORBIDDEN:
+        return LINK_INSTRUCTIONS
+
+    try:
+        detail = json.loads(error.read().decode()).get("detail")
+    except (OSError, ValueError, AttributeError):
+        detail = None
+
+    message = detail if isinstance(detail, str) and detail else f"the app refused that ({error.code})"
+    return f"{message}{suffix}"
+
+
+def handle(text: str, api: Client, chat_id: str, today: str | None = None) -> str:
+    """One message in, one reply out, as one chat. Never raises: a bot that dies on a bad message is
     a bot that stops answering, and the failure would look like the app being down."""
     today = today or calendar_date.today().isoformat()
     name, args = parse(text)
 
+    if name == "help":
+        return format_help()
+    if name == "unknown":
+        return HELP_HINT
+    if name == "bind":
+        if "error" in args:
+            return args["error"]
+        try:
+            account = api.bind(chat_id, args["code"])
+        except urllib.error.HTTPError as error:
+            return app_refusal(error)
+        except OSError:
+            return "I could not reach the app, so nothing was linked."
+        return (f"Linked. This chat is {account['username']}'s log now — "
+                f"/today to read it back, /log to add to it.")
+
     try:
-        if name == "help":
-            return format_help()
-        if name == "unknown":
-            return HELP_HINT
         if name == "today":
-            return format_day(api.day(today), api.foods(), api.meals())
+            return format_day(api.day(chat_id, today), api.foods(chat_id), api.meals(chat_id))
 
         # name == "log"
         if "error" in args:
             return args["error"]
 
-        foods = api.foods()
+        foods = api.foods(chat_id)
         food, candidates = find_food(args["name"], foods)
         if food is None:
             if not candidates:
@@ -285,13 +341,13 @@ def handle(text: str, api: Client, today: str | None = None) -> str:
             return (f"{food['name']} is recorded in {food['unit']}, not {args['unit']}. "
                     f"Try: /log {food['name']} <quantity> {food['unit']} {args['section']}")
 
-        api.add_food_entry(today, args["section"], food["id"], args["quantity"])
+        api.add_food_entry(chat_id, today, args["section"], food["id"], args["quantity"])
     except urllib.error.HTTPError as error:
-        return f"The app refused that ({error.code}). Nothing was logged."
+        return app_refusal(error, ". Nothing was logged.")
     except OSError:
         return "I could not reach the app. Nothing was logged."
 
-    day = api.day(today)
+    day = api.day(chat_id, today)
     entry = day["sectionMacros"][args["section"]]
     return (f"Logged {args['quantity']:g} {args['unit']} of {food['name']} to "
             f"{args['section']}.\n{args['section'].capitalize()} now {round(entry['calories'])} kcal · "
@@ -348,27 +404,57 @@ def poll(token: str, api: Api) -> None:
             if chat_id is None or not text:
                 continue
             if allowed and str(chat_id) not in allowed:
-                send(token, chat_id, "This log is not yours. Ask Robert for access.")
+                send(token, chat_id, "This log is not yours.")
                 continue
-            send(token, chat_id, handle(text, api))
+            send(token, chat_id, handle(text, api, str(chat_id)))
+
+
+def preflight(api: Api) -> tuple[bool, str]:
+    """Ask the app one question whose answer proves the two sides agree about the secret.
+
+    Chat id "0" is not a real chat, so the three possible answers are all informative: 403 means the
+    secret was accepted and the chat is simply not bound (which is correct), 401 means the app did not
+    accept the secret, and 503 means the app has no secret at all. Without this, a mismatched secret is
+    invisible until somebody tries to log something, and then it looks like their own mistake.
+    """
+    try:
+        api.foods("0")
+    except urllib.error.HTTPError as error:
+        if error.code == HTTPStatus.FORBIDDEN:
+            return True, "the app accepted the bot secret"
+        if error.code == HTTPStatus.UNAUTHORIZED:
+            return False, "the app did not accept TELEGRAM_BOT_SECRET - the two sides disagree"
+        if error.code == HTTPStatus.SERVICE_UNAVAILABLE:
+            return False, "the app has no TELEGRAM_BOT_SECRET set, so no chat can be bound"
+        return False, f"the app answered {error.code} to the bot - unexpected"
+    except OSError as error:
+        return False, f"cannot reach the app at {api.base}: {error}"
+
+    # A 200 means the app treated an unbound chat as somebody's log, which it must never do.
+    return False, "the app answered the bot as if chat 0 had a log - refusing to run"
 
 
 def main() -> int:
-    """Refuse to start without a token, and say so — silence would read as the app being
-    down."""
+    """Refuse to start without what it needs, and say why — silence reads as the app being down."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         print("TELEGRAM_BOT_TOKEN is not set; the bot has nothing to listen on.", file=sys.stderr)
         return 1
 
-    api = Api()
-    try:
-        api.sign_in()
-    except (urllib.error.URLError, OSError) as error:
-        print(f"cannot reach the app at {api.base}: {error}", file=sys.stderr)
+    if not BOT_SECRET:
+        print(
+            "TELEGRAM_BOT_SECRET is not set. The bot acts for a chat, not for a single account, so "
+            "without a secret it cannot be told which log a chat is (R26).",
+            file=sys.stderr,
+        )
         return 1
 
-    print(f"signed in to {api.base}", flush=True)
+    api = Api()
+    ok, message = preflight(api)
+    print(f"  {message}", file=sys.stdout if ok else sys.stderr, flush=True)
+    if not ok:
+        return 1
+
     poll(token, api)
     return 0
 

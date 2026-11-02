@@ -9,6 +9,8 @@ part that needs a real app is `Api`, which the container test covers.
 
 from collections.abc import Iterator
 from typing import get_args
+import io
+import json
 import urllib.error
 
 import pytest
@@ -52,34 +54,50 @@ def day_payload(*, with_entries: bool = True, section_macros: dict | None = None
 
 
 class FakeApi:
-    """Just enough of the client to run a message, recording what the bot asked for."""
+    """Just enough of the client to run a message, recording what the bot asked for.
+
+    Every method takes the chat id, because that is the shape of the real client (R26): there is no
+    such thing as asking the app a question without saying which chat is asking.
+    """
 
     def __init__(self, foods: list[dict] | None = None, day: dict | None = None,
-                 meals: list[dict] | None = None, post_fails: Exception | None = None) -> None:
+                 meals: list[dict] | None = None, post_fails: Exception | None = None,
+                 bind_fails: Exception | None = None) -> None:
         self._foods = FOODS if foods is None else foods
         self._meals = MEALS if meals is None else meals
         self._day = day or day_payload()
         self.post_fails = post_fails
+        self.bind_fails = bind_fails
         self.posted: list[tuple] = []
-        self.signed_in = False
+        self.bound: list[tuple] = []
+        self.asked_as: set[str] = set()
 
-    def sign_in(self) -> None:
-        self.signed_in = True
-
-    def foods(self) -> list[dict]:
+    def foods(self, chat_id: str) -> list[dict]:
+        self.asked_as.add(chat_id)
         return self._foods
 
-    def meals(self) -> list[dict]:
+    def meals(self, chat_id: str) -> list[dict]:
+        self.asked_as.add(chat_id)
         return self._meals
 
-    def day(self, day: str) -> dict:
+    def day(self, chat_id: str, day: str) -> dict:
+        self.asked_as.add(chat_id)
         return self._day
 
-    def add_food_entry(self, day: str, section: str, food_id: str, quantity: float) -> dict:
+    def add_food_entry(self, chat_id: str, day: str, section: str, food_id: str,
+                       quantity: float) -> dict:
+        self.asked_as.add(chat_id)
         if self.post_fails:
             raise self.post_fails
-        self.posted.append((day, section, food_id, quantity))
+        self.posted.append((chat_id, day, section, food_id, quantity))
         return {"id": "new", "kind": "food", "foodId": food_id, "quantity": quantity}
+
+    def bind(self, chat_id: str, code: str) -> dict:
+        self.asked_as.add(chat_id)
+        if self.bind_fails:
+            raise self.bind_fails
+        self.bound.append((chat_id, code))
+        return {"id": "user-1", "username": "alice", "chat_id": chat_id}
 
 
 @pytest.fixture
@@ -224,70 +242,174 @@ def test_an_unknown_food_id_is_shown_as_its_id_rather_than_hidden() -> None:
     assert "gone" in bot.format_day(payload, FOODS, MEALS)
 
 
-# --- the two commands, end to end -------------------------------------------------------
+# --- the commands, end to end, as one chat ----------------------------------------------
+
+CHAT = "8685521777"
 
 
 def test_today_asks_the_api_for_the_machine_s_date(api: FakeApi) -> None:
-    reply = bot.handle("/today", api, today=TODAY)
+    reply = bot.handle("/today", api, CHAT, today=TODAY)
     assert "150 kcal" in reply
 
 
+def test_every_question_says_which_chat_is_asking(api: FakeApi) -> None:
+    """There is no anonymous question (R26): the app cannot decide whose log this is without it."""
+    bot.handle("/today", api, CHAT, today=TODAY)
+
+    assert api.asked_as == {CHAT}
+
+
 def test_log_posts_the_entry_and_reports_the_new_figures(api: FakeApi) -> None:
-    reply = bot.handle("/log oats 1 cup", api, today=TODAY)
-    assert api.posted == [(TODAY, "snacks", "oats", 1.0)]
+    reply = bot.handle("/log oats 1 cup", api, CHAT, today=TODAY)
+    assert api.posted == [(CHAT, TODAY, "snacks", "oats", 1.0)]
     assert "Logged" in reply and "kcal" in reply
 
 
 def test_log_writes_the_day_it_was_given_and_the_section_it_was_told(api: FakeApi) -> None:
-    bot.handle("/log greek yogurt weighed 183 g breakfast", api, today=TODAY)
-    day, section, food_id, quantity = api.posted[0]
+    bot.handle("/log greek yogurt weighed 183 g breakfast", api, CHAT, today=TODAY)
+    _, day, section, food_id, quantity = api.posted[0]
     assert (day, section, food_id, quantity) == (TODAY, "breakfast", "yogurt-g", 183.0)
 
 
 def test_a_unit_that_disagrees_with_the_food_is_refused_before_anything_is_written(api: FakeApi) -> None:
     """A food is priced in the unit it was recorded in, so '183 g' of a food priced per cup
     is not a small error — it is a number that means nothing."""
-    reply = bot.handle("/log greek yogurt weighed 2 cups", api, today=TODAY)
+    reply = bot.handle("/log greek yogurt weighed 2 cups", api, CHAT, today=TODAY)
     assert api.posted == []
     assert "recorded in g" in reply
 
 
 def test_an_ambiguous_name_writes_nothing_and_asks(api: FakeApi) -> None:
-    reply = bot.handle("/log greek yogurt 1 cup", api, today=TODAY)
+    reply = bot.handle("/log greek yogurt 1 cup", api, CHAT, today=TODAY)
     assert api.posted == []
     assert "more than one food" in reply
 
 
 def test_an_unknown_food_says_where_to_add_it(api: FakeApi) -> None:
-    reply = bot.handle("/log unobtainium 1 cup", api, today=TODAY)
+    reply = bot.handle("/log unobtainium 1 cup", api, CHAT, today=TODAY)
     assert api.posted == []
     assert "no food called" in reply and "app first" in reply
 
 
 def test_a_refusal_from_the_app_is_reported_and_nothing_is_claimed(api: FakeApi) -> None:
     api.post_fails = urllib.error.HTTPError("u", 409, "conflict", {}, None)  # type: ignore[arg-type]
-    reply = bot.handle("/log oats 1 cup", api, today=TODAY)
-    assert "refused" in reply and "Nothing was logged" in reply
+    reply = bot.handle("/log oats 1 cup", api, CHAT, today=TODAY)
+    assert "Nothing was logged" in reply
+
+
+def test_the_apps_own_sentence_is_used_when_it_gives_one(api: FakeApi) -> None:
+    """The app knows why it refused; the bot does not. Guessing would replace a specific answer
+    with a vague one."""
+    body = io.BytesIO(json.dumps({"detail": "that code has already been used"}).encode())
+    api.post_fails = urllib.error.HTTPError("u", 409, "conflict", {}, body)  # type: ignore[arg-type]
+
+    reply = bot.handle("/log oats 1 cup", api, CHAT, today=TODAY)
+
+    assert "already been used" in reply
+    assert "Nothing was logged" in reply
 
 
 def test_an_unreachable_app_is_reported_rather_than_raised() -> None:
     api = FakeApi()
     api.post_fails = OSError("connection refused")
-    reply = bot.handle("/log oats 1 cup", api, today=TODAY)
+    reply = bot.handle("/log oats 1 cup", api, CHAT, today=TODAY)
     assert "could not reach the app" in reply
 
 
 def test_free_text_gets_the_hint_not_a_guess(api: FakeApi) -> None:
-    reply = bot.handle("I had two eggs and a coffee", api, today=TODAY)
+    reply = bot.handle("I had two eggs and a coffee", api, CHAT, today=TODAY)
     assert reply == bot.HELP_HINT
     assert api.posted == []
 
 
-def test_help_lists_both_commands_and_the_vocabulary() -> None:
-    text = bot.handle("/help", FakeApi(), today=TODAY)
-    assert "/today" in text and "/log" in text
+def test_help_lists_the_commands_and_the_vocabulary() -> None:
+    text = bot.handle("/help", FakeApi(), CHAT, today=TODAY)
+    assert "/today" in text and "/log" in text and "/bind" in text
     for unit in UNITS:
         assert unit in text
+
+
+# --- the chat is not linked yet (R26) ----------------------------------------------------
+
+
+def unbound() -> urllib.error.HTTPError:
+    """What the app answers when a chat has not been bound: 403, from `auth.bound_user`."""
+    body = io.BytesIO(json.dumps({"detail": "this chat is not linked to an account yet"}).encode())
+    return urllib.error.HTTPError("u", 403, "forbidden", {}, body)  # type: ignore[arg-type]
+
+
+def test_an_unlinked_chat_is_told_how_to_link_rather_than_what_it_asked_for() -> None:
+    """The refusal is an instruction, not a dead end: the app's words for a 403 are about the caller,
+    and the person needs to know what to do next."""
+    api = FakeApi()
+    api.post_fails = unbound()
+
+    reply = bot.handle("/log oats 1 cup", api, CHAT, today=TODAY)
+
+    assert reply == bot.LINK_INSTRUCTIONS
+    assert api.posted == []
+
+
+def test_an_unlinked_chat_cannot_read_the_day_either() -> None:
+    """/today is the other way in, and a 403 there must not read as an empty day."""
+    api = FakeApi()
+
+    def refuse(chat_id: str, day: str) -> dict:
+        raise unbound()
+
+    api.day = refuse  # type: ignore[method-assign]
+
+    reply = bot.handle("/today", api, CHAT, today=TODAY)
+
+    assert reply == bot.LINK_INSTRUCTIONS
+    assert "Nothing logged" not in reply
+
+
+# --- /bind -------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("/bind K7M2QP", "K7M2QP"),
+        ("/bind k7m2qp", "K7M2QP"),
+        ("/bind  K7 M2 QP ", "K7M2QP"),
+        ("/link K7M2QP", "K7M2QP"),
+    ],
+)
+def test_a_bind_message_yields_the_code_however_it_is_typed(text: str, expected: str) -> None:
+    """Read off a screen and typed into a chat: case and stray spaces are certainties, not errors."""
+    name, args = bot.parse(text)
+    assert name == "bind"
+    assert args == {"code": expected}
+
+
+def test_bind_without_a_code_says_what_it_needs() -> None:
+    name, args = bot.parse("/bind")
+    assert name == "bind"
+    assert "usage" in args["error"]
+
+
+def test_binding_sends_the_code_as_this_chat(api: FakeApi) -> None:
+    reply = bot.handle("/bind K7M2QP", api, CHAT)
+
+    assert api.bound == [(CHAT, "K7M2QP")]
+    assert "Linked" in reply and "alice" in reply
+
+
+def test_a_code_that_does_not_work_is_explained_in_the_apps_words(api: FakeApi) -> None:
+    body = io.BytesIO(json.dumps({"detail": "that code has expired — ask the app for a new one"}).encode())
+    api.bind_fails = urllib.error.HTTPError("u", 409, "conflict", {}, body)  # type: ignore[arg-type]
+
+    reply = bot.handle("/bind K7M2QP", api, CHAT)
+
+    assert "expired" in reply
+
+
+def test_bind_says_so_when_the_app_cannot_be_reached(api: FakeApi) -> None:
+    api.bind_fails = OSError("connection refused")
+    reply = bot.handle("/bind K7M2QP", api, CHAT)
+    assert "could not reach the app" in reply
 
 
 # --- starting up ------------------------------------------------------------------------
@@ -300,6 +422,48 @@ def test_the_bot_refuses_to_start_without_a_token(monkeypatch: pytest.MonkeyPatc
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     assert bot.main() == 1
     assert "TELEGRAM_BOT_TOKEN is not set" in capsys.readouterr().err
+
+
+def test_the_bot_refuses_to_start_without_a_secret(monkeypatch: pytest.MonkeyPatch,
+                                                   capsys: pytest.CaptureFixture) -> None:
+    """R26: the bot acts for a chat, so without the secret it cannot be told whose log a chat is, and
+    starting anyway would mean every chat being refused with no explanation."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "a-token")
+    monkeypatch.delenv("TELEGRAM_BOT_SECRET", raising=False)
+
+    assert bot.main() == 1
+    assert "TELEGRAM_BOT_SECRET is not set" in capsys.readouterr().err
+
+
+def test_the_preflight_reports_what_the_app_said(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A mismatched secret is otherwise invisible until someone tries to log something, and then it
+    looks like their mistake."""
+
+    class Failing:
+        base = "http://nowhere:8000"
+
+        def foods(self, chat_id: str):
+            raise urllib.error.HTTPError("u", 401, "unauthorized", {}, None)  # type: ignore[arg-type]
+
+    ok, message = bot.preflight(Failing())  # type: ignore[arg-type]
+
+    assert ok is False
+    assert "TELEGRAM_BOT_SECRET" in message
+
+
+def test_the_preflight_accepts_an_unbound_chat_as_the_right_answer() -> None:
+    """403 for chat "0" is exactly right: the secret was accepted and the chat has no log."""
+
+    class Unbound:
+        base = "http://nowhere:8000"
+
+        def foods(self, chat_id: str):
+            raise urllib.error.HTTPError("u", 403, "forbidden", {}, None)  # type: ignore[arg-type]
+
+    ok, message = bot.preflight(Unbound())  # type: ignore[arg-type]
+
+    assert ok is True
+    assert "accepted the bot secret" in message
 
 
 def test_the_allowed_list_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:

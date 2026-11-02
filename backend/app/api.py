@@ -12,12 +12,12 @@ that holds when a route forgets to.
 import sqlite3
 import uuid
 from datetime import date as calendar_date
-from typing import Annotated, Literal, TypeAlias
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
-from app.auth import Connection, current_user
+from app.auth import Connection, User
 
 # Mirrors db.UNITS, and a test asserts the two agree so a unit cannot be added half-way.
 # `g` is the gram basis: macros per gram, so "183 g" logs 183 × the per-gram figure.
@@ -26,11 +26,10 @@ Section = Literal["breakfast", "lunch", "dinner", "snacks"]
 MACROS = ("calories", "protein", "carbs", "fat")
 SECTIONS: tuple[Section, ...] = ("breakfast", "lunch", "dinner", "snacks")
 
+# The connection and the guard come from auth: one home for the dependency both routers take, so a
+# change to how a request gets its database - or who counts as the caller (R26) - cannot apply to
+# one half of the API only.
 router = APIRouter(prefix="/api", tags=["nutrition"])
-
-# The connection and the guard come from auth: one home for the dependency both routers take,
-# so a change to how a request gets its database cannot apply to one half of the API only.
-User: TypeAlias = Annotated[str, Depends(current_user)]
 
 
 # --- what a client sends -----------------------------------------------------------------

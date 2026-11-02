@@ -61,10 +61,11 @@ def test_a_missing_file_becomes_the_whole_schema(tmp_path: Path) -> None:
     connection = db.initialise(path, today=date(2026, 11, 1))
 
     assert path.exists()
-    assert table_names(connection) == {"users", "foods", "meals", "meal_foods", "entries", "meta"}
+    assert table_names(connection) == {"users", "telegram_codes", "foods", "meals", "meal_foods", "entries", "meta"}
     assert index_names(connection) == {
         "users_by_email",
         "users_by_telegram",
+        "telegram_codes_by_user",
         "foods_by_user",
         "meals_by_user",
         "meal_foods_by_meal",

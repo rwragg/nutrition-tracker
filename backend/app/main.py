@@ -20,6 +20,7 @@ from app.api import router as nutrition_router
 from app.auth import SESSION_SECRET
 from app.auth import router as session_router
 from app.db import initialise
+from app.telegram import router as telegram_router
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -40,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(session_router)
+app.include_router(telegram_router)
 app.include_router(nutrition_router)
 
 

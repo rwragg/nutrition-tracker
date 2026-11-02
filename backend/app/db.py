@@ -23,7 +23,7 @@ from app.passwords import hash_password
 
 # Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
 # different version is migrated where a migration exists, and refused where it does not.
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
 
@@ -78,6 +78,19 @@ SCHEMA = (
     # allowed, which is what an account without an email or a chat should be.
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users (email)",
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
+    # A one-time code, shown in the app and sent to the bot, that binds a chat to an account
+    # (D18). Stored rather than derived for one reason: single use. A code that is only signed
+    # cannot be made to stop working once it has been used, and a code that keeps working is a
+    # code someone else can use.
+    """
+    CREATE TABLE IF NOT EXISTS telegram_codes (
+        code    TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+        expires TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', expires) IS expires),
+        used    INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS telegram_codes_by_user ON telegram_codes (user_id)",
     foods_ddl(),
     "CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)",
     """
@@ -256,6 +269,32 @@ def _migrate_users_accounts(connection: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_telegram_codes(connection: sqlite3.Connection) -> None:
+    """4 → 5: pairing codes, so a chat can be bound to an account (R26, D18).
+
+    The simplest step so far and worth saying why: a *new table* needs no rebuild, no column
+    addition and no data copied. `SCHEMA` creates it (`IF NOT EXISTS`), so this function has
+    nothing to do but leave a comment explaining that it deliberately does nothing — the
+    alternative, a step that is an empty function, would look like an oversight.
+
+    Existing accounts keep their log and their binding: `users.telegram_id` is where a chat is
+    bound, and it has been there since version 4.
+    """
+    connection.executescript(
+        # The same DDL `SCHEMA` runs, so a fresh file and a migrated one agree; the CREATE
+        # ... IF NOT EXISTS is what makes that safe to state in two places.
+        """
+        CREATE TABLE IF NOT EXISTS telegram_codes (
+            code    TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+            expires TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', expires) IS expires),
+            used    INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))
+        );
+        CREATE INDEX IF NOT EXISTS telegram_codes_by_user ON telegram_codes (user_id);
+        """
+    )
+
+
 # Keyed by the version being migrated FROM, each with the version it produces and the step that
 # does it. The steps do not write the version themselves: the loop below does, from the target
 # recorded here. That is not tidiness — a step that wrote the *current* `SCHEMA_VERSION` instead
@@ -264,6 +303,7 @@ def _migrate_users_accounts(connection: sqlite3.Connection) -> None:
 MIGRATIONS: dict[str, tuple[str, Callable[[sqlite3.Connection], None]]] = {
     "2": ("3", _migrate_foods_g),
     "3": ("4", _migrate_users_accounts),
+    "4": ("5", _migrate_telegram_codes),
 }
 
 

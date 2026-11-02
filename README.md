@@ -44,32 +44,39 @@ The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
 
 ## The Telegram front end (optional)
 
-A bot that logs into the app and gives it two commands — `/today` to read the day back, and
-`/log <food> <quantity> <unit> [section]` to write one entry. It is a client of the API rather than a
-second implementation of it: it holds no records and computes no macros, so a food edited in the web
-app moves what the bot reports.
+A bot that gives the app three commands — `/today` to read the day back, `/log <food> <quantity> <unit>
+[section]` to write one entry, and `/bind <code>` to link the chat to your account. It is a client of
+the API rather than a second implementation of it: it holds no records and computes no macros, so a
+food edited in the web app moves what the bot reports.
 
 It is behind a compose profile, so the app starts without it and a missing token cannot take the app
 down:
 
 ```bash
-cp .env.example .env      # then paste a token from @BotFather, and set who may use it
+cp .env.example .env      # a token from @BotFather, and a TELEGRAM_BOT_SECRET you generate
 docker compose --profile bot up -d --build
 docker compose logs -f bot
 ```
 
-With no token the bot prints why and exits 1 rather than idling — run it directly to see:
-`docker compose --profile bot run --rm bot`.
+**The bot speaks for a chat, not for an account** (R26). Every request it makes names the chat it is
+answering, and the app answers 403 until that chat has been linked to an account — so a chat that has
+not been linked can read nothing and write nothing. Linking is a code: the app shows it, the chat
+redeems it with `/bind`. No password is ever typed into Telegram.
 
-What it deliberately does not do, in this first cut: no natural-language parsing (text that is not a
-command gets a hint, not a guess), no editing of foods or meals, no voice, no photo meals, and no
-per-user accounts — every allowed chat writes the one log that exists. See
-[`docs/PLAN.md`](docs/PLAN.md), Part 9.
+Two things are worth knowing about the secret: it is shared by **both** services (the app validates the
+bot's header against it, the bot sends it), and the bot checks it at startup — `docker compose logs bot`
+should say `the app accepted the bot secret`, and it refuses to start if it says otherwise.
+
+**Not built yet:** the screen in the app that shows the code, so the `/bind` path can only be used by
+minting a code through the API today. See [`docs/PLAN.md`](docs/PLAN.md), Part 10.
+
+What it deliberately does not do, in this cut: no natural-language parsing (text that is not a command
+gets a hint, not a guess), no editing of foods or meals, no voice, no photo meals.
 
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 159 tests: routes, schema, guards, isolation, accounts, the bot, and the container
+cd backend && uv run pytest          # 197 tests: routes, schema, guards, isolation, accounts, linking, the bot, and the container
 cd frontend && npm install
 npm test                             # 78 unit and component tests
 npm run test:e2e                     # 24 Playwright tests, against its own container on :8100

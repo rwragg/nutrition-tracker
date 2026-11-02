@@ -1,10 +1,11 @@
 # Database approach
 
-**Status: approved by Robert 2026-11-01, implemented in Parts 5 and 6, and revised three times since.** The
-four decisions at the end were approved as proposed. Three things have changed: **the `days` table is
+**Status: approved by Robert 2026-11-01, implemented in Parts 5 and 6, and revised four times since.** The
+four decisions at the end were approved as proposed. Four things have changed: **the `days` table is
 gone** — a day of the log is the date on an entry, not a row of its own — **`foods` gained the gram
-basis**, and **`users` became a real account** with an email, a telegram id and a password hash. The
-reasoning for all three is below; the schema version went 1 → 2, 2 → 3 and 3 → 4 with them.
+basis**, **`users` became a real account** with an email, a telegram id and a password hash, and
+**`telegram_codes`** arrived so a chat can be bound to an account. The reasoning for all four is below;
+the schema version went 1 → 2, 2 → 3, 3 → 4 and 4 → 5 with them.
 
 The machine-readable form of this schema is [`schema.json`](schema.json), which carries the tables, the
 columns, the constraints and the exact `CREATE` statements they translate to. This document is the
@@ -126,6 +127,23 @@ two it is a trap: the file jumps to the newest version after the first step, the
 every later step is skipped in silence. The version a step produces is now recorded beside the step
 (`MIGRATIONS` maps *from* to *to* and function) and written by the loop, so no step can jump the queue.
 The 2 → 4 test runs the whole chain for exactly this reason.
+
+## Pairing codes, and version 5
+
+**What changed.** One new table, `telegram_codes`: a short-lived, single-use code that binds a chat to
+an account (R26, D18 — the app shows the code, the chat redeems it). The binding itself is not new:
+`users.telegram_id` has been there since version 4, and its unique index is what makes a chat belong to
+**exactly one** account, and an account to at most one chat.
+
+**How the step works.** It creates a table and nothing else, which is why it is three lines of SQL and
+a docstring explaining that it deliberately does no more: a new table needs no rebuild, no column
+addition and no data copied. Existing rows are untouched and keep their bindings.
+
+**Why the codes are stored rather than signed.** A signed code can be verified without any state, which
+is elegant — but it cannot be made to *stop* working once it has been used, and a code that keeps
+working is one somebody else can use. A row with a `used` flag buys single use, and single use is the
+whole property. The row also makes expiry a data question rather than a clock question: `expires` is a
+fixed-width UTC string, so it compares correctly as a string in SQL and in Python alike.
 
 ## Decisions worth stating
 

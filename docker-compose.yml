@@ -11,6 +11,10 @@ services:
       # when it opens the log. A container on UTC would seed a day ahead of the person reading it,
       # so the seeded day would not be the day the app opens on. Override TZ for another zone.
       TZ: "${TZ:-America/New_York}"
+      # The app validates the bot's header against this too (R26): the two sides share one secret,
+      # so both services need it. Missing here means the bot is told "no secret configured" and
+      # every chat is refused - which is what the bot's preflight catches at startup.
+      TELEGRAM_BOT_SECRET: ${TELEGRAM_BOT_SECRET:-}
     volumes:
       # The database lives here. Without the volume, `docker compose up --build` would
       # start from an empty file every time and the log would look like it was wiped.
@@ -42,6 +46,7 @@ services:
     environment:
       NUTRITION_API: http://backend:8000
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_SECRET: ${TELEGRAM_BOT_SECRET:-}
       TELEGRAM_ALLOWED_USERS: ${TELEGRAM_ALLOWED_USERS:-}
     depends_on:
       backend:
