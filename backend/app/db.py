@@ -19,10 +19,17 @@ from datetime import date, timedelta
 from pathlib import Path
 
 # Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
-# different version is refused rather than misread, because there is no migration framework.
-SCHEMA_VERSION = "2"
+# different version is migrated where a migration exists, and refused where it does not.
+SCHEMA_VERSION = "3"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
+
+# The units a food may be priced in. `g` is the gram basis: a food recorded in grams carries
+# its macros per gram, so "183 g" logs 183 × the per-gram figure. It exists because dictation
+# and every real nutrition label work in grams, and the seven volume/count units could not
+# express a serving that is weighed.
+UNITS = ("cup", "tbsp", "tsp", "oz", "piece", "slice", "scoop", "g")
+UNIT_CHECK = ", ".join(f"'{unit}'" for unit in UNITS)
 
 META = """
     CREATE TABLE IF NOT EXISTS meta (
@@ -30,6 +37,22 @@ META = """
         value TEXT NOT NULL
     )
     """
+
+def foods_ddl(table: str = "foods") -> str:
+    """The foods table, taking its unit list from UNITS so the two cannot drift apart."""
+    return f"""
+    CREATE TABLE IF NOT EXISTS {table} (
+        id       TEXT PRIMARY KEY,
+        user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+        name     TEXT NOT NULL,
+        unit     TEXT NOT NULL CHECK (unit IN ({UNIT_CHECK})),
+        calories REAL NOT NULL CHECK (calories >= 0),
+        protein  REAL NOT NULL CHECK (protein >= 0),
+        carbs    REAL NOT NULL CHECK (carbs >= 0),
+        fat      REAL NOT NULL CHECK (fat >= 0)
+    )
+    """
+
 
 SCHEMA = (
     META,
@@ -39,18 +62,7 @@ SCHEMA = (
         username TEXT NOT NULL UNIQUE
     )
     """,
-    """
-    CREATE TABLE IF NOT EXISTS foods (
-        id       TEXT PRIMARY KEY,
-        user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
-        name     TEXT NOT NULL,
-        unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop')),
-        calories REAL NOT NULL CHECK (calories >= 0),
-        protein  REAL NOT NULL CHECK (protein >= 0),
-        carbs    REAL NOT NULL CHECK (carbs >= 0),
-        fat      REAL NOT NULL CHECK (fat >= 0)
-    )
-    """,
+    foods_ddl(),
     "CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)",
     """
     CREATE TABLE IF NOT EXISTS meals (
@@ -157,12 +169,91 @@ SEED_ENTRIES = (
 
 
 class SchemaVersionError(RuntimeError):
-    """The file was written by a different version of this schema."""
+    """The file was written by a version this build cannot read or migrate."""
 
 
-def db_path() -> Path:
-    """Where the database lives. The environment override exists so tests use their own file."""
-    return Path(os.environ.get("NUTRITION_DB", DEFAULT_DB_PATH))
+def _migrate_foods_g(connection: sqlite3.Connection) -> None:
+    """2 → 3: the foods unit list gains the gram basis.
+
+    A CHECK constraint cannot be altered in SQLite, and this table is referenced by
+    meal_foods and entries, so the table is rebuilt in place: new table, rows copied
+    across verbatim, old one dropped, new one renamed, index recreated. Nothing is
+    interpreted and no value is touched — the only change is the list of units the CHECK
+    accepts, which is why a file written before this can be carried forward instead of
+    thrown away.
+
+    Foreign keys must be OFF for the drop, and `PRAGMA foreign_keys` is silently ignored
+    inside a transaction — so it is set here, outside one, and restored afterwards. While
+    it is off the references cannot be enforced, so the copy is verified by count before
+    the old table goes.
+    """
+    rows = connection.execute("SELECT count(*) AS n FROM foods").fetchone()["n"]
+
+    connection.commit()
+    connection.execute("PRAGMA foreign_keys = OFF")
+    try:
+        with connection:
+            connection.execute(foods_ddl("foods_v3"))
+            connection.execute(
+                "INSERT INTO foods_v3 (id, user_id, name, unit, calories, protein, carbs, fat)"
+                " SELECT id, user_id, name, unit, calories, protein, carbs, fat FROM foods"
+            )
+            copied = connection.execute("SELECT count(*) AS n FROM foods_v3").fetchone()["n"]
+            if copied != rows:
+                raise RuntimeError(f"migration copied {copied} of {rows} foods — stopping")
+
+            connection.execute("DROP TABLE foods")
+            connection.execute("ALTER TABLE foods_v3 RENAME TO foods")
+            connection.execute("CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)")
+            connection.execute(
+                "UPDATE meta SET value = ? WHERE key = 'schema_version'", (SCHEMA_VERSION,)
+            )
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+
+# Keyed by the version being migrated FROM. A version with no entry here is refused, which
+# is the whole point: a file this build cannot carry forward must not be read as if it
+# matched.
+MIGRATIONS = {"2": _migrate_foods_g}
+
+
+def create_schema(connection: sqlite3.Connection) -> None:
+    """Bring the file to this build's schema version, then create what is missing.
+
+    A file from an older version is migrated where a step exists for it, and refused with a
+    message naming both versions where none does. The version is settled **before** the rest
+    of the DDL runs, and that order matters: these statements assume this version's shape, so
+    running them against an older file fails with a raw sqlite error about a missing column —
+    which is exactly the confusing failure the version row exists to avoid. Found by running
+    it: dropping the days table made an existing file fail on `no such column: user_id` from
+    a CREATE INDEX, with the version check never reached.
+    """
+    connection.execute(META)
+    recorded = connection.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    version = recorded["value"] if recorded is not None else None
+
+    while version is not None and version != SCHEMA_VERSION:
+        step = MIGRATIONS.get(version)
+        if step is None:
+            raise SchemaVersionError(
+                f"the database file is written to schema version {version}, and this build "
+                f"expects {SCHEMA_VERSION} with no migration from {version}. Start a new file by "
+                f"removing the old one (docker compose down -v removes the volume), or point "
+                f"NUTRITION_DB elsewhere."
+            )
+        step(connection)
+        version = connection.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone()["value"]
+
+    for statement in SCHEMA:
+        connection.execute(statement)
+
+    if recorded is None:
+        connection.execute(
+            "INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (SCHEMA_VERSION,)
+        )
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
@@ -185,32 +276,9 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     return connection
 
 
-def create_schema(connection: sqlite3.Connection) -> None:
-    """Refuse a file written to another schema version, then create what is missing.
-
-    The version is checked **before** the rest of the DDL, and that order matters: these statements
-    assume this version's shape, so running them against an older file fails with a raw sqlite error
-    about a missing column - which is exactly the confusing failure the version row exists to avoid.
-    Found by running it: dropping the days table made an existing file fail on `no such column:
-    user_id` from a CREATE INDEX, with the version check never reached.
-    """
-    connection.execute(META)
-    recorded = connection.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
-
-    if recorded is not None and recorded["value"] != SCHEMA_VERSION:
-        raise SchemaVersionError(
-            f"the database file is written to schema version {recorded['value']}, and this build "
-            f"expects {SCHEMA_VERSION}. There is no migration: start a new file by removing the old "
-            f"one (docker compose down -v removes the volume), or point NUTRITION_DB elsewhere."
-        )
-
-    for statement in SCHEMA:
-        connection.execute(statement)
-
-    if recorded is None:
-        connection.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (SCHEMA_VERSION,)
-        )
+def db_path() -> Path:
+    """Where the database lives. The environment override exists so tests use their own file."""
+    return Path(os.environ.get("NUTRITION_DB", DEFAULT_DB_PATH))
 
 
 def seed(connection: sqlite3.Connection, today: date) -> bool:

@@ -504,6 +504,95 @@ clean, 22 browser tests, container healthy on `http://localhost:8000`.
   deletes only what it wrote. Six consecutive full runs green afterwards; a six-test run leaves today at
   the seed's own 2,207.5 kcal.
 
+## Part 9 — Telegram skeleton · **the front end, in a chat**
+
+The brief: "use telegram for any user to adjust their foods, meals etc." — restated for the first
+cut, because the full reading is a product and this is a slice of it. Robert's word: *"build the
+skeleton"*.
+
+**What a skeleton means here:** the thinnest thing that runs end to end and can be measured. Two
+commands, one each way, against the API that already exists — and the one domain change that the
+whole chat direction depends on, because the app could not express a weighed portion.
+
+- [x] The gram basis: `g` as a unit, end to end (type, API literal, CHECK constraint, frontend)
+- [x] The first migration, 2 → 3, so a file written before `g` is carried forward rather than refused
+- [x] A bot service in the repo: long polling, no public URL, no webhook, no new dependency
+- [x] `/today` — read the day back, sums only
+- [x] `/log <food> <quantity> <unit> [section]` — write one entry
+- [x] Opt-in behind a compose profile, so a missing token cannot take the app down
+- [x] Tests for both commands, the refusals, the migration and the start-up path
+- [x] Documented: this part, the README, `docs/DATABASE.md`, `.env.example`
+
+**Tests:** the bot's parsing, name resolution and both commands through a stub client · the
+migration, from a real version-2 file, asserting every row survives and the guards still bite · a
+live check that the volume migrates in place and that grams log correctly through the API · the
+bot's start-up path, run in the container with no token.
+
+**Success criteria:** P9.1 a weighed portion can be recorded and totals correctly · P9.2 a version-2
+file migrates with no row lost · P9.3 `/today` reports what the app holds, not a copy of it · P9.4
+`/log` writes an entry the web app then shows · P9.5 every refusal names what to do instead, and
+nothing is written when one fires · P9.6 the bot cannot be started without a token, and says why ·
+P9.7 the app, its scripts and its browser suite are unaffected by the bot's existence.
+
+**Decisions taken (D13–D15):**
+
+- **D13 — `g` is a per-gram basis, not "per 100 g".** A food recorded in grams carries its macros
+  per gram, so 183 g of yogurt at 0.61 kcal/g logs 111.63 kcal. The alternative — a "per 100 g"
+  unit — reads more like a label but makes every quantity a division, and the arithmetic here is
+  exact either way. This is the decision to revisit if the catalogue is ever imported from USDA
+  rows, which are per 100 g.
+- **D14 — the bot is a client, not a second implementation.** It holds no records and computes no
+  macros; it asks the API. That is why a food edited in the web app moves what the bot reports, and
+  why the bot cannot disagree with the app. It signs in with the MVP credential, so it writes the
+  one log that exists — per-user accounts are R3 and are not built.
+- **D15 — no natural-language parsing yet, and the targets stay in the frontend.** Turning "a cup of
+  rice and a banana" into entries needs a model or a grammar, and AI is out of scope by the brief's
+  own decision (D2). Text that is not a command gets a hint rather than a guess. The bot reports
+  sums and applies no target, because R10 puts the targets in one place — `frontend/lib/targets.ts` —
+  and the API returns sums rather than judgements.
+
+### Status — Part 9, complete 2026-11-02
+
+Every criterion met, each verified by running it rather than by reading the code.
+
+- **P9.1** a weighed portion records and totals correctly: a food created through the live API at
+  0.61 kcal/g logged 183 g as **111.63 kcal / 18.3 g protein**, and the day moved by exactly that.
+  The food and the entry were then deleted, leaving the log at its own 2,207.5 kcal and 31 foods.
+- **P9.2** a version-2 file migrates with nothing lost: the **real** database from the pre-change
+  snapshot was migrated in place — version 2 → 3, 31 foods / 5 meals / 19 meal ingredients / 17
+  entries all present afterwards, `PRAGMA foreign_keys` back on, the seeded entries still resolving
+  to their foods, the delete guard still refusing, and an unknown unit still a 422.
+- **P9.3** `/today` reports what the app holds: it asks `/api/days/<today>` and formats the answer;
+  the only thing it computes is the display.
+- **P9.4** `/log` writes an entry the web app shows: the entry was posted to the API, read back
+  through a second request, and the section total came back with it.
+- **P9.5** every refusal names what to do instead, and writes nothing: an unknown food ("add it in
+  the app first"), an ambiguous name (the candidates are listed), a unit that disagrees with the
+  food's own ("recorded in g, not cup"), a malformed command (the usage), a 4xx from the app
+  ("nothing was logged"), and an unreachable app. Each is asserted, and each asserts that no entry
+  was posted.
+- **P9.6** the bot cannot start without a token: run in the container with none, it prints
+  `TELEGRAM_BOT_TOKEN is not set; the bot has nothing to listen on.` and exits **1**.
+- **P9.7** the app is unaffected: `docker compose config` still resolves, `docker compose up` still
+  starts the backend alone (the bot is behind the `bot` profile), `./scripts/start.sh` still exits 0
+  after the health check, and the backend suite is **124 passed** — the 80 it had, plus 39 for the
+  bot and 5 for the migration and the units.
+
+**Two things learned in the building, worth keeping:**
+
+- **A second definition of a function silently wins.** Repairing the migration, an old
+  `create_schema` was left in the file below the new one, so the *older* body was what ran — Python
+  takes the last definition. It was caught by reading the file rather than by a test, which is the
+  argument for reading a diff you have just written.
+- **The tests found three things the parser did not do.** `cups` for `cup` (people type plurals), a
+  dictated name without the comma in a stored one ("greek yogurt weighed" against "Greek yogurt,
+  weighed"), and a two-token command with no food. All three are now handled in code — the tests
+  were right and the parser was wrong, which is the order to fix them in.
+
+**Not in this part, stated so it is not mistaken for done:** natural-language dictation, voice,
+photo meals, per-user accounts, and anything that changes a food or a meal from the chat. The
+skeleton logs and reads; it does not edit.
+
 ## Open questions
 
 - **Q1 — Registration is deferred, not dropped.** `AGENTS.md` asks for registration with a telegram id

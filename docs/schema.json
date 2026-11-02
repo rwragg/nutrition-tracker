@@ -1,8 +1,8 @@
 {
   "name": "nutrition-tracker",
-  "status": "approved by Robert 2026-11-01, and implemented. One revision since: the days table was dropped the same day - a day is the date on an entry, not a row of its own (see not_in_this_schema).",
+  "status": "approved by Robert 2026-11-01, and implemented. Two revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - and on 2026-11-02 the foods unit list gained the gram basis, with the first migration (2 -> 3).",
   "engine": "sqlite",
-  "schema_version": 2,
+  "schema_version": 3,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -31,7 +31,7 @@
         { "name": "id", "type": "TEXT", "nullable": false, "notes": "A slug for seeded rows ('hummus'), a generated id for new ones." },
         { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT" },
         { "name": "name", "type": "TEXT", "nullable": false },
-        { "name": "unit", "type": "TEXT", "nullable": false, "check": "one of the seven units in the app" },
+        { "name": "unit", "type": "TEXT", "nullable": false, "check": "one of the eight units in the app, including `g`, the gram basis" },
         { "name": "calories", "type": "REAL", "nullable": false, "check": ">= 0", "notes": "Per one unit. REAL because quantities are fractional." },
         { "name": "protein", "type": "REAL", "nullable": false, "check": ">= 0" },
         { "name": "carbs", "type": "REAL", "nullable": false, "check": ">= 0" },
@@ -106,7 +106,7 @@
   ],
   "ddl": [
     "CREATE TABLE users (\n    id       TEXT PRIMARY KEY,\n    username TEXT NOT NULL UNIQUE\n)",
-    "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0)\n)",
+    "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop', 'g')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0)\n)",
     "CREATE INDEX foods_by_user ON foods (user_id)",
     "CREATE TABLE meals (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name    TEXT NOT NULL\n)",
     "CREATE INDEX meals_by_user ON meals (user_id)",
@@ -140,7 +140,7 @@
     { "omitted": "a days table", "why": "Dropped on 2026-11-01, after the schema had been approved and built. A day of the log is the entries sharing a date, so a table holding it was a second home for the same fact - and a row that had to be created before anything could be logged into it, which is why an endpoint to open a day had to be invented in Part 6. With the date on the entry, logging any date works, a date with nothing on it reads as an empty day, and there is no 'no such day' to answer. What is given up: a stored empty day, and a place for facts about a day rather than about an entry. Neither is needed by any requirement; if one becomes needed, a small days(user_id, date) side table can hold it and be joined on the date, without touching entries." },
     { "omitted": "targets (2,200 kcal / 140 g protein / 250 g carbs / 70 g fat)", "why": "R10 and R17 say one place, frontend/lib/targets.ts. Nothing stores them yet, and the API returns sums, not judgements, so the frontend keeps comparing against them." },
     { "omitted": "created_at / updated_at", "why": "Nothing reads them. Add them when something does." },
-    { "omitted": "migrations", "why": "One version, created if absent, and a meta row that names it. A schema change before release means deleting the file; after release it means a migration, and that is a decision to take then rather than machinery to build now. The version went 1 to 2 when the days table was dropped, so a file written by the old shape is refused rather than misread." },
+    { "omitted": "migrations, in general", "why": "One version, created if absent, and a meta row that names it. A file from an older version is migrated where a step exists for that version and refused where none does - a file this build cannot carry forward must not be read as if it matched. The first step exists: 2 -> 3, which rebuilds `foods` with the widened unit CHECK and copies every row across untouched (see docs/DATABASE.md). It was written because the gram basis arrived after the log was real, and 'delete the file' is not a migration." },
     { "omitted": "passwords and sessions", "why": "The MVP credential is a constant in the application (R1), and the session lives in a signed cookie. Neither is data." }
   ],
   "open_questions_for_sign_off": [

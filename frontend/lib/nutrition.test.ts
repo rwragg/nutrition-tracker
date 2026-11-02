@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCalories, formatGrams, formatQuantity } from "@/lib/format";
+import { formatCalories, formatGrams, formatQuantity, pluralUnit } from "@/lib/format";
 import {
   addMacros,
   dayMacros,
@@ -180,6 +180,15 @@ describe("labels and formatting", () => {
     // Below one the unit stays singular, as it does for "1/2 cup".
     expect(formatQuantity(0.3, "cup")).toBe("0.3 cup");
     expect(formatQuantity(1.125, "cup")).toBe("1.13 cups");
+  });
+
+  it("never pluralises a unit that does not take one", () => {
+    // A weighed portion: 183 g, never 183 gs. The unit is a symbol, not a word.
+    expect(formatQuantity(183, "g")).toBe("183 g");
+    expect(formatQuantity(1, "g")).toBe("1 g");
+    expect(formatQuantity(0.61, "g")).toBe("0.61 g");
+    expect(pluralUnit("g", 183)).toBe("g");
+    expect(pluralUnit("cup", 2)).toBe("cups");
   });
 
   it("rounds calories and grams for display", () => {

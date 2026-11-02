@@ -1,9 +1,10 @@
 # Database approach
 
-**Status: approved by Robert 2026-11-01, implemented in Parts 5 and 6, and revised the same day.** The
-four decisions at the end were approved as proposed. One thing has changed since: **the `days` table is
-gone** — a day of the log is the date on an entry, not a row of its own. The reasoning is below, under
-"The revision"; the schema version went from 1 to 2 with it.
+**Status: approved by Robert 2026-11-01, implemented in Parts 5 and 6, and revised twice since.** The
+four decisions at the end were approved as proposed. Two things have changed: **the `days` table is
+gone** — a day of the log is the date on an entry, not a row of its own — and **`foods` gained the
+gram basis**, which brought the first migration. The reasoning for both is below; the schema version
+went 1 → 2 with the first and 2 → 3 with the second.
 
 The machine-readable form of this schema is [`schema.json`](schema.json), which carries the tables, the
 columns, the constraints and the exact `CREATE` statements they translate to. This document is the
@@ -59,10 +60,41 @@ than about an entry (a daily note, a per-day target, a weigh-in). No requirement
 ever does, a small `days(user_id, date)` side table can hold it and be joined on the date, without
 touching a single entry.
 
-**Why the version moved to 2.** There is no migration machinery (see below), so a file written by the
-old shape must be refused rather than misread. On first run after this change the app says the file is
-schema version 1 and exits; delete the volume and it creates version 2 from scratch. For a seeded
-sample that is the whole cost.
+**Why the version moved to 2.** There is no migration machinery for a file from a version this build
+does not know (see below), so a file written by the old shape must be refused rather than misread. On
+first run after that change the app said the file was schema version 1 and exited; delete the volume
+and it created version 2 from scratch. For a seeded sample that was the whole cost — and it was the
+last time that answer was good enough, for the reason in the next section.
+
+## The revision that needed a migration: `g`, and version 3
+
+**What changed.** The unit list gained `g`, the gram basis: a food recorded in grams carries its
+macros per gram, so 183 g of yogurt at 0.61 kcal/g logs 111.63 kcal. This is D13 in `docs/PLAN.md`,
+and it exists because every real nutrition label and every spoken portion is weighed — the seven
+volume and count units could not express "183 g" at all.
+
+**Why it could not be a delete-the-file change.** The first revision could be absorbed by throwing
+the sample away; this one arrived after the log was real, and *"start a new file"* is not a
+migration. So the app grew its first one, and the rule it establishes is the one to keep: **a file
+from an older version is migrated where a step exists for it, and refused where none does.** A
+version this build cannot carry forward must never be read as if it matched.
+
+**How the step works.** `foods` is rebuilt in place — a new table with the widened CHECK, every row
+copied across verbatim, the old table dropped, the new one renamed, the index recreated — because
+SQLite cannot alter a CHECK constraint and the table is referenced by `meal_foods` and `entries`.
+Three details are load-bearing:
+
+- **Foreign keys are turned off for the drop, outside any transaction.** `PRAGMA foreign_keys` is
+  silently ignored inside one, so setting it there would leave the constraint enforced and the drop
+  refused — the failure would look like a permissions problem.
+- **The copy is counted before the old table goes.** While foreign keys are off nothing else is
+  checking, so the migration verifies it copied as many rows as it found and raises if not.
+- **Nothing is interpreted.** No value is rewritten, no unit is converted; the only change is the
+  list of units the CHECK accepts. That is why the rows can be carried forward at all.
+
+Verified on the real file, not only in tests: the pre-change database (31 foods, 5 meals, 19 meal
+ingredients, 17 entries) migrated to version 3 with every row intact, `PRAGMA foreign_keys` back on,
+the seeded entries still resolving to their foods, and the delete guard still refusing.
 
 ## Decisions worth stating
 
@@ -180,9 +212,10 @@ Every route the schema needs, and what the two parts ask for:
 - **Targets.** R10 and R17 put them in one place, `frontend/lib/targets.ts`. The API returns sums, not
   judgements, so nothing needs to store them. Per-user targets would fit this schema later.
 - **Timestamps.** Nothing reads them yet.
-- **Migrations.** One version, created if absent, named in `meta`. Before release a schema change means
-  deleting the file; after release it means a migration, and that is a decision to take then rather than
-  machinery to build now.
+- **Migrations, beyond the one that exists.** One step is implemented — 2 → 3, for the gram basis —
+  and it is the pattern for the next: versioned, verified by row count, and refused when there is no
+  step from the version found. There is still no general framework, and there does not need to be
+  until a third version arrives.
 - **Passwords and sessions.** The MVP credential is a constant in the application (R1); the session is a
   signed cookie. Neither is data.
 

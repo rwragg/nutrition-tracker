@@ -1,6 +1,7 @@
-export type Unit = "cup" | "tbsp" | "tsp" | "oz" | "piece" | "slice" | "scoop";
+export type Unit = "cup" | "tbsp" | "tsp" | "oz" | "piece" | "slice" | "scoop" | "g";
 
-export const UNITS: Unit[] = ["cup", "tbsp", "tsp", "oz", "piece", "slice", "scoop"];
+/** `g` is the gram basis: a food recorded in grams carries its macros per gram. */
+export const UNITS: Unit[] = ["cup", "tbsp", "tsp", "oz", "piece", "slice", "scoop", "g"];
 
 export interface Macros {
   calories: number;

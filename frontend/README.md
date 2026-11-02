@@ -45,7 +45,9 @@ Three views, switched from the header:
   digs into its log. The summary panel totals that day against its targets, and breakfast, lunch, dinner
   and snacks each hold entries. Log a food with a quantity, log a whole meal, or remove an entry.
 - **Foods** - create, edit and delete a food. A food holds its name, its unit and the macros for one unit,
-  so logging two units doubles them. Editing a food updates every meal and every day that uses it.
+  so logging two units doubles them. Editing a food updates every meal and every day that uses it. The
+  units include `g`, the gram basis: a food recorded in grams carries its macros per gram, so a weighed
+  portion logs as it reads on the scale - 183 g of yogurt at 0.61 kcal/g is 111.63 kcal.
 - **Meals** - create, edit and delete a meal by composing it from foods and their quantities, then log it
   on a day in one tap.
 

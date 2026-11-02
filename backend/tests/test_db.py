@@ -145,6 +145,82 @@ def test_the_seeded_entries_are_dated_today_and_the_two_days_before(seeded: sqli
     ] == [("2026-11-01", 8), ("2026-10-31", 5), ("2026-10-30", 4)]
 
 
+# --- 2 -> 3: the foods unit list gains the gram basis (Part 9) --------------------------
+
+
+def test_a_version_2_file_is_migrated_rather_than_refused(tmp_path: Path) -> None:
+    """The first migration. A file written before `g` existed is carried forward with its
+    rows intact, because a schema change that costs the log is not one this project can
+    afford now that the log is real."""
+    path = tmp_path / "v2.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+
+    # wind the file back to the pre-`g` shape: version 2, and a foods table whose CHECK
+    # does not accept grams
+    legacy = sqlite3.connect(path)
+    legacy.execute("PRAGMA foreign_keys = OFF")
+    legacy.execute("""
+        CREATE TABLE foods_v2 (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+            name TEXT NOT NULL,
+            unit TEXT NOT NULL CHECK (unit IN ('cup','tbsp','tsp','oz','piece','slice','scoop')),
+            calories REAL NOT NULL, protein REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL
+        )""")
+    legacy.execute("INSERT INTO foods_v2 SELECT id, user_id, name, unit, calories, protein, carbs, fat FROM foods")
+    legacy.execute("DROP TABLE foods")
+    legacy.execute("ALTER TABLE foods_v2 RENAME TO foods")
+    legacy.execute("DROP INDEX IF EXISTS foods_by_user")
+    legacy.execute("CREATE INDEX foods_by_user ON foods (user_id)")
+    legacy.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+    legacy.commit()
+    foods_before = legacy.execute("SELECT count(*) FROM foods").fetchone()[0]
+    entries_before = legacy.execute("SELECT count(*) FROM entries").fetchone()[0]
+    with pytest.raises(sqlite3.IntegrityError):
+        legacy.execute("INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat) VALUES ('x','user','x','g',1,1,1,1)")
+    legacy.commit()
+    legacy.close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == db.SCHEMA_VERSION
+        assert migrated.execute("SELECT count(*) FROM foods").fetchone()[0] == foods_before
+        assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
+
+        # the point of the migration: grams are now a unit, and the old rows are untouched
+        migrated.execute("INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat) VALUES ('y','user','Yogurt, weighed','g',0.61,0.1,0.036,0.017)")
+        migrated.commit()
+        assert migrated.execute("SELECT unit FROM foods WHERE id='y'").fetchone()[0] == "g"
+        assert migrated.execute("SELECT round(calories * 183, 2) FROM foods WHERE id='y'").fetchone()[0] == 111.63
+
+        # the references the rebuild could have broken still hold, and the guards still bite
+        assert migrated.execute(
+            "SELECT count(*) FROM entries e JOIN foods f ON f.id = e.food_id WHERE e.id LIKE 't-%'"
+        ).fetchone()[0] == 5
+        assert migrated.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute("DELETE FROM foods WHERE id = 'oats'")
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute("INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat) VALUES ('z','user','z','bucket',1,1,1,1)")
+    finally:
+        migrated.close()
+
+
+def test_a_version_with_no_migration_is_still_refused(tmp_path: Path) -> None:
+    """A migration for 2 does not make 3 tolerant of anything: a version this build cannot
+    carry forward is refused, which is what keeps 'version' meaningful."""
+    path = tmp_path / "v1.db"
+    connection = sqlite3.connect(path)
+    connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    connection.execute("INSERT INTO meta (key, value) VALUES ('schema_version', '1')")
+    connection.execute("CREATE TABLE entries (id TEXT PRIMARY KEY, day_id TEXT NOT NULL)")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(db.SchemaVersionError, match="version 1"):
+        db.initialise(path, today=date(2026, 11, 1))
+
+
 def test_seeding_twice_changes_nothing(seeded: sqlite3.Connection) -> None:
     """The seed runs only against an empty database, so a restart cannot duplicate it."""
     before = (count(seeded, "foods"), count(seeded, "meals"), count(seeded, "entries"))

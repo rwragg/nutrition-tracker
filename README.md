@@ -41,10 +41,34 @@ On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http:
 you sign in with `user` / `password`. The first run seeds a sample log, once, into the empty database.
 The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
 
+## The Telegram front end (optional)
+
+A bot that logs into the app and gives it two commands — `/today` to read the day back, and
+`/log <food> <quantity> <unit> [section]` to write one entry. It is a client of the API rather than a
+second implementation of it: it holds no records and computes no macros, so a food edited in the web
+app moves what the bot reports.
+
+It is behind a compose profile, so the app starts without it and a missing token cannot take the app
+down:
+
+```bash
+cp .env.example .env      # then paste a token from @BotFather, and set who may use it
+docker compose --profile bot up -d --build
+docker compose logs -f bot
+```
+
+With no token the bot prints why and exits 1 rather than idling — run it directly to see:
+`docker compose --profile bot run --rm bot`.
+
+What it deliberately does not do, in this first cut: no natural-language parsing (text that is not a
+command gets a hint, not a guess), no editing of foods or meals, no voice, no photo meals, and no
+per-user accounts — every allowed chat writes the one log that exists. See
+[`docs/PLAN.md`](docs/PLAN.md), Part 9.
+
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 80 tests: routes, schema, guards, isolation, and the container
+cd backend && uv run pytest          # 124 tests: routes, schema, guards, isolation, the bot, and the container
 cd frontend && npm install
 npm test                             # 74 unit and component tests
 npm run test:e2e                     # 22 Playwright tests, against its own container on :8100

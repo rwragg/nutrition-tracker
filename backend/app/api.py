@@ -21,7 +21,9 @@ from pydantic import BaseModel, Field, model_validator
 from app.auth import current_user
 from app.db import connect
 
-Unit = Literal["cup", "tbsp", "tsp", "oz", "piece", "slice", "scoop"]
+# Mirrors db.UNITS, and a test asserts the two agree so a unit cannot be added half-way.
+# `g` is the gram basis: macros per gram, so "183 g" logs 183 × the per-gram figure.
+Unit = Literal["cup", "tbsp", "tsp", "oz", "piece", "slice", "scoop", "g"]
 Section = Literal["breakfast", "lunch", "dinner", "snacks"]
 MACROS = ("calories", "protein", "carbs", "fat")
 SECTIONS: tuple[Section, ...] = ("breakfast", "lunch", "dinner", "snacks")

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { UNITS, type Food, type FoodInput, type Macros, type SaveResult, type Unit } from "@/lib/types";
+import { pluralUnit } from "@/lib/format";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_PRIMARY } from "./styles";
 
@@ -134,7 +135,7 @@ export default function FoodFormDialog({
         </fieldset>
 
         <p className="small text-muted-brand mb-0">
-          Values are for one {unit}, so logging two {unit}s doubles them.
+          Values are for one {unit}, so logging {pluralUnit(unit)} doubles them.
         </p>
       </div>
     </Dialog>

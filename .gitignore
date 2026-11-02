@@ -10,6 +10,8 @@ out/
 __pycache__/
 *.py[cod]
 .venv/
+.pytest_cache/
+.coverage
 
 # Local data and secrets
 *.db

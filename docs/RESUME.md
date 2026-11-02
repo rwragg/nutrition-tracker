@@ -1,43 +1,52 @@
 # Picking this up again
 
 Everything needed to resume without re-reading a long conversation. Written 2026-11-01, when Parts 1–7
-were complete and Part 8 had not started; **updated the same day when Part 8 was closed out.**
+were complete and Part 8 had not started; updated the same day when Part 8 was closed out; **updated
+2026-11-02 when Part 9 was built — the Telegram skeleton, the gram basis and the first migration.**
 
 ## Where it stands
 
-**All eight parts of `docs/PLAN.md` are done.** The build is finished and handed over, and
-`docs/COMPLETION-REPORT.md` carries every success criterion from P1.1 to P8.4 with its evidence. Nothing
-is in flight; what remains is the list of open items at the bottom, none of which blocks the MVP.
+**All nine parts of `docs/PLAN.md` are done.** Parts 1–8 are the finished MVP, and
+`docs/COMPLETION-REPORT.md` carries every criterion from P1.1 to P8.4 with its evidence. Part 9 is the
+first thing built on top: a Telegram front end with two commands, plus the one domain change that
+direction needed — `g`, the gram basis, and with it the app's first schema migration (2 → 3).
 
-The app is finished: a Next.js 16 frontend served by a FastAPI backend in one container, the log in
-SQLite, sign-in gated, all three views reading and writing the API, tested at three levels.
+The app is a Next.js 16 frontend served by a FastAPI backend in one container, the log in SQLite,
+sign-in gated, all three views reading and writing the API, tested at three levels. The bot is a second
+client of the same API, behind a compose profile, with tests of its own.
 
 ## Verify the state before doing anything
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 80 passed
-cd ../frontend && npm test              # 74 passed
+cd backend && uv run pytest -q          # 124 passed
+cd ../frontend && npm test              # 75 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 22 passed, builds its own stack on :8100
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
+docker compose --profile bot run --rm bot   # exits 1 with a reason: no token set
 ```
 
-Current commits: this repository is HEAD here (Part 8's handover commit, 2026-11-01), hermes-home
-`f45c214`, hermes-skills `f531172`, hermes-notes
-`c6ec8f4`, pm `ae223d6`. `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with
-403 — the token has no write on that repo (see Open items).
+Current commits: this repository is HEAD here (Part 9, 2026-11-02), hermes-home `da5c9d2`,
+hermes-skills (its HEAD), hermes-notes `84aa0c7`, pm `ae223d6`. Tags
+`snapshot-2026-11-02-pre-telegram` (before this work) and `skeleton-2026-11-02-grams-and-bot` (after it)
+sit on the four repositories. `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses
+with 403 — the token has no write on that repo (see Open items).
 
-## What Part 8 did
+## What Part 9 did
 
-Closed out on 2026-11-01. The substance was `docs/COMPLETION-REPORT.md` — every criterion P1.1 … P8.4
-with its evidence, including the one met as restated (P4.2: the *data* is protected, not the markup) and
-the one recorded late (P1.4, approval). Everything else on the list was already in place: the README
-(true except one stale test count, now 74), `curl` on the served URL, the four screenshots, and the
-container left running.
+Closed out on 2026-11-02. Two commands — `/today` to read the day back, `/log <food> <quantity> <unit>
+[section]` to write one entry — against the API that already existed, plus the gram basis that the whole
+chat direction depends on. Every criterion P9.1 … P9.7 is met and recorded in `docs/PLAN.md`, each
+verified by running it: a weighed portion logs correctly through the live API, a real version-2 file
+migrates with every row intact, the refusals each name what to do instead, and the app, its scripts and
+its browser suite are unaffected by the bot's existence.
 
-Part 1's heading still said "in review" and two of its boxes were unticked for the whole build; both are
-fixed now, with a note saying the approval was given at the time and written down at close-out.
+The migration is the piece with the longest life. It establishes the rule the next version will follow:
+**a file from an older version is migrated where a step exists for it, and refused where none does.**
+`docs/DATABASE.md` carries the reasoning, including the three details that are load-bearing (foreign
+keys off for the drop, outside any transaction; the copy counted before the old table goes; nothing
+interpreted).
 
 ## How to run it
 
@@ -51,7 +60,16 @@ On Windows, `scripts\start.bat` and `scripts\stop.bat` do the same.
 The app is at http://localhost:8000, sign-in `user` / `password` (dummy credentials for the MVP, defined
 in `backend/app/auth.py`). The database file is
 `/data/nutrition.db` inside the named volume `nutrition-data`, so a rebuild does not wipe the log. The
-first run seeds a sample log once, into the empty database.
+first run seeds a sample log once, into the empty database. A file from an older schema version is
+migrated on startup where a step exists for it, and refused with the version it found where none does.
+
+The bot is opt-in, so the app starts without it and a missing token cannot take the app down:
+
+```bash
+cp .env.example .env      # token from @BotFather, and who may use it (TELEGRAM_ALLOWED_USERS)
+docker compose --profile bot up -d --build
+docker compose logs -f bot
+```
 
 `npm run test:e2e` runs against a **separate stack of its own** — compose project `nutrition-e2e`, port
 8100, its own volume — which it takes down before and after the run, so it never touches the stack above
@@ -64,11 +82,15 @@ cd backend && uv run --with pytest-cov pytest -q --ignore=tests/test_container.p
 cd frontend && npm i --no-save @vitest/coverage-v8 && npx vitest run --coverage --coverage.reportsDirectory=/tmp/cov
 ```
 
-Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branches.
+Backend: 100% statements and branches for the app itself; `bot.py` is 74%, because the polling loop and
+the HTTP client are exercised against the live app and the container rather than by the unit suite.
+Frontend: 96.1% statements, 82.5% branches.
 
 ## Rules that must not drift
 
-- **AI is out of scope.** No OpenRouter, no keys, no `.env` lines for it. The brief says so plainly.
+- **AI is out of scope.** No OpenRouter, no keys, no `.env` lines for it. The brief says so plainly, and
+  Part 9's D15 leans on it: the bot does not parse natural language, and text that is not a command gets
+  a hint rather than a guess.
 - **No Tailwind anywhere**, in code or in docs. The brief mentions it once and was told to ignore it.
 - **Bootstrap 5.3.8, CSS only** — no Bootstrap JavaScript. The palette lives as custom properties in
   `app/globals.css`, bridged into `--bs-*`; no component hardcodes a colour. Contrast is measured, and a
@@ -81,12 +103,28 @@ Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branche
   than predicting the rule.
 - **Nothing cascades.** `ON DELETE RESTRICT` everywhere, and the API checks first so the refusal can name
   what is in the way.
+- **`g` is a per-gram basis, not per 100 g** (D13). A food recorded in grams carries its macros per gram,
+  so 183 g at 0.61 kcal/g is 111.63 kcal. Revisit only if the catalogue is ever imported from USDA rows,
+  which are per 100 g.
+- **The bot is a client, not a second implementation** (D14). It holds no records, computes no macros and
+  applies no targets; it asks the API and formats the answer. Anything it "knows" that the app does not
+  would be a second source of truth.
+- **The targets live in one place** (R10) — `frontend/lib/targets.ts` — and the API returns sums, not
+  judgements. The bot reports sums for the same reason.
 - **Gates.** Each part of the plan stops for Robert's approval. Do not run two parts together.
 - **Never put sensitive personal context** (depression, confidence, the immigration separation) in
   anything resume- or job-facing, or in the repo.
 
 ## Traps that cost time here — do not rediscover them
 
+- **A second definition of a function silently wins.** Repairing the migration, an old `create_schema`
+  was left below the new one, so the *older* body was what ran — Python takes the last definition. It was
+  caught by reading the file, not by a test. Read the diff you just wrote.
+- **`PRAGMA foreign_keys` is ignored inside a transaction.** Setting it there leaves the constraint
+  enforced and a table rebuild refused, and the failure reads like a permissions problem. Set it outside.
+- **The tests were right and the parser was wrong, three times.** `cups` for `cup` (people type plurals),
+  a dictated name without the comma in a stored one ("greek yogurt weighed" against "Greek yogurt,
+  weighed"), and a two-token command with no food. Fix the code, not the expectation.
 - **`TestClient` runs on one thread; a real server does not.** A per-request SQLite connection closed in
   a FastAPI dependency finalises on a different threadpool thread, so it raises `ProgrammingError` and
   answers 500 intermittently. Fixed with `check_same_thread=False` in `db.connect`. The 80 backend tests
@@ -113,24 +151,28 @@ Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branche
 
 ## Open items, honestly
 
+- **The bot's boundary is the bot's boundary.** It logs and reads; it does not edit a food or a meal,
+  does not understand a sentence, and has no voice. Each of those is a decision with a cost attached,
+  and the next one worth taking is probably voice — Robert dictates lifts already, so the same habit
+  would meet a bot that could take `/log` by ear.
+- **Per-user accounts** (R3) are not built. The bot signs in with the MVP credential, so every chat
+  allowed to talk to it writes the one log that exists. `TELEGRAM_ALLOWED_USERS` is the only thing
+  keeping that from being anyone.
 - **`spring-llm-agent` cannot be pushed from here.** `Permission to rwragg/spring-llm-agent.git denied to
   rwragg` (403). The fine-grained token has no write on that repo. Either add it on GitHub (Contents:
   read+write) or push it from a shell with Robert's own credentials. One commit is waiting: `b9aa8e6`.
 - **The frontend's remaining coverage gaps** are the dialogs' empty-state branches (`AddFoodDialog`'s "no
   foods yet" panel is most of its 57% branch figure) and a couple of defensive fallbacks in
   `use-tracker`. The failure paths — the ones that mattered — are now all covered. Offered, not done.
+- **The bot's own coverage** is 74%: the long-polling loop and the `Api` client are not in the unit
+  suite. Both were exercised against the live app and the container by hand, and a test that needs a
+  Telegram server is a test that needs a token — which is why they are not.
 - **The root `PLAN.md`** is the superseded v2 plan. It carries a banner pointing at `docs/PLAN.md`, which
   is a stopgap: Robert may prefer it archived or deleted.
 - **Vault book notes:** chapters 1–3 of *Breaking the Habit of Being Yourself* are reconstructions, not
   built from the book's text, and are flagged as such. Chapters 4–10 are source-verified. Offered to
   rebuild 1–3 properly.
 - **A "granola" knock-on** was noted in an earlier session and never chased.
-- **The dev volume's sample dates are a day ahead of the wall clock.** The newest day the log holds is
-  `2026-11-02` while the machine says 1 Nov, so the app opens on a day the header dates rather than on the
-  chip labelled "Today". The volume was first seeded before the `TZ` fix landed (under UTC, in the evening
-  of 1 Nov), and the seed only ever writes once, so the offset sticks. A fresh volume is right, which is
-  why the browser suite never sees it. Fix, not run here because it throws the log away:
-  `docker compose down -v && ./scripts/start.sh`.
 - **The browser suite still has one rare transport failure, which is not the app.** Across 29 runs on
   2026-11-01, 3 failed a test with `Failed to load resource: net::ERR_NETWORK_CHANGED` in the console —
   a different test each time. `expectQuiet` asserts an empty console, so an unfetchable resource fails
@@ -148,9 +190,10 @@ Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branche
 
 ## On resume
 
-Nothing is outstanding. The plan is closed, the report is written, the server is running and the tree is
-clean. The open items above are all optional, and each is offered rather than pending: ask before
-starting any of them, and do not reopen a finished part without a reason.
+Nothing is outstanding. The plan is closed through Part 9, the server is running, the tree is clean and
+both snapshots are tagged. The open items above are all optional, and each is offered rather than
+pending: ask before starting any of them, and do not reopen a finished part without a reason.
 
-For older detail, the previous conversation is searchable:
-`session_search(query='<keywords>', session_id='20261101_132202_4a9b1aef')`.
+For older detail, the previous conversations are searchable:
+`session_search(query='<keywords>', session_id='20261102_123650_9ea56ce6')` (this build) and
+`session_search(query='<keywords>', session_id='20261101_132202_4a9b1aef')` (the MVP).
