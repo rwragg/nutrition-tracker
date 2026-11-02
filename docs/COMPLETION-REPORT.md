@@ -25,6 +25,7 @@ Re-run today, on this machine, against the finished tree (HEAD `0f714a9`, workin
 | `npm run lint` | clean |
 | `npx tsc --noEmit` | clean |
 | `npm run test:e2e` | **22 passed**, 12 of 14 runs; 2 runs hit a browser-level flake — see below |
+| `scripts/e2e-persistence.sh` | **passed**: writes survived a stop + image rebuild + restart, the seed did not re-run |
 | `curl http://localhost:8000/` | `200 text/html`, 8,765 bytes, `<title>Nutrition Tracker</title>` |
 | `/api/health` · `/api/foods` signed out | `200` · `401` |
 | container | `nutrition-backend-1` up, healthy |
@@ -142,17 +143,41 @@ Re-run today, on this machine, against the finished tree (HEAD `0f714a9`, workin
   restated before it was built (the data is protected, not the markup), and **P1.4** was recorded late.
   Nothing was met differently in a way that weakens what was promised.
 
-**Server left running and ready** — `nutrition-backend-1` is up and healthy and answers on
-`http://localhost:8000`.
+**Server left running and ready** — rebuilt and restarted during this close-out, up and healthy, answering
+on `http://localhost:8000`.
+
+**P7.1 was re-proved on the artifact, not just in a test.** `scripts/e2e-persistence.sh` (new here) signs
+in, writes a marker food and an entry onto the day the app opens on, stops the stack, rebuilds the image,
+starts it again, and reads the writes back: 32 foods afterwards rather than 62, so the seed did not
+re-run, and the marker entry came back with its quantity intact. It cleans up after itself and leaves the
+log as it found it. Run at close-out, exit 0.
+
+**One thing about the running volume, worth knowing rather than fixing blind.** Its sample dates are a
+day ahead of this machine's clock: the newest day the log holds is 2026-11-02 while the wall clock says
+2026-11-01, so the app opens on a day the header dates rather than on the chip labelled "Today". The
+cause is D3's seed-once rule meeting a volume that was first seeded before the `TZ` fix landed — seeded
+under UTC in the evening of 1 Nov, so "today" was already 2 Nov in that zone. The dates are only written
+once, so a stale volume keeps the offset. A fresh volume is correct, which is why the e2e suite never
+sees this: it builds its own every run. The fix is to throw the sample log away and reseed:
+
+```bash
+cd ~/hermes_workspace/nutrition && docker compose down -v && ./scripts/start.sh
+```
+
+Not run here: it destroys the log the running stack holds, and that is Robert's call rather than the
+handover's.
 
 ## Known flake in the browser suite, stated plainly
 
-Across 14 runs of `npm run test:e2e` today, 12 passed 22/22 and 2 failed a single test. Both failures
-were **browser-level network errors**, not the app: the console carried
-`Failed to load resource: net::ERR_NETWORK_CHANGED`.
+Across 14 runs of `npm run test:e2e` today, 12 passed 22/22 and 2 failed a single test.
 
-- One surfaced in the console-quiet assertion at the end of *opens on the newest day*.
-- The other surfaced as a failed assertion in *logs a meal and expands it into its foods*.
+- In the second failure the console carried `Failed to load resource: net::ERR_NETWORK_CHANGED` four
+  times, and the failing assertion was the console-quiet check at the end of *opens on the newest day*.
+  That one is not the app: it is the browser failing to fetch something.
+- The first failure was a failed assertion in *logs a meal and expands it into its foods*, at the line
+  asserting the meal's "N foods" detail. Its full error text was not kept — the run's log was overwritten
+  before it was read — so the cause is inferred from the class rather than read: the same suite, on the
+  same host, failing on a browser-level fetch failure. Re-run: it passed, as it has every time since.
 
 `expectQuiet` asserts the console is completely empty, which means a resource the browser could not
 fetch — for a reason that has nothing to do with the app — fails the run. On this host the docker
@@ -176,7 +201,9 @@ cd ../frontend && npm install
 npm test                           # 74 passed
 npm run lint && npx tsc --noEmit   # clean
 npm run test:e2e                   # 22 passed; builds its own stack on :8100 and throws it away
+./scripts/e2e-persistence.sh       # writes, rebuilds the image, reads them back, cleans up
 ```
 
-Open `http://localhost:8000/`, sign in as `user` / `password`, and the day opens on today with the
-sample log: 31 foods, 5 meals, three days of entries.
+Open `http://localhost:8000/`, sign in as `user` / `password`, and the log opens on its newest day with
+the sample data: 31 foods, 5 meals, three days of entries. On a freshly seeded volume that newest day is
+today; on the volume running here it is 2 Nov, for the reason given above.

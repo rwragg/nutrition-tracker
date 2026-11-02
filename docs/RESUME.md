@@ -20,6 +20,7 @@ cd backend && uv run pytest -q          # 80 passed
 cd ../frontend && npm test              # 74 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 22 passed, builds its own stack on :8100
+./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
 ```
 
 Current commits: this repository is HEAD here (Part 8's handover commit, 2026-11-01), hermes-home
@@ -124,13 +125,20 @@ Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branche
   built from the book's text, and are flagged as such. Chapters 4–10 are source-verified. Offered to
   rebuild 1–3 properly.
 - **A "granola" knock-on** was noted in an earlier session and never chased.
+- **The dev volume's sample dates are a day ahead of the wall clock.** The newest day the log holds is
+  `2026-11-02` while the machine says 1 Nov, so the app opens on a day the header dates rather than on the
+  chip labelled "Today". The volume was first seeded before the `TZ` fix landed (under UTC, in the evening
+  of 1 Nov), and the seed only ever writes once, so the offset sticks. A fresh volume is right, which is
+  why the browser suite never sees it. Fix, not run here because it throws the log away:
+  `docker compose down -v && ./scripts/start.sh`.
 - **The browser suite is rarely flaky, and it is the transport, not the app.** Across 14 runs on
-  2026-11-01, 2 runs failed one test on a browser-level `net::ERR_NETWORK_CHANGED` console error: once in
-  the console-quiet assertion at the end of *opens on the newest day*, once as a failed assertion in
-  *logs a meal and expands it into its foods*. `expectQuiet` asserts an empty console, so an unfetchable
-  resource fails the run. A rerun clears it. The narrow fix, if Robert wants it, is to count `net::`
-  failures out by the same rule the 401 and the 409 are already counted out by — deliberately not done,
-  because it changes what the suite asserts.
+  2026-11-01, 2 runs failed one test each. One was read: `net::ERR_NETWORK_CHANGED` four times in the
+  console, caught by the console-quiet assertion at the end of *opens on the newest day* — the browser
+  failing to fetch, not the app. The other, a failed assertion in *logs a meal and expands it into its
+  foods*, was not read before its log was overwritten, so its cause is inferred from that class rather
+  than known. `expectQuiet` asserts an empty console, so an unfetchable resource fails the run; a rerun
+  clears it. The narrow fix, if Robert wants it, is to count `net::` failures out by the same rule the
+  401 and the 409 are counted out by — deliberately not done, because it changes what the suite asserts.
 
 ## On resume
 

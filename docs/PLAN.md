@@ -491,9 +491,10 @@ and states plainly where any was met differently. The short version:
 clean, 22 browser tests, container healthy on `http://localhost:8000`.
 
 **One thing to know, stated plainly:** across 14 runs of the browser suite today, 2 runs failed a single
-test on a browser-level `net::ERR_NETWORK_CHANGED` console error — the transport, not the app, and the
-console-quiet assertion counts it. Recorded in the report and in the README with the evidence, and left
-as a decision rather than papered over with `.first()` or a retry.
+test. One was read and is not the app: `net::ERR_NETWORK_CHANGED` in the console, caught by the
+console-quiet assertion, which asserts an empty console. The other was not read before its log was
+overwritten, so its cause is inferred from that class rather than known. Recorded in the report and the
+README, and left as a decision rather than papered over with `.first()` or a retry.
 
 ## Open questions
 

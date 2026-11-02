@@ -49,6 +49,7 @@ cd frontend && npm install
 npm test                             # 74 unit and component tests
 npm run test:e2e                     # 22 Playwright tests, against its own container on :8100
 npm run lint
+./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```
 
 The backend's container tests, and the Playwright suite, both exercise the built image rather than a
