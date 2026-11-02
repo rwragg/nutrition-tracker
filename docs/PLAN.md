@@ -752,16 +752,20 @@ id on every request instead of signing in as one account.
 volume migrated 4 → 5 in place; the bot's preflight reports *the app accepted the bot secret*; and
 `/today` run as the chat reads back the real log.
 
-**What is left in step 2, precisely:**
+**What was left in step 2, and is now done (2026-11-02):**
 
-1. **The screen that shows the code.** `POST /api/telegram/code` exists and is tested; nothing in the
-   frontend calls it. Until something does, linking needs the API by hand. It wants a small panel —
-   heading button → dialog → the code, the expiry, and the `/bind` line to send — plus a way to see
-   "already linked" and unlink, which `GET`/`DELETE /api/telegram/link` already answer.
-2. **The frontend and browser tests for it** — a unit test for the dialog, and an e2e test that shows a
-   code and (with the bot absent) leaves the flow there.
-3. **A migration test for 4 → 5.** The 2 → 5 and 3 → 5 chains are covered; a file that is already 4 is
-   not, because `rewind` in `tests/test_db.py` has no step for it.
+1. **The screen that shows the code** - a **Telegram** button in the header opens `TelegramDialog`: *Get a
+   code* shows `/bind <code>` and how long it has left, the dialog polls and moves to *linked* when the bot
+   redeems it, and *Unlink* is there once linked. Asking for a code is a button, not something that
+   happens on open, because a new code retires the old one.
+2. **Its tests** - 10 unit tests, and an e2e test that gets a real code from the real server (the e2e
+   stack has no bot, so the flow stops there by design).
+3. **A migration test for 4 → 5** - every migration step now has a test.
+
+Building it exposed a defect in every dialog, not just this one: Bootstrap's `--bs-modal-padding` is
+defined only on `.modal`, so the overlay's dialogs had **zero body padding** and their content sat hard
+against the edge. The same class of bug as `--bs-modal-bg` (see Part 4), found by looking at a screenshot
+rather than by any test. Declared on the overlay now, and an e2e assertion pins it.
 
 **Two things learned, both worth keeping:**
 

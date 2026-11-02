@@ -97,16 +97,15 @@ pairing code), and **the port is published on loopback only** (`127.0.0.1:8000`)
 
 ## What is left — start here
 
-1. **The screen that shows the pairing code.** `POST /api/telegram/code` is implemented and tested and
-   **nothing in the frontend calls it**. A small panel: a button in the header → dialog → the code, when
-   it expires, and the exact `/bind` line to send; plus "linked" state and an unlink button, which
-   `GET` / `DELETE /api/telegram/link` already answer. Then the unit test for the dialog and an e2e test
-   that shows a code (the e2e stack has no bot, so the flow stops there by design).
-2. **A migration test for 4 → 5.** The chains from 2 and from 3 are covered; a file that is already at 4
-   is not, because `rewind()` in `backend/tests/test_db.py` has no branch for it. Small, and it is the
-   only untested migration step.
-3. **Then step 3 (voice)**, gated on D16: whisper.cpp in the image, downloading a voice note from
-   Telegram, transcribing, then feeding the same commands. Claude Code may work on this repository
+Part 10 step 2 is finished: the pairing screen is built (header button **Telegram**, `TelegramDialog`,
+10 unit tests and an e2e test that shows a real code) and the 4 → 5 migration is tested. Nothing below is
+started, and each item stops for Robert's approval:
+
+1. **Confirm before writing, a model parser, and USDA lookup for unknown foods** (D19-D21 in `docs/PLAN.md`).
+   Confirmation comes first because everything after it depends on it: text that was parsed or transcribed
+   is never written unconfirmed. It needs the bot to handle button presses (callback queries).
+2. **Then step 3 (voice)**, gated on D16: a transcription step (local whisper.cpp or a cloud service, now
+   that a key is held centrally) feeding the same path as typed text. Claude Code may work on this repository
    (Robert, 2026-11-02, reversing his earlier instruction); `CLAUDE.md` at the root is its entry point.
 4. **Then step 4 (leaving, hosting)**, gated on D17 and on how many people this is for.
 
@@ -306,8 +305,8 @@ Frontend: 96.1% statements, 82.5% branches.
 
 ## On resume
 
-The plan is closed through Part 9 and the code review's fixes are in (uncommitted until Robert says
-otherwise). Part 10 step 2 is waiting on the pairing screen under "What is left". The open items further
+The plan is closed through Part 9, the code review's fixes are in, and Part 10 steps 1 and 2 are finished.
+Nothing is half done. The open items further
 up are optional, and each is offered rather than pending: ask before starting any of them, and do not
 reopen a finished part without a reason.
 
