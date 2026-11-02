@@ -26,6 +26,11 @@ FOODS = [
     {"id": "yogurt-vanilla", "name": "Greek yogurt, vanilla", "unit": "cup", "macros": {"calories": 150, "protein": 20, "carbs": 14, "fat": 1}},
 ]
 
+MEALS = [
+    {"id": "m1", "name": "Typical breakfast", "ingredients": []},
+    {"id": "m2", "name": "Pasta night", "ingredients": []},
+]
+
 
 def day_payload(*, with_entries: bool = True, section_macros: dict | None = None) -> dict:
     breakfast = (
@@ -50,8 +55,9 @@ class FakeApi:
     """Just enough of the client to run a message, recording what the bot asked for."""
 
     def __init__(self, foods: list[dict] | None = None, day: dict | None = None,
-                 post_fails: Exception | None = None) -> None:
+                 meals: list[dict] | None = None, post_fails: Exception | None = None) -> None:
         self._foods = FOODS if foods is None else foods
+        self._meals = MEALS if meals is None else meals
         self._day = day or day_payload()
         self.post_fails = post_fails
         self.posted: list[tuple] = []
@@ -62,6 +68,9 @@ class FakeApi:
 
     def foods(self) -> list[dict]:
         return self._foods
+
+    def meals(self) -> list[dict]:
+        return self._meals
 
     def day(self, day: str) -> dict:
         return self._day
@@ -189,23 +198,30 @@ def test_an_unknown_name_finds_nothing() -> None:
 
 
 def test_the_day_reads_back_with_its_food_names_and_sections() -> None:
-    text = bot.format_day(day_payload(), FOODS)
+    text = bot.format_day(day_payload(), FOODS, MEALS)
     assert TODAY in text
     assert "150 kcal" in text and "5 g protein" in text
     assert "Breakfast (150 kcal)" in text
     assert "Rolled oats, dry ×0.5" in text
-    assert "a meal" in text
-    assert "Lunch" not in text          # empty sections are left out rather than listed
+    assert "Typical breakfast" in text       # a meal is named, not just counted
+    assert "Lunch" not in text               # empty sections are left out rather than listed
+
+
+def test_a_meal_entry_with_no_meal_left_behind_it_still_reads() -> None:
+    """A name that cannot be resolved falls back to words rather than to the raw id."""
+    payload = day_payload()
+    payload["sections"]["breakfast"][1]["mealId"] = "gone"
+    assert "a meal" in bot.format_day(payload, FOODS, MEALS)
 
 
 def test_an_empty_day_says_so() -> None:
-    assert "Nothing logged yet." in bot.format_day(day_payload(with_entries=False), FOODS)
+    assert "Nothing logged yet." in bot.format_day(day_payload(with_entries=False), FOODS, MEALS)
 
 
 def test_an_unknown_food_id_is_shown_as_its_id_rather_than_hidden() -> None:
     payload = day_payload()
     payload["sections"]["breakfast"][0]["foodId"] = "gone"
-    assert "gone" in bot.format_day(payload, FOODS)
+    assert "gone" in bot.format_day(payload, FOODS, MEALS)
 
 
 # --- the two commands, end to end -------------------------------------------------------

@@ -159,6 +159,7 @@ def find_food(name: str, foods: list[dict]) -> tuple[dict | None, list[dict]]:
 # real thing.
 class Client(Protocol):
     def foods(self) -> list[dict]: ...
+    def meals(self) -> list[dict]: ...
     def day(self, day: str) -> dict: ...
     def add_food_entry(self, day: str, section: str, food_id: str, quantity: float) -> dict: ...
 
@@ -192,6 +193,9 @@ class Api:
     def foods(self) -> list[dict]:
         return self.request("/api/foods")
 
+    def meals(self) -> list[dict]:
+        return self.request("/api/meals")
+
     def day(self, day: str) -> dict:
         return self.request(f"/api/days/{urllib.parse.quote(day)}")
 
@@ -211,9 +215,14 @@ def macros_line(macros: dict) -> str:
             f"{round(macros['carbs'])} g carbs · {round(macros['fat'])} g fat")
 
 
-def format_day(payload: dict, foods: list[dict]) -> str:
-    """The day, as text. Sums only — no target is applied here (see the module docstring)."""
+def format_day(payload: dict, foods: list[dict], meals: list[dict]) -> str:
+    """The day, as text. Sums only — no target is applied here (see the module docstring).
+
+    A meal is named, not just counted: "a meal" in a log read back is indistinguishable from every
+    other meal, and the whole point of reading the day back is recognising it.
+    """
     names = {food["id"]: food["name"] for food in foods}
+    meal_names = {meal["id"]: meal["name"] for meal in meals}
     lines = [f"{payload['date']} — {macros_line(payload['macros'])}"]
 
     for section, entries in payload["sections"].items():
@@ -224,7 +233,7 @@ def format_day(payload: dict, foods: list[dict]) -> str:
             if entry["kind"] == "food":
                 lines.append(f"  · {names.get(entry['foodId'], entry['foodId'])} ×{entry['quantity']:g}")
             else:
-                lines.append("  · a meal")
+                lines.append(f"  · {meal_names.get(entry.get('mealId'), 'a meal')}")
 
     if len(lines) == 1:
         lines.append("Nothing logged yet.")
@@ -257,7 +266,7 @@ def handle(text: str, api: Client, today: str | None = None) -> str:
         if name == "unknown":
             return HELP_HINT
         if name == "today":
-            return format_day(api.day(today), api.foods())
+            return format_day(api.day(today), api.foods(), api.meals())
 
         # name == "log"
         if "error" in args:
