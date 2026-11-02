@@ -617,7 +617,7 @@ it, and `users` exists — D4 shaped the schema for R3 in Part 5 precisely so it
 The only single-user thing in the application is `CREDENTIALS = {"user": "password"}` in
 `backend/app/auth.py`, one constant in one file. The work is identity, not structure.
 
-**Requirements (R24 onward — these are proposals, not yet requirements):**
+**Requirements (R24 onward — approved by Robert 2026-11-02 as the shape of the work):**
 
 - **R24 — Anyone can make their own account**, with a Telegram id and an email as R3 asks, without an
   operator touching the database or a file. *Check:* register two accounts through the API alone, sign
@@ -695,6 +695,54 @@ work) rather than by the code. Nothing here is research; it is all work whose sh
 **Staged inert.** No code, no schema change, no bot change, no new file outside this plan. Robert
 approves, amends or drops it before anything is built, and if it is approved it is built one numbered
 step at a time, each stopping for approval as every part before it has.
+
+### Status — step 1 built 2026-11-02
+
+Robert approved the draft and said go. **Step 1 — accounts and registration (R24) with the isolation
+tests (R25) — is built and verified. Steps 2, 3 and 4 are not started, and D16, D17 and D18 are still
+open.**
+
+What step 1 added: a schema version 4 with an account that is more than a username (`email`,
+`telegram_id`, `password_hash`) and the 3 → 4 migration; password hashing in `app/passwords.py`
+(pbkdf2-sha256, standard library, no new dependency); `POST /api/register`; sign-in that looks the
+account up instead of reading a constant; and a register form on the sign-in screen.
+
+- **R24** met, and its check is a test: two accounts are registered through the API alone, each signs
+  in, each gets a session back, and nothing in the path needs a shell. Live as well — a real account
+  was registered against the running app (201, with a generated id), signed in, and read its own empty
+  log while the seeded account's 31 foods sat beside it untouched.
+- **R25** met, and it is where most of the new tests are. Two accounts, each with its own client: one
+  cannot read the other's day (an empty day, not their figures), cannot see their food in a list,
+  cannot put, delete or log against it (404, not 403 — and a refusal that does not confirm the record
+  exists), cannot read or change their meal, cannot delete their entry, and their day list holds only
+  their own days. The seeded log, 31 foods and 17 entries, belongs to the seeded account and to nobody
+  else.
+- **R27**'s check was run while doing this: nothing under `backend/`, `frontend/app|components|lib`,
+  the `Dockerfile` or the compose file mentions Hermes, the vault or Obsidian, and neither does `/app`
+  inside the built image.
+- **R1 keeps working.** The app still opens with `user` / `password`: the seeded account is now a
+  normal account whose password is that one, hashed. Registration adds accounts; it does not replace
+  the one the app has always had.
+
+**Verified by running it:** backend **159 passed** (up from 124: 33 for accounts and isolation, 2 for
+the new migration), frontend **78 passed** (the register form and its refusals), browser suite green
+with two new tests that register through the screen against the real stack. The live volume migrated
+3 → 4 in place with every row intact, and a second account was created, used and removed again without
+touching the log that was there.
+
+**Two things learned, both worth keeping:**
+
+- **A dict comprehension is truthy when it has keys, not when it has values.** Building the
+  "already taken" check as `{column: lookup(...) for ...}` made a registration on an *empty* database
+  answer 409 for all three fields, because a dict of three `None`s is a non-empty dict. The tests
+  caught it on their first run, which is what they are for. The fix is a list of the fields that
+  actually collided.
+- **A migration that writes the current version skips every step after it.** The first migration
+  recorded `SCHEMA_VERSION` — which was "3" when it was the only step, and became "4" the moment a
+  second step existed, so the loop exited after step one and the 3 → 4 step never ran. The version a
+  step produces is now recorded next to the step (`MIGRATIONS` maps from-version to *to*-version and
+  function) and the loop writes it, so no step can jump the queue again. Found by the 2 → 4 chain test,
+  which is the reason that test runs the whole chain rather than one step.
 
 ## Open questions
 

@@ -11,15 +11,13 @@ that holds when a route forgets to.
 
 import sqlite3
 import uuid
-from collections.abc import Iterator
 from datetime import date as calendar_date
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
-from app.auth import current_user
-from app.db import connect
+from app.auth import Connection, current_user
 
 # Mirrors db.UNITS, and a test asserts the two agree so a unit cannot be added half-way.
 # `g` is the gram basis: macros per gram, so "183 g" logs 183 × the per-gram figure.
@@ -30,23 +28,9 @@ SECTIONS: tuple[Section, ...] = ("breakfast", "lunch", "dinner", "snacks")
 
 router = APIRouter(prefix="/api", tags=["nutrition"])
 
-
-def database() -> Iterator[sqlite3.Connection]:
-    """One connection per request, closed when the request ends.
-
-    The close happens in a dependency's cleanup, which FastAPI may run on a different threadpool
-    thread from the one the route body used - see `db.connect` for why that needs
-    `check_same_thread=False`.
-    """
-    connection = connect()
-    try:
-        yield connection
-    finally:
-        connection.close()
-
-
-Connection = Annotated[sqlite3.Connection, Depends(database)]
-User = Annotated[str, Depends(current_user)]
+# The connection and the guard come from auth: one home for the dependency both routers take,
+# so a change to how a request gets its database cannot apply to one half of the API only.
+User: TypeAlias = Annotated[str, Depends(current_user)]
 
 
 # --- what a client sends -----------------------------------------------------------------

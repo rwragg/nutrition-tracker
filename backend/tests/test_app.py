@@ -34,7 +34,7 @@ def test_the_mvp_credentials_start_a_session(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"username": "user"}
-    assert client.get("/api/session").json() == {"username": "user"}
+    assert client.get("/api/session").json() == {"username": "user", "email": None, "telegram_id": None}
 
 
 def test_a_wrong_password_is_refused_and_starts_nothing(client: TestClient) -> None:

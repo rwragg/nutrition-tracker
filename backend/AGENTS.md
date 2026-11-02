@@ -38,18 +38,28 @@ Part 7.
 - **Validation is pydantic's**: units, sections and macro bounds, and an entry is a food or a meal but
   never both and never neither - the same rule the schema enforces with a CHECK.
 
-## The credentials and the session
+## Accounts, credentials and the session
 
-- `CREDENTIALS` at the top of `auth.py` is the only place they exist (R1). The frontend sends what is
-  typed and renders what the backend decides.
+- **An account is a row** (R3, R24): a generated id, a username, an email, an optional telegram id and a
+  password hash. `POST /api/register` creates one and does not sign it in; signing in is its own step.
+- **A password is never stored, compared as a string, logged or returned.** `app/passwords.py` is the
+  only place that knows how, and a null or malformed hash fails closed rather than raising.
+- **R1's hardcoded credential is superseded, not deleted.** The seeded account carries `user` /
+  `password` (`db.SEED_PASSWORD`), hashed, so the app still opens the way it always did and a test pins
+  it.
+- **A wrong username and a wrong password get the same 401**, and the `register` refusal names the field
+  that collided ("that email is already registered") because that is the thing the person has to change.
 - **The session secret is generated per process**, so restarting the container signs everyone out. A
   persisted secret belongs with the database rather than in the image.
-- The session carries a user id, so the registration R3 defers can arrive without a migration.
+- **The session carries a user id**, which is what makes every route's scoping (R2) and the isolation
+  tests in `tests/test_accounts.py` possible.
 - `app/static/` - where the frontend's export lands. It holds only a `.gitkeep` in the repository; the
   image build copies `frontend/out` in here. Starlette checks a StaticFiles directory on every request,
   so the directory must exist even when it is empty - without it a request to `/` raises instead of
   404ing.
 - `tests/test_app.py` - the health check, the session and the guard: unit tests, no docker needed.
+- `tests/test_accounts.py` - registration, the refusals, password storage, and the isolation between two
+  accounts (R24, R25): R2's promise proved against a second user, which is the only way it can be.
 - `tests/test_api.py` - the nutrition routes: each one, both guards, and user isolation. Every expected
   figure is computed here in Python from the raw records.
 - `tests/test_db.py` - the schema, the seed and the storage-level guards, straight against the database.

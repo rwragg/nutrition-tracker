@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from app import db
+from app.passwords import verify_password
 
 PROPOSAL = Path(__file__).resolve().parent.parent.parent / "docs" / "schema.json"
 
@@ -62,6 +63,8 @@ def test_a_missing_file_becomes_the_whole_schema(tmp_path: Path) -> None:
     assert path.exists()
     assert table_names(connection) == {"users", "foods", "meals", "meal_foods", "entries", "meta"}
     assert index_names(connection) == {
+        "users_by_email",
+        "users_by_telegram",
         "foods_by_user",
         "meals_by_user",
         "meal_foods_by_meal",
@@ -145,53 +148,93 @@ def test_the_seeded_entries_are_dated_today_and_the_two_days_before(seeded: sqli
     ] == [("2026-11-01", 8), ("2026-10-31", 5), ("2026-10-30", 4)]
 
 
-# --- 2 -> 3: the foods unit list gains the gram basis (Part 9) --------------------------
+# --- migrations, each step against a file of the shape it was written for -----------------
+
+
+def rewind(path: Path, version: str) -> sqlite3.Connection:
+    """A file wound back to an earlier shape, so a migration can be run against it.
+
+    Built by shrinking the real schema rather than by writing an old one out by hand: a
+    hand-written table is a guess at what the old code produced, and this is the actual thing
+    minus the newer columns and constraints. Raw `sqlite3.connect` because foreign keys default
+    to off there, which is what dropping a table something else references needs.
+
+    String comparison is fine for the version, which is a single digit.
+    """
+    connection = sqlite3.connect(path)
+
+    if version < "3":  # before the gram basis
+        connection.execute("""
+            CREATE TABLE foods_v2 (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+                name TEXT NOT NULL,
+                unit TEXT NOT NULL CHECK (unit IN ('cup','tbsp','tsp','oz','piece','slice','scoop')),
+                calories REAL NOT NULL, protein REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL
+            )""")
+        connection.execute(
+            "INSERT INTO foods_v2 SELECT id, user_id, name, unit, calories, protein, carbs, fat FROM foods"
+        )
+        connection.execute("DROP TABLE foods")
+        connection.execute("ALTER TABLE foods_v2 RENAME TO foods")
+        connection.execute("CREATE INDEX foods_by_user ON foods (user_id)")
+
+    if version < "4":  # before accounts: a user is a username
+        connection.execute(
+            "CREATE TABLE users_v3 (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE)"
+        )
+        connection.execute("INSERT INTO users_v3 SELECT id, username FROM users")
+        connection.execute("DROP TABLE users")
+        connection.execute("ALTER TABLE users_v3 RENAME TO users")
+
+    connection.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (version,))
+    connection.commit()
+    return connection
 
 
 def test_a_version_2_file_is_migrated_rather_than_refused(tmp_path: Path) -> None:
-    """The first migration. A file written before `g` existed is carried forward with its
-    rows intact, because a schema change that costs the log is not one this project can
-    afford now that the log is real."""
+    """The first migration. A file written before `g` existed is carried forward with its rows
+    intact, because a schema change that costs the log is not one this project can afford now
+    that the log is real.
+
+    It also runs the chain: 2 → 3 → 4, because a file that old is two steps behind and both
+    have to happen on the way up.
+    """
     path = tmp_path / "v2.db"
     db.initialise(path, today=date(2026, 11, 1)).close()
 
-    # wind the file back to the pre-`g` shape: version 2, and a foods table whose CHECK
-    # does not accept grams
-    legacy = sqlite3.connect(path)
-    legacy.execute("PRAGMA foreign_keys = OFF")
-    legacy.execute("""
-        CREATE TABLE foods_v2 (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
-            name TEXT NOT NULL,
-            unit TEXT NOT NULL CHECK (unit IN ('cup','tbsp','tsp','oz','piece','slice','scoop')),
-            calories REAL NOT NULL, protein REAL NOT NULL, carbs REAL NOT NULL, fat REAL NOT NULL
-        )""")
-    legacy.execute("INSERT INTO foods_v2 SELECT id, user_id, name, unit, calories, protein, carbs, fat FROM foods")
-    legacy.execute("DROP TABLE foods")
-    legacy.execute("ALTER TABLE foods_v2 RENAME TO foods")
-    legacy.execute("DROP INDEX IF EXISTS foods_by_user")
-    legacy.execute("CREATE INDEX foods_by_user ON foods (user_id)")
-    legacy.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
-    legacy.commit()
+    legacy = rewind(path, "2")
     foods_before = legacy.execute("SELECT count(*) FROM foods").fetchone()[0]
     entries_before = legacy.execute("SELECT count(*) FROM entries").fetchone()[0]
     with pytest.raises(sqlite3.IntegrityError):
-        legacy.execute("INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat) VALUES ('x','user','x','g',1,1,1,1)")
+        legacy.execute(
+            "INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat)"
+            " VALUES ('x','user','x','g',1,1,1,1)"
+        )
     legacy.commit()
     legacy.close()
 
     migrated = db.initialise(path, today=date(2026, 11, 1))
     try:
-        assert migrated.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == db.SCHEMA_VERSION
+        assert migrated.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == db.SCHEMA_VERSION
         assert migrated.execute("SELECT count(*) FROM foods").fetchone()[0] == foods_before
         assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
 
-        # the point of the migration: grams are now a unit, and the old rows are untouched
-        migrated.execute("INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat) VALUES ('y','user','Yogurt, weighed','g',0.61,0.1,0.036,0.017)")
+        # the point of the first step: grams are a unit now, and the old rows are untouched
+        migrated.execute(
+            "INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat)"
+            " VALUES ('y','user','Yogurt, weighed','g',0.61,0.1,0.036,0.017)"
+        )
         migrated.commit()
         assert migrated.execute("SELECT unit FROM foods WHERE id='y'").fetchone()[0] == "g"
         assert migrated.execute("SELECT round(calories * 183, 2) FROM foods WHERE id='y'").fetchone()[0] == 111.63
+
+        # and the second step ran too, on the way past
+        assert "password_hash" in {
+            row[1] for row in migrated.execute("PRAGMA table_info(users)")
+        }
 
         # the references the rebuild could have broken still hold, and the guards still bite
         assert migrated.execute(
@@ -201,9 +244,63 @@ def test_a_version_2_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
         with pytest.raises(sqlite3.IntegrityError):
             migrated.execute("DELETE FROM foods WHERE id = 'oats'")
         with pytest.raises(sqlite3.IntegrityError):
-            migrated.execute("INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat) VALUES ('z','user','z','bucket',1,1,1,1)")
+            migrated.execute(
+                "INSERT INTO foods (id,user_id,name,unit,calories,protein,carbs,fat)"
+                " VALUES ('z','user','z','bucket',1,1,1,1)"
+            )
     finally:
         migrated.close()
+
+
+def test_a_version_3_file_is_migrated_rather_than_refused(tmp_path: Path) -> None:
+    """3 → 4: accounts become more than a username (R24), and the account that already exists
+    keeps its log and its credential."""
+    path = tmp_path / "v3.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+
+    legacy = rewind(path, "3")
+    foods_before = legacy.execute("SELECT count(*) FROM foods").fetchone()[0]
+    entries_before = legacy.execute("SELECT count(*) FROM entries").fetchone()[0]
+    assert {row[1] for row in legacy.execute("PRAGMA table_info(users)")} == {"id", "username"}
+    legacy.close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == db.SCHEMA_VERSION
+        assert migrated.execute("SELECT count(*) FROM foods").fetchone()[0] == foods_before
+        assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
+
+        # the point of this step: the account columns are there, and a fresh file's shape is
+        # what a migrated one now has - which is all the version number claims
+        assert {row[1] for row in migrated.execute("PRAGMA table_info(users)")} == {
+            "id", "username", "email", "telegram_id", "password_hash",
+        }
+        assert {row[1] for row in migrated.execute("PRAGMA index_list(users)")} >= {
+            "users_by_email", "users_by_telegram",
+        }
+
+        # the account that existed keeps the credential it always had, hashed
+        stored = migrated.execute(
+            "SELECT password_hash FROM users WHERE id = 'user'"
+        ).fetchone()[0]
+        assert stored and verify_password(db.SEED_PASSWORD, stored)
+        assert db.SEED_PASSWORD not in stored
+
+        # and the new columns do what they are for: one chat, one account
+        migrated.execute(
+            "UPDATE users SET email = 'robert@example.com', telegram_id = '8685521777'"
+            " WHERE id = 'user'"
+        )
+        migrated.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute(
+                "INSERT INTO users (id, username, telegram_id) VALUES ('ghost','ghost','8685521777')"
+            )
+    finally:
+        migrated.close()
+
 
 
 def test_a_version_with_no_migration_is_still_refused(tmp_path: Path) -> None:

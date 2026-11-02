@@ -2,27 +2,30 @@
 
 Everything needed to resume without re-reading a long conversation. Written 2026-11-01, when Parts 1–7
 were complete and Part 8 had not started; updated the same day when Part 8 was closed out; **updated
-2026-11-02 when Part 9 was built — the Telegram skeleton, the gram basis and the first migration.**
+2026-11-02 when Part 9 was built — the Telegram skeleton, the gram basis and the first migration — and
+again the same day when Part 10's first step (real accounts) was built.**
 
 ## Where it stands
 
-**All nine parts of `docs/PLAN.md` are done.** Parts 1–8 are the finished MVP, and
-`docs/COMPLETION-REPORT.md` carries every criterion from P1.1 to P8.4 with its evidence. Part 9 is the
-first thing built on top: a Telegram front end with two commands, plus the one domain change that
-direction needed — `g`, the gram basis, and with it the app's first schema migration (2 → 3).
+**All nine parts of `docs/PLAN.md` are done**, and **Part 10 is drafted with its first step built**.
+Parts 1–8 are the finished MVP, and `docs/COMPLETION-REPORT.md` carries every criterion from P1.1 to
+P8.4 with its evidence. Part 9 is the Telegram front end plus the gram basis and the first migration.
+Part 10 is "other people": its step 1 — real accounts, registration and the isolation tests — is built
+and verified; its steps 2 (the bot binding a chat to an account), 3 (voice) and 4 (leaving, hosting) are
+not started, and D16, D17 and D18 are still open.
 
 The app is a Next.js 16 frontend served by a FastAPI backend in one container, the log in SQLite,
-sign-in gated, all three views reading and writing the API, tested at three levels. The bot is a second
-client of the same API, behind a compose profile, with tests of its own.
+sign-in gated with real accounts, all three views reading and writing the API, tested at three levels.
+The bot is a second client of the same API, behind a compose profile, with tests of its own.
 
 ## Verify the state before doing anything
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 124 passed
-cd ../frontend && npm test              # 75 passed
+cd backend && uv run pytest -q          # 159 passed
+cd ../frontend && npm test              # 78 passed
 npm run lint && npx tsc --noEmit        # clean
-npm run test:e2e                        # 22 passed, builds its own stack on :8100
+npm run test:e2e                        # 24 passed, builds its own stack on :8100
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
 docker compose --profile bot run --rm bot   # exits 1 with a reason: no token set
 ```
@@ -47,6 +50,25 @@ The migration is the piece with the longest life. It establishes the rule the ne
 `docs/DATABASE.md` carries the reasoning, including the three details that are load-bearing (foreign
 keys off for the drop, outside any transaction; the copy counted before the old table goes; nothing
 interpreted).
+
+## What Part 10 step 1 did
+
+Closed out 2026-11-02, the same day as Part 9. Robert approved the Part 10 draft and said go, so step 1
+— accounts and registration (R24) with the isolation tests (R25) written as the thing that proves it —
+is built and verified. Nothing else in Part 10 is started.
+
+- **Schema version 4.** `users` gained `email`, `telegram_id` and `password_hash`, with unique indexes
+  on the first two. The 3 → 4 migration is `ALTER TABLE ... ADD COLUMN`, which is deliberately nothing
+  like the 2 → 3 rebuild: new nullable columns need no copy and no foreign-key juggling.
+- **`app/passwords.py`.** pbkdf2-sha256, 200,000 iterations, a salt per password, constant-time
+  comparison, and a malformed or missing value fails closed. Standard library only — no new dependency.
+- **`POST /api/register`** in `auth.py`, which now also owns the connection dependency both routers
+  take (`api.py` imports `Connection` from it). Sign-in looks the account up instead of reading the
+  constant that used to be there.
+- **A register form** on the sign-in screen (`components/SignIn.tsx`), with a refusal shown in the
+  server's own words — the sentence names the field, which is the thing the person has to change.
+- **R1 still works.** The seeded account carries the documented `user` / `password`, hashed. There is a
+  test for it, because superseding a requirement is exactly when it gets broken by accident.
 
 ## How to run it
 
@@ -111,12 +133,29 @@ Frontend: 96.1% statements, 82.5% branches.
   would be a second source of truth.
 - **The targets live in one place** (R10) — `frontend/lib/targets.ts` — and the API returns sums, not
   judgements. The bot reports sums for the same reason.
+- **A user is an id, and a password is a hash.** The session carries a generated id (`user-<12 hex>`),
+  never a username, because a username is a thing a person may want to change. A password is never
+  stored, compared as a string, logged or returned by a route, and a missing or malformed hash fails
+  closed. `app/passwords.py` is the only place that knows how.
+- **Registration adds accounts; it does not replace the seeded one.** R1's `user` / `password` is that
+  account's credential now, and there is a test pinning it.
+- **A wrong username and a wrong password get the same refusal**, and a refused delete says "no such
+  record" for something another account owns. Both are deliberate: the API does not tell a stranger
+  which usernames or records exist.
 - **Gates.** Each part of the plan stops for Robert's approval. Do not run two parts together.
 - **Never put sensitive personal context** (depression, confidence, the immigration separation) in
   anything resume- or job-facing, or in the repo.
 
 ## Traps that cost time here — do not rediscover them
 
+- **A dict comprehension is truthy when it has keys, not when it has values.** `{column: lookup(...)
+  for ...}` as an "already taken" check made a registration on an *empty* database answer 409 for all
+  three fields — a dict of three `None`s is a non-empty dict. The first test caught it. Write a list of
+  the things that actually collided.
+- **A migration must record the version it *produces*, not the current one.** The 2 → 3 step wrote
+  `SCHEMA_VERSION`, which was correct while it was the only step and became a silent skip of every
+  later step the moment a second existed. The target version now lives next to the step in
+  `MIGRATIONS`, and the loop writes it. The 2 → 4 test runs the whole chain for this reason.
 - **A second definition of a function silently wins.** Repairing the migration, an old `create_schema`
   was left below the new one, so the *older* body was what ran — Python takes the last definition. It was
   caught by reading the file, not by a test. Read the diff you just wrote.
@@ -158,9 +197,13 @@ Frontend: 96.1% statements, 82.5% branches.
   does not understand a sentence, and has no voice. Each of those is a decision with a cost attached,
   and the next one worth taking is probably voice — Robert dictates lifts already, so the same habit
   would meet a bot that could take `/log` by ear.
-- **Per-user accounts** (R3) are not built. The bot signs in with the MVP credential, so every chat
-  allowed to talk to it writes the one log that exists. `TELEGRAM_ALLOWED_USERS` is the only thing
-  keeping that from being anyone.
+- **The bot still writes the one seeded log.** Accounts exist now (step 1), but the bot signs in as the
+  seeded account — `NUTRITION_API_USER` / `NUTRITION_API_PASSWORD`, defaulting to R1's credential — so
+  every chat allowed to talk to it writes the same log. Binding a chat to an account is R26, step 2, and
+  until then `TELEGRAM_ALLOWED_USERS` is the only thing keeping that from being anyone.
+- **Registration has no confirmation and no way back.** An account is created in one step with no email
+  verification, and there is no route to change a password, change an email or leave (R29). That is
+  step 1's boundary, not an oversight — but it is the list to work through before a stranger uses it.
 - **`spring-llm-agent` cannot be pushed from here.** `Permission to rwragg/spring-llm-agent.git denied to
   rwragg` (403). The fine-grained token has no write on that repo. Either add it on GitHub (Contents:
   read+write) or push it from a shell with Robert's own credentials. One commit is waiting: `b9aa8e6`.

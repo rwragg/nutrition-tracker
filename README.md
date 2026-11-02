@@ -15,7 +15,7 @@ one in `docs/`.)
 
 ## What it does
 
-- Sign in with `user` / `password` (dummy credentials for the MVP), and log out
+- Sign in with `user` / `password` (dummy credentials for the MVP), or create your own account, and log out
 - Three views behind a header switcher: **Day**, **Foods**, **Meals**
 - Log a day from individual foods with a quantity, or from a whole meal
 - Create, edit and delete foods and meals; a meal is composed from foods
@@ -38,7 +38,8 @@ One container: FastAPI serves the frontend at `/`, owns the API, and keeps a SQL
 ```
 
 On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http://localhost:8000/, and
-you sign in with `user` / `password`. The first run seeds a sample log, once, into the empty database.
+you sign in with `user` / `password` - or create your own account from the same screen, which starts
+with an empty log of its own. The first run seeds a sample log, once, into the empty database.
 The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
 
 ## The Telegram front end (optional)
@@ -68,10 +69,10 @@ per-user accounts — every allowed chat writes the one log that exists. See
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 124 tests: routes, schema, guards, isolation, the bot, and the container
+cd backend && uv run pytest          # 159 tests: routes, schema, guards, isolation, accounts, the bot, and the container
 cd frontend && npm install
-npm test                             # 74 unit and component tests
-npm run test:e2e                     # 22 Playwright tests, against its own container on :8100
+npm test                             # 78 unit and component tests
+npm run test:e2e                     # 24 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```

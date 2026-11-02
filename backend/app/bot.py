@@ -39,11 +39,18 @@ from datetime import date as calendar_date
 from typing import Any, Protocol
 
 from app.api import SECTIONS
-from app.auth import CREDENTIALS
 from app.db import UNITS
 
 API = os.environ.get("NUTRITION_API", "http://127.0.0.1:8000").rstrip("/")
 TELEGRAM = "https://api.telegram.org"
+
+# The account the bot signs in as. The seeded account's documented credential (R1) while the
+# bot is one log for one person, which is D14 - and the thing R26 replaces, when a chat is bound
+# to an account of its own. Overridable, so it does not have to be the seeded one.
+ACCOUNT = (
+    os.environ.get("NUTRITION_API_USER", "user"),
+    os.environ.get("NUTRITION_API_PASSWORD", "password"),
+)
 
 # Where a /log with no section named lands. Snacks, because it is the section people log
 # into most often and the one least likely to be wrong about what was eaten.
@@ -179,7 +186,7 @@ class Api:
         return json.loads(payload) if payload else {}
 
     def sign_in(self) -> None:
-        username, password = next(iter(CREDENTIALS.items()))
+        username, password = ACCOUNT
         self.request("/api/login", "POST", {"username": username, "password": password})
 
     def foods(self) -> list[dict]:

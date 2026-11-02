@@ -591,4 +591,60 @@ test.describe("the sign-in gate", () => {
 
     expect(response?.status()).toBe(200);
   });
+
+  test("registers an account through the screen, and it starts with nothing", async ({ page, consoleErrors }) => {
+    // R24 end to end: the real stack, a new account, and a log of its own - empty, rather than
+    // the seeded one with someone else's name on it (R25).
+    const name = `newcomer-${Date.now()}`;
+
+    await page.goto("/");
+    await page.getByTestId("show-register").click();
+    await expect(page.getByTestId("register")).toBeVisible();
+
+    await page.getByLabel("Username").fill(name);
+    await page.getByLabel("Email").fill(`${name}@example.com`);
+    await page.getByLabel(/^Password/).fill("a-long-enough-password");
+    await page.getByTestId("sign-in-submit").click();
+
+    // in, as the new account, on an empty day
+    await expect(page.getByTestId("signed-in-as")).toHaveText(name);
+    await expect(page.getByTestId("day-total-calories")).toHaveText("0");
+
+    // and the seeded log is still not theirs
+    const foods = await page.request.get("/api/foods");
+    expect(foods.status()).toBe(200);
+    expect(await foods.json()).toEqual([]);
+
+    expectQuiet(consoleErrors);
+  });
+
+  test("a registration that is refused says which field, and stays on the form", async ({ page, consoleErrors }) => {
+    const name = `taken-${Date.now()}`;
+
+    // register it once, for real
+    await page.goto("/");
+    await page.getByTestId("show-register").click();
+    await page.getByLabel("Username").fill(name);
+    await page.getByLabel("Email").fill(`${name}@example.com`);
+    await page.getByLabel(/^Password/).fill("a-long-enough-password");
+    await page.getByTestId("sign-in-submit").click();
+    await expect(page.getByTestId("signed-in-as")).toHaveText(name);
+
+    // then try to take it again
+    await page.getByTestId("sign-out").click();
+    await expect(page.getByTestId("sign-in")).toBeVisible();
+    await page.getByTestId("show-register").click();
+    await page.getByLabel("Username").fill(name);
+    await page.getByLabel("Email").fill(`other-${name}@example.com`);
+    await page.getByLabel(/^Password/).fill("a-long-enough-password");
+    await page.getByTestId("sign-in-submit").click();
+
+    // the server's sentence names the field, and the form is still there to fix it in
+    await expect(page.getByTestId("register").getByRole("alert")).toContainText("username");
+    await expect(page.getByTestId("register").getByRole("alert")).toContainText("already registered");
+    await expect(page.getByTestId("day-total-calories")).toHaveCount(0);
+
+    // The 409 is the point of this test: the browser logs it as a console error like any other 4xx.
+    expectQuietApartFrom(consoleErrors, ["409"]);
+  });
 });

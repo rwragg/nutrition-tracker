@@ -15,14 +15,22 @@ that holds even when a route forgets to.
 
 import os
 import sqlite3
+from collections.abc import Callable, Iterator
 from datetime import date, timedelta
 from pathlib import Path
 
+from app.passwords import hash_password
+
 # Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
 # different version is migrated where a migration exists, and refused where it does not.
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
+
+# R1's MVP credential, and now the seeded account's password: registration (R24) does not
+# remove the account the app has always opened with, it adds the way to have others. Hashed
+# like any other password - never stored, never compared as a string.
+SEED_PASSWORD = "password"  # noqa: S105 - the documented MVP credential, in one place
 
 # The units a food may be priced in. `g` is the gram basis: a food recorded in grams carries
 # its macros per gram, so "183 g" logs 183 × the per-gram figure. It exists because dictation
@@ -58,10 +66,18 @@ SCHEMA = (
     META,
     """
     CREATE TABLE IF NOT EXISTS users (
-        id       TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE
+        id            TEXT PRIMARY KEY,
+        username      TEXT NOT NULL UNIQUE,
+        email         TEXT,
+        telegram_id   TEXT,
+        password_hash TEXT
     )
     """,
+    # Uniqueness by index rather than in the column, so a fresh file and a migrated one end up
+    # the same shape - SQLite cannot add a UNIQUE column with ALTER TABLE. Many NULLs are
+    # allowed, which is what an account without an email or a chat should be.
+    "CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users (email)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
     foods_ddl(),
     "CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)",
     """
@@ -205,17 +221,50 @@ def _migrate_foods_g(connection: sqlite3.Connection) -> None:
             connection.execute("DROP TABLE foods")
             connection.execute("ALTER TABLE foods_v3 RENAME TO foods")
             connection.execute("CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)")
-            connection.execute(
-                "UPDATE meta SET value = ? WHERE key = 'schema_version'", (SCHEMA_VERSION,)
-            )
     finally:
         connection.execute("PRAGMA foreign_keys = ON")
 
 
-# Keyed by the version being migrated FROM. A version with no entry here is refused, which
-# is the whole point: a file this build cannot carry forward must not be read as if it
-# matched.
-MIGRATIONS = {"2": _migrate_foods_g}
+def _migrate_users_accounts(connection: sqlite3.Connection) -> None:
+    """3 → 4: an account is more than a username (R3, R24).
+
+    `ALTER TABLE ... ADD COLUMN` rather than a rebuild, and the contrast with the step before
+    is the point: these columns are new and nullable, so SQLite adds them in place — nothing to
+    copy, nothing to verify, no foreign keys to switch off. When a change does not need the
+    heavy machinery, do not use it.
+
+    Uniqueness arrives as a pair of indexes instead of a column constraint, because SQLite
+    cannot add a UNIQUE column this way. They are the same indexes `SCHEMA` creates, so a fresh
+    file and a migrated one are indistinguishable afterwards, which is what the version number
+    is claiming.
+
+    Accounts that already existed keep their log and keep the credential they have always
+    signed in with: the MVP password (R1) is hashed into the new column rather than left
+    empty, so nothing signs anyone out and no password is stored in the clear.
+    """
+    with connection:
+        for column in ("email", "telegram_id", "password_hash"):
+            connection.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT")
+
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users (email)")
+        connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)"
+        )
+        connection.execute(
+            "UPDATE users SET password_hash = ? WHERE password_hash IS NULL",
+            (hash_password(SEED_PASSWORD),),
+        )
+
+
+# Keyed by the version being migrated FROM, each with the version it produces and the step that
+# does it. The steps do not write the version themselves: the loop below does, from the target
+# recorded here. That is not tidiness — a step that wrote the *current* `SCHEMA_VERSION` instead
+# of the one it produced would move the file all the way up in one jump, so every later step
+# would be skipped silently. That is exactly what the first step did before the second existed.
+MIGRATIONS: dict[str, tuple[str, Callable[[sqlite3.Connection], None]]] = {
+    "2": ("3", _migrate_foods_g),
+    "3": ("4", _migrate_users_accounts),
+}
 
 
 def create_schema(connection: sqlite3.Connection) -> None:
@@ -234,18 +283,20 @@ def create_schema(connection: sqlite3.Connection) -> None:
     version = recorded["value"] if recorded is not None else None
 
     while version is not None and version != SCHEMA_VERSION:
-        step = MIGRATIONS.get(version)
-        if step is None:
+        if version not in MIGRATIONS:
             raise SchemaVersionError(
                 f"the database file is written to schema version {version}, and this build "
                 f"expects {SCHEMA_VERSION} with no migration from {version}. Start a new file by "
                 f"removing the old one (docker compose down -v removes the volume), or point "
                 f"NUTRITION_DB elsewhere."
             )
+        target, step = MIGRATIONS[version]
         step(connection)
-        version = connection.execute(
-            "SELECT value FROM meta WHERE key = 'schema_version'"
-        ).fetchone()["value"]
+        with connection:
+            connection.execute(
+                "UPDATE meta SET value = ? WHERE key = 'schema_version'", (target,)
+            )
+        version = target
 
     for statement in SCHEMA:
         connection.execute(statement)
@@ -281,6 +332,22 @@ def db_path() -> Path:
     return Path(os.environ.get("NUTRITION_DB", DEFAULT_DB_PATH))
 
 
+def database() -> Iterator[sqlite3.Connection]:
+    """One connection per request, closed when the request ends.
+
+    Here rather than in the routes because two routers need it — the account routes and the
+    nutrition routes — and the thing that guards a route should not be defined inside the
+    routes it guards. The close happens in a dependency's cleanup, which FastAPI may run on a
+    different threadpool thread from the one the route body used: see `connect` for why that
+    needs `check_same_thread=False`.
+    """
+    connection = connect()
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
 def seed(connection: sqlite3.Connection, today: date) -> bool:
     """Insert the sample, but only into a database that has never been seeded.
 
@@ -291,7 +358,8 @@ def seed(connection: sqlite3.Connection, today: date) -> bool:
         return False
 
     connection.execute(
-        "INSERT INTO users (id, username) VALUES (?, ?)", (SEED_USER_ID, SEED_USER_ID)
+        "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+        (SEED_USER_ID, SEED_USER_ID, hash_password(SEED_PASSWORD)),
     )
 
     connection.executemany(

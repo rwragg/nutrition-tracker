@@ -56,6 +56,8 @@ export function stubFetch(
   handlers: {
     session?: SessionAnswer;
     login?: (submitted: { username?: string; password?: string }) => LoginAnswer;
+    /** Answer a registration. Refuse one with {ok:false, status:409, body:{detail:"..."}}. */
+    register?: (submitted: { username?: string; email?: string; telegram_id?: string | null }) => LoginAnswer;
     /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
     intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
     /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */
@@ -88,6 +90,17 @@ export function stubFetch(
     if (path === "/api/session") {
       const session = handlers.session ?? { ok: true, body: { username: "user" } };
       return answer(session.body, session.status ?? (session.ok ? 200 : 401));
+    }
+
+    if (path === "/api/register") {
+      const registered = handlers.register?.(body ?? {}) ?? {
+        ok: true,
+        body: { id: `user-${++data.created}`, username: body?.username },
+      };
+      return answer(
+        registered.body ?? { id: `user-${++data.created}`, username: body?.username },
+        registered.status ?? (registered.ok ? 201 : 409),
+      );
     }
 
     if (path === "/api/login") {

@@ -1,8 +1,8 @@
 {
   "name": "nutrition-tracker",
-  "status": "approved by Robert 2026-11-01, and implemented. Two revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - and on 2026-11-02 the foods unit list gained the gram basis, with the first migration (2 -> 3).",
+  "status": "approved by Robert 2026-11-01, and implemented. Three revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), and on the same day accounts became real: email, telegram id and a stored password hash, so R3's registration is possible (3 -> 4).",
   "engine": "sqlite",
-  "schema_version": 3,
+  "schema_version": 4,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -17,12 +17,19 @@
   "tables": [
     {
       "name": "users",
-      "purpose": "One row per person whose log this is. Every other table carries a user_id, which is how R2 holds and how R3 can arrive later without a migration (D4).",
+      "purpose": "One row per person whose log this is. Every other table carries a user_id, which is how R2 holds. Registration (R3, R24) adds rows here, not tables.",
       "columns": [
-        { "name": "id", "type": "TEXT", "nullable": false, "notes": "The MVP seeds one row, id = 'user'. A generated id arrives with registration." },
-        { "name": "username", "type": "TEXT", "nullable": false, "unique": true, "notes": "For the MVP this equals id; kept separate so R3 does not have to change the key." }
+        { "name": "id", "type": "TEXT", "nullable": false, "notes": "Generated ('user-<12 hex>') for a registered account; the seed's is 'user'. Opaque on purpose: a username is something a person may want to change and a primary key is not." },
+        { "name": "username", "type": "TEXT", "nullable": false, "unique": true, "notes": "What a person signs in with. Unique by column constraint." },
+        { "name": "email", "type": "TEXT", "nullable": true, "unique": true, "notes": "R3 asks for one. Unique by index, and many NULLs are allowed, so an account without one is a normal account - what the email is *for* is D17, still open." },
+        { "name": "telegram_id", "type": "TEXT", "nullable": true, "unique": true, "notes": "R3 asks for one. Digits. This is what R26 will bind a chat to, and it is stored as text because it is an identifier, not a number to do arithmetic on." },
+        { "name": "password_hash", "type": "TEXT", "nullable": true, "notes": "pbkdf2_sha256$iterations$salt$digest (see app/passwords.py). Never returned by a route. Nullable so a row written before registration existed is still a valid row, and a null one fails closed: nobody signs in with it." }
       ],
-      "primary_key": ["id"]
+      "primary_key": ["id"],
+      "indexes": [
+        { "name": "users_by_email", "columns": ["email"], "unique": true },
+        { "name": "users_by_telegram", "columns": ["telegram_id"], "unique": true }
+      ]
     },
     {
       "name": "foods",
@@ -105,7 +112,9 @@
     }
   ],
   "ddl": [
-    "CREATE TABLE users (\n    id       TEXT PRIMARY KEY,\n    username TEXT NOT NULL UNIQUE\n)",
+    "CREATE TABLE users (\n    id            TEXT PRIMARY KEY,\n    username      TEXT NOT NULL UNIQUE,\n    email         TEXT,\n    telegram_id   TEXT,\n    password_hash TEXT\n)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users (email)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
     "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop', 'g')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0)\n)",
     "CREATE INDEX foods_by_user ON foods (user_id)",
     "CREATE TABLE meals (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name    TEXT NOT NULL\n)",

@@ -124,6 +124,24 @@ export async function signOut(): Promise<void> {
   await request<{ status: string }>("/api/logout", { method: "POST" });
 }
 
+/** Create an account (R24). Does not sign in - the caller does that next, with what was typed. */
+export async function registerAccount(input: {
+  username: string;
+  email: string;
+  password: string;
+  telegramId?: string;
+}): Promise<{ id: string; username: string }> {
+  return await request<{ id: string; username: string }>("/api/register", {
+    method: "POST",
+    body: JSON.stringify({
+      username: input.username,
+      email: input.email,
+      password: input.password,
+      telegram_id: input.telegramId?.trim() || null,
+    }),
+  });
+}
+
 // --- foods and meals (R5, R7, R8) ---------------------------------------------------------
 
 export async function listFoods(): Promise<Food[]> {

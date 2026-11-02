@@ -1,10 +1,10 @@
 # Database approach
 
-**Status: approved by Robert 2026-11-01, implemented in Parts 5 and 6, and revised twice since.** The
-four decisions at the end were approved as proposed. Two things have changed: **the `days` table is
-gone** — a day of the log is the date on an entry, not a row of its own — and **`foods` gained the
-gram basis**, which brought the first migration. The reasoning for both is below; the schema version
-went 1 → 2 with the first and 2 → 3 with the second.
+**Status: approved by Robert 2026-11-01, implemented in Parts 5 and 6, and revised three times since.** The
+four decisions at the end were approved as proposed. Three things have changed: **the `days` table is
+gone** — a day of the log is the date on an entry, not a row of its own — **`foods` gained the gram
+basis**, and **`users` became a real account** with an email, a telegram id and a password hash. The
+reasoning for all three is below; the schema version went 1 → 2, 2 → 3 and 3 → 4 with them.
 
 The machine-readable form of this schema is [`schema.json`](schema.json), which carries the tables, the
 columns, the constraints and the exact `CREATE` statements they translate to. This document is the
@@ -95,6 +95,37 @@ Three details are load-bearing:
 Verified on the real file, not only in tests: the pre-change database (31 foods, 5 meals, 19 meal
 ingredients, 17 entries) migrated to version 3 with every row intact, `PRAGMA foreign_keys` back on,
 the seeded entries still resolving to their foods, and the delete guard still refusing.
+
+## The revision after it: accounts, and version 4
+
+**What changed.** `users` gained `email`, `telegram_id` and `password_hash`, so registration (R3, R24)
+is possible. D4 said the schema had been shaped so that R3 "can arrive later without a migration", and
+that was true of *rows* — every route already scoped by `user_id`, so a second person needed no schema
+change at all. It was not true of *columns*, and the columns are what an account needs. The claim was
+half right, and the half that was wrong is the reason this step exists.
+
+**How the step works — and why it looks nothing like the last one.** `ALTER TABLE ... ADD COLUMN` for
+each of the three, then the two unique indexes, then the existing account is given the password it has
+always signed in with, hashed. No copy, no verification by count, no foreign keys switched off: the
+columns are new and nullable, so SQLite adds them in place. **When a change does not need the heavy
+machinery, do not use it** — the previous section's rebuild is the exception, not the pattern.
+
+Two details are load-bearing:
+
+- **Uniqueness is a pair of indexes, not a column constraint.** `ALTER TABLE` cannot add `UNIQUE`. The
+  indexes are created by the migration *and* by `SCHEMA`, so a fresh file and a migrated one end up
+  indistinguishable — which is all the version number ever claims.
+- **A null `password_hash` fails closed.** An account with no stored password is an account nobody signs
+  into, and `passwords.verify_password` returns False for a missing or malformed value rather than
+  raising. That is why the column is nullable and why the migration hashes the MVP password into the
+  rows that predate it, rather than leaving them empty and locking their owner out.
+
+**And one thing that was wrong before this step existed.** The 2 → 3 migration recorded
+`SCHEMA_VERSION` as the version it had reached. With one migration in the file that is correct; with
+two it is a trap: the file jumps to the newest version after the first step, the loop finishes, and
+every later step is skipped in silence. The version a step produces is now recorded beside the step
+(`MIGRATIONS` maps *from* to *to* and function) and written by the loop, so no step can jump the queue.
+The 2 → 4 test runs the whole chain for exactly this reason.
 
 ## Decisions worth stating
 
