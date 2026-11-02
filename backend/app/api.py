@@ -86,10 +86,6 @@ class EntryIn(BaseModel):
         return self
 
 
-class DayIn(BaseModel):
-    date: calendar_date
-
-
 # --- reading ------------------------------------------------------------------------------
 
 
@@ -101,13 +97,12 @@ class DayIn(BaseModel):
 
 def entry_macros_sql(where: str) -> str:
     return f"""
-    SELECT e.id, e.day_id, e.section, e.food_id, e.meal_id, e.quantity, e.rowid AS sequence,
+    SELECT e.id, e.date, e.section, e.food_id, e.meal_id, e.quantity, e.rowid AS sequence,
            COALESCE(f.calories * e.quantity, m.calories, 0) AS calories,
            COALESCE(f.protein  * e.quantity, m.protein,  0) AS protein,
            COALESCE(f.carbs    * e.quantity, m.carbs,    0) AS carbs,
            COALESCE(f.fat      * e.quantity, m.fat,      0) AS fat
     FROM entries e
-    JOIN days d ON d.id = e.day_id
     LEFT JOIN foods f ON f.id = e.food_id
     LEFT JOIN (
         SELECT mf.meal_id,
@@ -194,28 +189,6 @@ def owned_meal(connection: sqlite3.Connection, user: str, meal_id: str) -> sqlit
     return row
 
 
-def owned_day(connection: sqlite3.Connection, user: str, day_id: str) -> sqlite3.Row:
-    row = connection.execute(
-        "SELECT id, date FROM days WHERE id = ? AND user_id = ?", (day_id, user)
-    ).fetchone()
-
-    if row is None:
-        raise not_found("day")
-
-    return row
-
-
-def owned_day_at(connection: sqlite3.Connection, user: str, iso_date: str) -> sqlite3.Row:
-    row = connection.execute(
-        "SELECT id, date FROM days WHERE user_id = ? AND date = ?", (user, iso_date)
-    ).fetchone()
-
-    if row is None:
-        raise not_found("day")
-
-    return row
-
-
 def meal_rows(connection: sqlite3.Connection, user: str, meal_id: str | None = None) -> list[sqlite3.Row]:
     sql = (
         "SELECT mf.meal_id, mf.food_id, mf.quantity, f.calories, f.protein, f.carbs, f.fat"
@@ -233,14 +206,14 @@ def meal_rows(connection: sqlite3.Connection, user: str, meal_id: str | None = N
     return connection.execute(sql + " ORDER BY mf.rowid", parameters).fetchall()
 
 
-def day_payload(connection: sqlite3.Connection, user: str, day: sqlite3.Row) -> dict:
+def day_payload(connection: sqlite3.Connection, user: str, day: str) -> dict:
+    """A date's log. A date with nothing on it is an empty day, not a missing one."""
     entries = connection.execute(
-        entry_macros_sql("d.user_id = ? AND e.day_id = ?"), (user, day["id"])
+        entry_macros_sql("e.user_id = ? AND e.date = ?"), (user, day)
     ).fetchall()
 
     return {
-        "id": day["id"],
-        "date": day["date"],
+        "date": day,
         "sections": {
             section: [entry_payload(row) for row in entries if row["section"] == section]
             for section in SECTIONS
@@ -263,23 +236,21 @@ def usage_of(connection: sqlite3.Connection, user: str, *, food_id: str = "", me
             (food_id, user),
         ).fetchall()
         days = connection.execute(
-            "SELECT DISTINCT d.id, d.date FROM entries e"
-            " JOIN days d ON d.id = e.day_id"
-            " WHERE e.food_id = ? AND d.user_id = ? ORDER BY d.date DESC",
+            "SELECT DISTINCT e.date AS date FROM entries e"
+            " WHERE e.food_id = ? AND e.user_id = ? ORDER BY e.date DESC",
             (food_id, user),
         ).fetchall()
     else:
         meals = []
         days = connection.execute(
-            "SELECT DISTINCT d.id, d.date FROM entries e"
-            " JOIN days d ON d.id = e.day_id"
-            " WHERE e.meal_id = ? AND d.user_id = ? ORDER BY d.date DESC",
+            "SELECT DISTINCT e.date AS date FROM entries e"
+            " WHERE e.meal_id = ? AND e.user_id = ? ORDER BY e.date DESC",
             (meal_id, user),
         ).fetchall()
 
     return {
         "meals": [{"id": row["id"], "name": row["name"]} for row in meals],
-        "days": [{"id": row["id"], "date": row["date"]} for row in days],
+        "days": [row["date"] for row in days],
     }
 
 
@@ -291,8 +262,7 @@ def usage_message(used_by: dict) -> str:
         parts.append(f"used in {len(used_by['meals'])} meal(s) ({names})")
 
     if used_by["days"]:
-        dates = ", ".join(day["date"] for day in used_by["days"])
-        parts.append(f"logged on {len(used_by['days'])} day(s) ({dates})")
+        parts.append(f"logged on {len(used_by['days'])} day(s) ({', '.join(used_by['days'])})")
 
     return "cannot be deleted: " + " and ".join(parts)
 
@@ -420,55 +390,31 @@ def delete_meal(meal_id: str, connection: Connection, user: User) -> None:
 
 @router.get("/days")
 def list_days(connection: Connection, user: User) -> list[dict]:
-    """Every day the user has, newest first, each with what it came to."""
-    rows = connection.execute(entry_macros_sql("d.user_id = ?"), (user,)).fetchall()
-    by_day: dict[str, list[sqlite3.Row]] = {}
+    """Every date the user has logged anything on, newest first, each with what it came to.
+
+    A date with nothing on it is not in this list, and does not need to be: reading one gives an
+    empty day, and logging the first thing into it makes it appear.
+    """
+    rows = connection.execute(entry_macros_sql("e.user_id = ?"), (user,)).fetchall()
+    by_date: dict[str, list[sqlite3.Row]] = {}
 
     for row in rows:
-        by_day.setdefault(row["day_id"], []).append(row)
-
-    days = connection.execute(
-        "SELECT id, date FROM days WHERE user_id = ? ORDER BY date DESC", (user,)
-    ).fetchall()
+        by_date.setdefault(row["date"], []).append(row)
 
     return [
-        {"id": day["id"], "date": day["date"], "macros": totals(by_day.get(day["id"], []))}
-        for day in days
+        {"date": day, "macros": totals(by_date[day])} for day in sorted(by_date, reverse=True)
     ]
 
 
-@router.post("/days")
-def open_day(day: DayIn, connection: Connection, user: User) -> dict:
-    """The day for a date, created if this is the first time it is opened.
-
-    The seed only ever made the three days it was seeded with, so without this there is nowhere
-    to log tomorrow's meals. Idempotent: opening the same date twice returns the same day.
-    """
-    iso = day.date.isoformat()
-    existing = connection.execute(
-        "SELECT id, date FROM days WHERE user_id = ? AND date = ?", (user, iso)
-    ).fetchone()
-
-    if existing is not None:
-        return day_payload(connection, user, existing)
-
-    connection.execute(
-        "INSERT INTO days (id, user_id, date) VALUES (?, ?, ?)", (new_id("day"), user, iso)
-    )
-    connection.commit()
-
-    return day_payload(connection, user, owned_day_at(connection, user, iso))
+@router.get("/days/{day}")
+def read_day(day: calendar_date, connection: Connection, user: User) -> dict:
+    """A date's log, with its sections and its figures. An empty date is an empty day, not a 404."""
+    return day_payload(connection, user, day.isoformat())
 
 
-@router.get("/days/{day_id}")
-def read_day(day_id: str, connection: Connection, user: User) -> dict:
-    return day_payload(connection, user, owned_day(connection, user, day_id))
-
-
-@router.post("/days/{day_id}/entries", status_code=status.HTTP_201_CREATED)
-def add_entry(day_id: str, entry: EntryIn, connection: Connection, user: User) -> dict:
-    owned_day(connection, user, day_id)
-
+@router.post("/days/{day}/entries", status_code=status.HTTP_201_CREATED)
+def add_entry(day: calendar_date, entry: EntryIn, connection: Connection, user: User) -> dict:
+    """Log something into a date. Any valid date will do - there is no day to open first."""
     if entry.food_id is not None:
         owned_food(connection, user, entry.food_id)
     else:
@@ -476,8 +422,9 @@ def add_entry(day_id: str, entry: EntryIn, connection: Connection, user: User) -
 
     entry_id = new_id("entry")
     connection.execute(
-        "INSERT INTO entries (id, day_id, section, food_id, meal_id, quantity) VALUES (?, ?, ?, ?, ?, ?)",
-        (entry_id, day_id, entry.section, entry.food_id, entry.meal_id, entry.quantity),
+        "INSERT INTO entries (id, user_id, date, section, food_id, meal_id, quantity)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (entry_id, user, day.isoformat(), entry.section, entry.food_id, entry.meal_id, entry.quantity),
     )
     connection.commit()
 
@@ -486,13 +433,12 @@ def add_entry(day_id: str, entry: EntryIn, connection: Connection, user: User) -
     return {**entry_payload(row), "macros": {macro: row[macro] for macro in MACROS}}
 
 
-@router.delete("/days/{day_id}/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_entry(day_id: str, entry_id: str, connection: Connection, user: User) -> None:
+@router.delete("/days/{day}/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_entry(day: calendar_date, entry_id: str, connection: Connection, user: User) -> None:
     """Removing an entry is an edit of the day, not the deletion of a record, so no guard applies."""
-    owned_day(connection, user, day_id)
-
     found = connection.execute(
-        "SELECT id FROM entries WHERE id = ? AND day_id = ?", (entry_id, day_id)
+        "SELECT id FROM entries WHERE id = ? AND user_id = ? AND date = ?",
+        (entry_id, user, day.isoformat()),
     ).fetchone()
 
     if found is None:

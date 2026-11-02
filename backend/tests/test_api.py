@@ -81,8 +81,9 @@ def independent_day_macros(api: TestClient, day: dict) -> dict[str, float]:
     return total
 
 
-def today(api: TestClient) -> dict:
-    return api.get("/api/days").json()[0]
+def today(api: TestClient) -> str:
+    """The newest date in the log. Tests address a day by its date, as the API does."""
+    return api.get("/api/days").json()[0]["date"]
 
 
 # --- foods (P6.1, R4, R5, R7) -------------------------------------------------------------
@@ -170,39 +171,39 @@ def test_deleting_a_food_a_meal_uses_is_refused_and_names_the_meal(api: TestClie
 def test_deleting_a_food_a_day_logs_is_refused_and_names_the_day(api: TestClient) -> None:
     day = today(api)
     food = add_food(api, name="Logged food")
-    api.post(f"/api/days/{day['id']}/entries", json={"section": "lunch", "food_id": food["id"], "quantity": 1})
+    api.post(f"/api/days/{day}/entries", json={"section": "lunch", "food_id": food["id"], "quantity": 1})
 
     refusal = api.delete(f"/api/foods/{food['id']}")
 
     assert refusal.status_code == 409
     detail = refusal.json()["detail"]
     assert detail["usedBy"]["meals"] == []
-    assert detail["usedBy"]["days"] == [{"id": day["id"], "date": day["date"]}]
-    assert day["date"] in detail["message"]
+    assert detail["usedBy"]["days"] == [day]
+    assert day in detail["message"]
 
 
 def test_deleting_a_food_used_both_ways_names_both(api: TestClient) -> None:
     day = today(api)
     food = add_food(api, name="Busy food")
     api.post("/api/meals", json={"name": "Busy meal", "ingredients": [{"food_id": food["id"], "quantity": 1}]})
-    api.post(f"/api/days/{day['id']}/entries", json={"section": "snacks", "food_id": food["id"], "quantity": 1})
+    api.post(f"/api/days/{day}/entries", json={"section": "snacks", "food_id": food["id"], "quantity": 1})
 
     detail = api.delete(f"/api/foods/{food['id']}").json()["detail"]
 
     assert "Busy meal" in detail["message"]
-    assert day["date"] in detail["message"]
+    assert day in detail["message"]
     assert detail["usedBy"]["meals"] and detail["usedBy"]["days"]
 
 
 def test_deleting_a_meal_a_day_logs_is_refused_and_names_the_day(api: TestClient) -> None:
     day = today(api)
     meal = api.post("/api/meals", json={"name": "Logged meal", "ingredients": []}).json()
-    api.post(f"/api/days/{day['id']}/entries", json={"section": "dinner", "meal_id": meal["id"]})
+    api.post(f"/api/days/{day}/entries", json={"section": "dinner", "meal_id": meal["id"]})
 
     refusal = api.delete(f"/api/meals/{meal['id']}")
 
     assert refusal.status_code == 409
-    assert refusal.json()["detail"]["usedBy"]["days"] == [{"id": day["id"], "date": day["date"]}]
+    assert refusal.json()["detail"]["usedBy"]["days"] == [day]
 
 
 def test_an_unused_meal_can_be_deleted(api: TestClient) -> None:
@@ -290,7 +291,7 @@ def test_the_days_come_back_newest_first_with_their_figures(api: TestClient) -> 
     assert len(days) == 3
     assert [day["date"] for day in days] == sorted((day["date"] for day in days), reverse=True)
     for day in days:
-        body = api.get(f"/api/days/{day['id']}").json()
+        body = api.get(f"/api/days/{day['date']}").json()
         expected = independent_day_macros(api, body)
         for macro in MACROS:
             assert day["macros"][macro] == pytest.approx(expected[macro]), f"{day['date']} {macro}"
@@ -298,8 +299,9 @@ def test_the_days_come_back_newest_first_with_their_figures(api: TestClient) -> 
 
 def test_reading_a_day_gives_its_sections_entries_and_figures(api: TestClient) -> None:
     day = today(api)
-    body = api.get(f"/api/days/{day['id']}").json()
+    body = api.get(f"/api/days/{day}").json()
 
+    assert body["date"] == day
     assert set(body["sections"]) == set(SECTIONS)
     assert set(body["sectionMacros"]) == set(SECTIONS)
     assert set(body["macros"]) == set(MACROS)
@@ -320,48 +322,50 @@ def test_reading_a_day_gives_its_sections_entries_and_figures(api: TestClient) -
         )
 
 
-def test_an_unknown_day_is_404(api: TestClient) -> None:
-    assert api.get("/api/days/nope").status_code == 404
+def test_a_date_with_nothing_on_it_is_an_empty_day_not_a_404(api: TestClient) -> None:
+    """The point of the date being a column: an empty day needs nothing stored to exist."""
+    body = api.get("/api/days/2030-01-01")
 
-
-def test_opening_a_day_creates_it_once(api: TestClient) -> None:
-    """The seed made three days. Tomorrow has none, and nowhere to log would be a dead end."""
-    first = api.post("/api/days", json={"date": today(api)["date"]})
-    second = api.post("/api/days", json={"date": today(api)["date"]})
-
-    assert first.status_code == 200
-    assert first.json()["id"] == second.json()["id"]
-    assert len(api.get("/api/days").json()) == 3
-
-
-def test_a_day_beyond_the_seed_can_be_opened_and_logged(api: TestClient) -> None:
-    food = add_food(api, name="Tomorrow food", calories=200)
-
-    opened = api.post("/api/days", json={"date": "2030-01-01"})
-    assert opened.status_code == 200
-    assert opened.json()["date"] == "2030-01-01"
-    assert opened.json()["macros"]["calories"] == 0
-
-    api.post(f"/api/days/{opened.json()['id']}/entries", json={"section": "lunch", "food_id": food["id"], "quantity": 2})
-
-    listed = {day["id"]: day for day in api.get("/api/days").json()}
-    assert listed[opened.json()["id"]]["macros"]["calories"] == pytest.approx(400)
+    assert body.status_code == 200
+    assert body.json()["date"] == "2030-01-01"
+    assert body.json()["macros"]["calories"] == 0
+    assert all(entries == [] for entries in body.json()["sections"].values())
+    assert "2030-01-01" not in [day["date"] for day in api.get("/api/days").json()]
 
 
 def test_a_malformed_date_is_refused(api: TestClient) -> None:
-    assert api.post("/api/days", json={"date": "01/11/2026"}).status_code == 422
+    """FastAPI validates the date in the path, so a junk date never reaches the database."""
+    assert api.get("/api/days/01-11-2026").status_code == 422
+    assert api.get("/api/days/not-a-date").status_code == 422
+    assert api.post(
+        "/api/days/2026-02-31/entries", json={"section": "lunch", "food_id": "hummus", "quantity": 1}
+    ).status_code == 422
 
 
 # --- entries (R4, R6) ---------------------------------------------------------------------
 
 
+def test_logging_a_date_beyond_the_seed_needs_no_day_first(api: TestClient) -> None:
+    """This is the endpoint that used to exist: a day had to be created before it could be logged."""
+    food = add_food(api, name="Tomorrow food", calories=200)
+    assert "2030-01-01" not in [day["date"] for day in api.get("/api/days").json()]
+
+    created = api.post(
+        "/api/days/2030-01-01/entries", json={"section": "lunch", "food_id": food["id"], "quantity": 2}
+    )
+
+    assert created.status_code == 201
+    listed = {day["date"]: day for day in api.get("/api/days").json()}
+    assert listed["2030-01-01"]["macros"]["calories"] == pytest.approx(400)
+
+
 def test_adding_a_food_entry_moves_the_days_figures(api: TestClient) -> None:
     day = today(api)
-    before = api.get(f"/api/days/{day['id']}").json()
+    before = api.get(f"/api/days/{day}").json()
     food = add_food(api, name="Entry food", calories=100, protein=10, carbs=20, fat=5)
 
     created = api.post(
-        f"/api/days/{day['id']}/entries",
+        f"/api/days/{day}/entries",
         json={"section": "lunch", "food_id": food["id"], "quantity": 2},
     )
 
@@ -370,7 +374,7 @@ def test_adding_a_food_entry_moves_the_days_figures(api: TestClient) -> None:
     assert body["kind"] == "food" and body["quantity"] == 2 and body["foodId"] == food["id"]
     assert body["macros"]["calories"] == pytest.approx(200)
 
-    after = api.get(f"/api/days/{day['id']}").json()
+    after = api.get(f"/api/days/{day}").json()
     assert after["macros"]["calories"] == pytest.approx(before["macros"]["calories"] + 200)
     assert after["macros"]["protein"] == pytest.approx(before["macros"]["protein"] + 20)
     assert after["sectionMacros"]["lunch"]["calories"] == pytest.approx(
@@ -383,15 +387,15 @@ def test_adding_a_food_entry_moves_the_days_figures(api: TestClient) -> None:
 def test_adding_a_meal_entry_contributes_the_meals_figures(api: TestClient) -> None:
     day = today(api)
     meal = {meal["name"]: meal for meal in api.get("/api/meals").json()}["Post-workout shake"]
-    before = api.get(f"/api/days/{day['id']}").json()["macros"]
-    before_snacks = api.get(f"/api/days/{day['id']}").json()["sectionMacros"]["snacks"]["calories"]
+    before = api.get(f"/api/days/{day}").json()
+    before_snacks = before["sectionMacros"]["snacks"]["calories"]
 
-    created = api.post(f"/api/days/{day['id']}/entries", json={"section": "snacks", "meal_id": meal["id"]})
+    created = api.post(f"/api/days/{day}/entries", json={"section": "snacks", "meal_id": meal["id"]})
 
     assert created.status_code == 201
     assert created.json()["kind"] == "meal"
-    after = api.get(f"/api/days/{day['id']}").json()
-    assert after["macros"]["calories"] == pytest.approx(before["calories"] + meal["macros"]["calories"])
+    after = api.get(f"/api/days/{day}").json()
+    assert after["macros"]["calories"] == pytest.approx(before["macros"]["calories"] + meal["macros"]["calories"])
     assert after["sectionMacros"]["snacks"]["calories"] == pytest.approx(
         before_snacks + meal["macros"]["calories"]
     )
@@ -399,15 +403,15 @@ def test_adding_a_meal_entry_contributes_the_meals_figures(api: TestClient) -> N
 
 def test_removing_an_entry_puts_the_figures_back(api: TestClient) -> None:
     day = today(api)
-    before = api.get(f"/api/days/{day['id']}").json()["macros"]
+    before = api.get(f"/api/days/{day}").json()["macros"]
     food = add_food(api, calories=150)
     entry = api.post(
-        f"/api/days/{day['id']}/entries", json={"section": "dinner", "food_id": food["id"], "quantity": 1}
+        f"/api/days/{day}/entries", json={"section": "dinner", "food_id": food["id"], "quantity": 1}
     ).json()
 
-    assert api.delete(f"/api/days/{day['id']}/entries/{entry['id']}").status_code == 204
+    assert api.delete(f"/api/days/{day}/entries/{entry['id']}").status_code == 204
 
-    after = api.get(f"/api/days/{day['id']}").json()
+    after = api.get(f"/api/days/{day}").json()
     assert after["macros"]["calories"] == pytest.approx(before["calories"])
 
 
@@ -425,28 +429,44 @@ def test_removing_an_entry_puts_the_figures_back(api: TestClient) -> None:
 def test_a_malformed_entry_is_refused(api: TestClient, body: dict) -> None:
     day = today(api)
 
-    assert api.post(f"/api/days/{day['id']}/entries", json=body).status_code == 422
+    assert api.post(f"/api/days/{day}/entries", json=body).status_code == 422
 
 
-def test_an_entry_on_an_unknown_day_is_404(api: TestClient) -> None:
-    response = api.post("/api/days/nope/entries", json={"section": "lunch", "food_id": "hummus", "quantity": 1})
+def test_an_entry_on_a_date_with_nothing_on_it_is_accepted(api: TestClient) -> None:
+    """There is no "unknown day" any more: a valid date is loggable, empty or not."""
+    response = api.post(
+        "/api/days/2030-06-01/entries", json={"section": "lunch", "food_id": "hummus", "quantity": 1}
+    )
 
-    assert response.status_code == 404
+    assert response.status_code == 201
+    assert api.get("/api/days/2030-06-01").json()["sections"]["lunch"]
 
 
 def test_an_entry_with_an_unknown_food_or_meal_is_404(api: TestClient) -> None:
     day = today(api)
 
     assert api.post(
-        f"/api/days/{day['id']}/entries", json={"section": "lunch", "food_id": "nope", "quantity": 1}
+        f"/api/days/{day}/entries", json={"section": "lunch", "food_id": "nope", "quantity": 1}
     ).status_code == 404
-    assert api.post(f"/api/days/{day['id']}/entries", json={"section": "lunch", "meal_id": "nope"}).status_code == 404
+    assert api.post(f"/api/days/{day}/entries", json={"section": "lunch", "meal_id": "nope"}).status_code == 404
 
 
 def test_removing_an_unknown_entry_is_404(api: TestClient) -> None:
     day = today(api)
 
-    assert api.delete(f"/api/days/{day['id']}/entries/nope").status_code == 404
+    assert api.delete(f"/api/days/{day}/entries/nope").status_code == 404
+
+
+def test_an_entry_cannot_be_removed_from_the_wrong_date(api: TestClient) -> None:
+    """The entry exists, but not on that date, so it is not found there."""
+    food = add_food(api)
+    entry = api.post(
+        f"/api/days/{today(api)}/entries",
+        json={"section": "lunch", "food_id": food["id"], "quantity": 1},
+    ).json()
+
+    assert api.delete(f"/api/days/2030-01-01/entries/{entry['id']}").status_code == 404
+    assert api.delete(f"/api/days/{today(api)}/entries/{entry['id']}").status_code == 204
 
 
 # --- P6.3: one user cannot see or touch another's data -------------------------------------
@@ -467,48 +487,59 @@ def someone_else(api: TestClient) -> dict:
             " VALUES ('their-mf', 'their-meal', 'their-food', 1)"
         )
         connection.execute(
-            "INSERT INTO days (id, user_id, date) VALUES ('their-day', 'someone-else', '2020-02-02')"
-        )
-        connection.execute(
-            "INSERT INTO entries (id, day_id, section, food_id, quantity)"
-            " VALUES ('their-entry', 'their-day', 'lunch', 'their-food', 1)"
+            "INSERT INTO entries (id, user_id, date, section, food_id, quantity)"
+            " VALUES ('their-entry', 'someone-else', '2020-02-02', 'lunch', 'their-food', 1)"
         )
         connection.commit()
 
-    return {"food": "their-food", "meal": "their-meal", "day": "their-day", "entry": "their-entry"}
+    return {"food": "their-food", "meal": "their-meal", "date": "2020-02-02", "entry": "their-entry"}
 
 
 def test_another_users_records_are_never_listed(api: TestClient, someone_else: dict) -> None:
     assert someone_else["food"] not in [food["id"] for food in api.get("/api/foods").json()]
     assert someone_else["meal"] not in meals_by_id(api)
-    assert someone_else["day"] not in [day["id"] for day in api.get("/api/days").json()]
-    assert api.get("/api/foods").json() and len(api.get("/api/foods").json()) == 31
+    assert someone_else["date"] not in [day["date"] for day in api.get("/api/days").json()]
+    assert len(api.get("/api/foods").json()) == 31
 
 
 def test_another_users_record_is_404_not_403(api: TestClient, someone_else: dict) -> None:
     """403 would confirm the record exists. 404 says nothing either way."""
-    assert api.get(f"/api/days/{someone_else['day']}").status_code == 404
     assert api.put(f"/api/foods/{someone_else['food']}", json=food_body()).status_code == 404
     assert api.delete(f"/api/foods/{someone_else['food']}").status_code == 404
     assert api.delete(f"/api/meals/{someone_else['meal']}").status_code == 404
 
 
-def test_another_users_day_cannot_be_written_to(api: TestClient, someone_else: dict) -> None:
-    response = api.post(
-        f"/api/days/{someone_else['day']}/entries",
-        json={"section": "lunch", "food_id": "hummus", "quantity": 1},
+def test_another_users_date_reads_as_empty_not_as_theirs(api: TestClient, someone_else: dict) -> None:
+    """Their date is a valid date, so it answers - with nothing of theirs in it."""
+    body = api.get(f"/api/days/{someone_else['date']}").json()
+
+    assert body["date"] == someone_else["date"]
+    assert body["macros"]["calories"] == 0
+    assert all(entries == [] for entries in body["sections"].values())
+
+
+def test_two_users_can_log_the_same_date_without_seeing_each_other(api: TestClient, someone_else: dict) -> None:
+    """The same calendar day for both, and neither sees the other's row."""
+    food = add_food(api, calories=111)
+    api.post(
+        f"/api/days/{someone_else['date']}/entries",
+        json={"section": "dinner", "food_id": food["id"], "quantity": 1},
     )
 
-    assert response.status_code == 404
+    mine = api.get(f"/api/days/{someone_else['date']}").json()
 
+    assert mine["macros"]["calories"] == pytest.approx(111)
+    assert len(mine["sections"]["lunch"]) == 0
     with db.connect() as connection:
-        their_entries = connection.execute(
-            "SELECT count(*) FROM entries WHERE day_id = 'their-day'"
-        ).fetchone()[0]
-
-    assert their_entries == 1
+        theirs = connection.execute("SELECT count(*) FROM entries WHERE user_id = 'someone-else'").fetchone()[0]
+    assert theirs == 1
 
 
 def test_another_users_entry_cannot_be_removed(api: TestClient, someone_else: dict) -> None:
-    """The entry is theirs, but the day named in the path is not, so the route refuses first."""
-    assert api.delete(f"/api/days/{someone_else['day']}/entries/{someone_else['entry']}").status_code == 404
+    """The entry is theirs, so as far as I am concerned it does not exist."""
+    assert api.delete(f"/api/days/{someone_else['date']}/entries/{someone_else['entry']}").status_code == 404
+
+    with db.connect() as connection:
+        theirs = connection.execute("SELECT count(*) FROM entries WHERE id = 'their-entry'").fetchone()[0]
+
+    assert theirs == 1

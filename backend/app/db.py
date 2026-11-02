@@ -4,6 +4,10 @@ The schema is defined here rather than read from docs/schema.json, because the i
 does not carry the docs directory. That JSON is the proposal this was built from, and a
 test asserts the two still describe the same tables.
 
+A day is not a table. It is the date on an entry: a day of the log is the entries sharing a
+date, so the date lives where the fact is recorded rather than in a row that has to be
+created before anything can be logged into it.
+
 Nothing cascades: every reference is ON DELETE RESTRICT, which is the storage-level half
 of R11. The API checks first so it can name what still uses a record; this is the backstop
 that holds even when a route forgets to.
@@ -14,11 +18,21 @@ import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
-SCHEMA_VERSION = "1"
+# Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
+# different version is refused rather than misread, because there is no migration framework.
+SCHEMA_VERSION = "2"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
 
+META = """
+    CREATE TABLE IF NOT EXISTS meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+    """
+
 SCHEMA = (
+    META,
     """
     CREATE TABLE IF NOT EXISTS users (
         id       TEXT PRIMARY KEY,
@@ -57,17 +71,10 @@ SCHEMA = (
     "CREATE INDEX IF NOT EXISTS meal_foods_by_meal ON meal_foods (meal_id)",
     "CREATE INDEX IF NOT EXISTS meal_foods_by_food ON meal_foods (food_id)",
     """
-    CREATE TABLE IF NOT EXISTS days (
-        id      TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
-        date    TEXT NOT NULL CHECK (strftime('%Y-%m-%d', date) IS date),
-        UNIQUE (user_id, date)
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS entries (
         id       TEXT PRIMARY KEY,
-        day_id   TEXT NOT NULL REFERENCES days (id) ON DELETE RESTRICT,
+        user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
+        date     TEXT NOT NULL CHECK (strftime('%Y-%m-%d', date) IS date),
         section  TEXT NOT NULL CHECK (section IN ('breakfast', 'lunch', 'dinner', 'snacks')),
         food_id  TEXT REFERENCES foods (id) ON DELETE RESTRICT,
         meal_id  TEXT REFERENCES meals (id) ON DELETE RESTRICT,
@@ -77,19 +84,14 @@ SCHEMA = (
         CHECK (quantity IS NULL OR quantity > 0)
     )
     """,
-    "CREATE INDEX IF NOT EXISTS entries_by_day ON entries (day_id)",
+    "CREATE INDEX IF NOT EXISTS entries_by_user_date ON entries (user_id, date)",
     "CREATE INDEX IF NOT EXISTS entries_by_food ON entries (food_id)",
     "CREATE INDEX IF NOT EXISTS entries_by_meal ON entries (meal_id)",
-    """
-    CREATE TABLE IF NOT EXISTS meta (
-        key   TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-    )
-    """,
 )
 
-# The sample the frontend used to ship: 31 foods, 5 meals, 3 days. Macros are per one
-# unit. It lives here now because the backend is what writes it (see docs/DATABASE.md).
+# The sample the frontend used to ship: 31 foods, 5 meals, and 17 entries falling on 3 dates.
+# Macros are per one unit. It lives here now because the backend is what writes it
+# (see docs/DATABASE.md).
 SEED_FOODS = (
     ("oats", "Rolled oats, dry", "cup", 300, 10, 54, 6),
     ("whole-milk", "Whole milk", "cup", 149, 8, 12, 8),
@@ -176,19 +178,30 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
 
 
 def create_schema(connection: sqlite3.Connection) -> None:
-    """Create what is missing, and record the schema version the file is written to."""
+    """Refuse a file written to another schema version, then create what is missing.
+
+    The version is checked **before** the rest of the DDL, and that order matters: these statements
+    assume this version's shape, so running them against an older file fails with a raw sqlite error
+    about a missing column - which is exactly the confusing failure the version row exists to avoid.
+    Found by running it: dropping the days table made an existing file fail on `no such column:
+    user_id` from a CREATE INDEX, with the version check never reached.
+    """
+    connection.execute(META)
+    recorded = connection.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+
+    if recorded is not None and recorded["value"] != SCHEMA_VERSION:
+        raise SchemaVersionError(
+            f"the database file is written to schema version {recorded['value']}, and this build "
+            f"expects {SCHEMA_VERSION}. There is no migration: start a new file by removing the old "
+            f"one (docker compose down -v removes the volume), or point NUTRITION_DB elsewhere."
+        )
+
     for statement in SCHEMA:
         connection.execute(statement)
 
-    recorded = connection.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
-
     if recorded is None:
-        connection.execute("INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (SCHEMA_VERSION,))
-        return
-
-    if recorded["value"] != SCHEMA_VERSION:
-        raise SchemaVersionError(
-            f"the database is schema version {recorded['value']}, this build expects {SCHEMA_VERSION}"
+        connection.execute(
+            "INSERT INTO meta (key, value) VALUES ('schema_version', ?)", (SCHEMA_VERSION,)
         )
 
 
@@ -228,15 +241,12 @@ def seed(connection: sqlite3.Connection, today: date) -> bool:
     dates = {days_back: today - timedelta(days=days_back) for days_back in (0, 1, 2)}
 
     connection.executemany(
-        "INSERT INTO days (id, user_id, date) VALUES (?, ?, ?)",
-        [(day.isoformat(), SEED_USER_ID, day.isoformat()) for day in dates.values()],
-    )
-
-    connection.executemany(
-        "INSERT INTO entries (id, day_id, section, food_id, meal_id, quantity) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO entries (id, user_id, date, section, food_id, meal_id, quantity)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 entry_id,
+                SEED_USER_ID,
                 dates[days_back].isoformat(),
                 section,
                 what if kind == "food" else None,

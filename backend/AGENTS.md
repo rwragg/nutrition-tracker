@@ -13,7 +13,7 @@ Part 7.
 - `app/auth.py` - sign-in and the guard: `CREDENTIALS`, the session secret, `POST /api/login`,
   `POST /api/logout`, `GET /api/session`, and `current_user` - the dependency every protected route takes
   to get the user id or a 401 (R2).
-- `app/api.py` - the nutrition routes. Thirteen of them: foods and meals CRUD, the days, and the entries.
+- `app/api.py` - the nutrition routes. Twelve of them: foods and meals CRUD, and the dates and entries.
 - `app/db.py` - the schema, the connection settings and the first-run seed. Read `docs/DATABASE.md` for
   the reasoning; `docs/schema.json` is the approved proposal, and a test asserts the two still describe
   the same tables, so the document cannot drift from what runs.
@@ -25,9 +25,10 @@ Part 7.
   - so Part 7 can change where the data comes from without changing its shape.
 - **Every route is scoped to the signed-in user** (R2). A record belonging to someone else answers **404,
   not 403**: a 403 would confirm that it exists.
-- **`POST /api/days` opens the day for a date**, creating it the first time. The seed can only make the
-  days it was seeded with, so without this there is no day for *today* a day later and nowhere to log
-  (R4). Idempotent.
+- **A day is a date, not an id** (D11). `GET /api/days` lists the dates that have entries; `GET
+  /api/days/{date}` returns a date's log, and a date with nothing on it is an **empty day, not a 404**;
+  `POST /api/days/{date}/entries` logs into any valid date with nothing to open first. FastAPI validates
+  the date in the path, so a junk date is a 422 before it reaches the database.
 - **The two delete guards check before deleting** so the refusal can name what still uses the record
   (R11), as a 409 whose detail carries both a human message and structured `usedBy` lists. The foreign key
   is the backstop. Removing an *entry* is an edit of the day, not a delete of a record, so no guard meets

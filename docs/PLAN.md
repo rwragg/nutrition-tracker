@@ -86,7 +86,14 @@ From `AGENTS.md`. R-numbers are assignment order, not reading order. Each is own
   NOT the Next.js you know" block at the top of that file; our description of the code is added around
   it, and the generated block is committed as-is — deleting it only recreates an uncommitted change.
 - **D10 — Planning documents live in `docs/`.** The `PLAN.md` at the project root predates this
-  document and is left untouched; it is not an input to any part here.
+  document and is left untouched; it is not an input to any part here. *(It now carries a superseded
+  banner pointing here, because it is a trap for anyone who reads it as current.)*
+- **D11 — A day is a column, not a table.** Decided in Part 6, at Robert's question, after the schema
+  had been approved and built with a `days` table. An entry carries its own `date` (and its own
+  `user_id`). A day of the log is the entries sharing a date; a date with nothing on it reads as an
+  empty day rather than a 404; no row has to be created before anything can be logged. The cost is a
+  stored empty day and a home for day-level facts, neither of which any requirement asks for, and both
+  recoverable later with a side table joined on the date. The schema version went 1 to 2.
 
 ## Part 1 — Plan · **in review**
 
@@ -291,7 +298,9 @@ verified:
 - **P5.2** creating the database from nothing works: a missing file becomes all seven tables and all
   seven indexes, the version row is written, and the seed fills it — 31 foods, 5 meals, 19 meal
   ingredients, 3 days, 17 entries, dated today and the two days before. Opening it again re-seeds
-  nothing.
+  nothing. *(Revised 2026-11-01: the `days` table was dropped — a day is the date on an entry. Six
+  tables now, and the seed's three days are the three dates its entries fall on. See Part 6's status
+  and `docs/DATABASE.md`.)*
 - **P5.3** R11's guard exists at the storage layer: with `PRAGMA foreign_keys = ON`, deleting a food a
   meal uses, a food a day logs, or a meal a day logs each raise; deleting a food nothing references is
   allowed. Asserted directly against the database, with nothing above it checking.
@@ -350,22 +359,26 @@ in Python from the raw records — a meal's figures from its ingredients, a day'
 ingredients — never from the API's own arithmetic. The arithmetic under test is SQL joins; Python is
 the independent check.
 
-**One requirement this part had to add.** The plan's substeps had no way to create a day. The seed
-makes three days, dated when it first ran, so a day later there is no day for *today* and R4 — log
-your meals — becomes impossible. `POST /api/days` opens the day for a date, creating it if this is
-the first time and returning the existing one if not. Without it, Part 7 would have been wiring the
-frontend onto an API that could not log today's lunch.
+**One requirement this part had to add, and one it then removed.** The plan's substeps had no way to
+create a day, and the seed can only make the days it was seeded with, so a day later there was no day
+for *today* and R4 — log your meals — would have been impossible. `POST /api/days` was added to open a
+day on demand. Then Robert asked whether a day should just be a column, and the answer was yes: the
+`days` table was dropped, the date moved onto the entry, and with it `POST /api/days` disappeared
+entirely. A day is now the entries sharing a date, an empty date reads as an empty day rather than a
+404, and logging any date needs nothing opened first. See `docs/DATABASE.md` for the full reasoning and
+what it cost. The schema version went 1 to 2 with the change, so an existing file is refused rather than
+misread.
 
 **Two routes carry deliberate choices worth knowing.** `/api/hello` (the Part 2 demonstration route)
 is retired now that real routes exist; another user's record answers 404, not 403, because a 403
 would confirm that the record exists.
 
 **Verified in the running container over HTTP**, not only in the unit suite: signed out the API
-refuses; signed in it lists 31 foods, 5 meals and 3 days; a food logged for 2 cups moved the day by
-exactly 200 kcal and 20 g protein and the lunch section with it; deleting the food while the day used
-it gave 409 naming the date; removing the entry gave the food back and the day back to its earlier
-figure; a date beyond the seed opened a new empty day, twice, as the same day; and signing out closed
-the API again.
+refuses; signed in it lists 31 foods, 5 meals and the 3 seeded dates; a food logged for 2 cups moved the
+day by exactly 200 kcal and 20 g protein and the lunch section with it; deleting the food while the day
+used it gave 409 naming the date; removing the entry gave the food back and the day back to its earlier
+figure; a date with nothing on it read as an empty day and then accepted an entry; and signing out
+closed the API again.
 
 ## Part 7 — Frontend + Backend · **persistence lands here**
 

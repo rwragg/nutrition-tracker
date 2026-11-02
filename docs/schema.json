@@ -1,8 +1,8 @@
 {
   "name": "nutrition-tracker",
-  "status": "proposed - awaiting Robert's sign-off (P5.1, P5.4)",
+  "status": "approved by Robert 2026-11-01, and implemented. One revision since: the days table was dropped the same day - a day is the date on an entry, not a row of its own (see not_in_this_schema).",
   "engine": "sqlite",
-  "schema_version": 1,
+  "schema_version": 2,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -69,22 +69,12 @@
       "not_constrained": "No unique (meal_id, food_id): the meal builder lets the same food be added twice, and forbidding it here would reject a form that the UI accepted."
     },
     {
-      "name": "days",
-      "purpose": "One row per calendar day of log. Its date is the identity that matters: 'today' is looked up by date, not by position.",
-      "columns": [
-        { "name": "id", "type": "TEXT", "nullable": false, "notes": "The seeded days use their ISO date as the id, as the frontend does today." },
-        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT" },
-        { "name": "date", "type": "TEXT", "nullable": false, "check": "a real ISO date", "notes": "Validated with strftime, which normalises an impossible date like 2026-02-31 and so fails the check. The comparison is IS rather than = on purpose: strftime returns NULL for a string it cannot parse, and SQLite treats a CHECK that evaluates to NULL as passing, so = would let a malformed date through. Verified by running it." }
-      ],
-      "primary_key": ["id"],
-      "unique": [{ "name": "one_day_per_user_per_date", "columns": ["user_id", "date"] }]
-    },
-    {
       "name": "entries",
-      "purpose": "One thing logged into one section of one day: a food with a quantity, or a whole meal. This is the only table the frontend's LogEntry maps to.",
+      "purpose": "One thing logged into one section of one date: a food with a quantity, or a whole meal. This is the only table the frontend's LogEntry maps to. It carries its own date and its own user, so a day of the log is a query over this table rather than a row that had to exist first.",
       "columns": [
         { "name": "id", "type": "TEXT", "nullable": false },
-        { "name": "day_id", "type": "TEXT", "nullable": false, "references": "days(id) ON DELETE RESTRICT" },
+        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT", "notes": "The entry records whose log it is directly, so every read can be scoped without a join and the isolation rule from R2 is a column rather than a path through two tables." },
+        { "name": "date", "type": "TEXT", "nullable": false, "check": "a real ISO date", "notes": "Validated with strftime, which normalises an impossible date like 2026-02-31 and so fails the check. The comparison is IS rather than = on purpose: strftime returns NULL for a string it cannot parse, and SQLite treats a CHECK that evaluates to NULL as passing, so = would let a malformed date through. Verified by running it." },
         { "name": "section", "type": "TEXT", "nullable": false, "check": "breakfast, lunch, dinner or snacks" },
         { "name": "food_id", "type": "TEXT", "nullable": true, "references": "foods(id) ON DELETE RESTRICT" },
         { "name": "meal_id", "type": "TEXT", "nullable": true, "references": "meals(id) ON DELETE RESTRICT" },
@@ -97,7 +87,7 @@
         { "rule": "quantity IS NULL OR quantity > 0", "why": "No zero-quantity entries." }
       ],
       "indexes": [
-        { "name": "entries_by_day", "columns": ["day_id"] },
+        { "name": "entries_by_user_date", "columns": ["user_id", "date"], "notes": "Every day view is this pair." },
         { "name": "entries_by_food", "columns": ["food_id"] },
         { "name": "entries_by_meal", "columns": ["meal_id"] }
       ],
@@ -111,7 +101,7 @@
         { "name": "value", "type": "TEXT", "nullable": false }
       ],
       "primary_key": ["key"],
-      "rows": [{ "key": "schema_version", "value": "1" }]
+      "rows": [{ "key": "schema_version", "value": "2" }]
     }
   ],
   "ddl": [
@@ -123,9 +113,8 @@
     "CREATE TABLE meal_foods (\n    id       TEXT PRIMARY KEY,\n    meal_id  TEXT NOT NULL REFERENCES meals (id) ON DELETE RESTRICT,\n    food_id  TEXT NOT NULL REFERENCES foods (id) ON DELETE RESTRICT,\n    quantity REAL NOT NULL CHECK (quantity > 0)\n)",
     "CREATE INDEX meal_foods_by_meal ON meal_foods (meal_id)",
     "CREATE INDEX meal_foods_by_food ON meal_foods (food_id)",
-    "CREATE TABLE days (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    date    TEXT NOT NULL CHECK (strftime('%Y-%m-%d', date) IS date),\n    UNIQUE (user_id, date)\n)",
-    "CREATE TABLE entries (\n    id       TEXT PRIMARY KEY,\n    day_id   TEXT NOT NULL REFERENCES days (id) ON DELETE RESTRICT,\n    section  TEXT NOT NULL CHECK (section IN ('breakfast', 'lunch', 'dinner', 'snacks')),\n    food_id  TEXT REFERENCES foods (id) ON DELETE RESTRICT,\n    meal_id  TEXT REFERENCES meals (id) ON DELETE RESTRICT,\n    quantity REAL,\n    CHECK ((food_id IS NOT NULL) + (meal_id IS NOT NULL) = 1),\n    CHECK ((food_id IS NULL) = (quantity IS NULL)),\n    CHECK (quantity IS NULL OR quantity > 0)\n)",
-    "CREATE INDEX entries_by_day ON entries (day_id)",
+    "CREATE TABLE entries (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    date     TEXT NOT NULL CHECK (strftime('%Y-%m-%d', date) IS date),\n    section  TEXT NOT NULL CHECK (section IN ('breakfast', 'lunch', 'dinner', 'snacks')),\n    food_id  TEXT REFERENCES foods (id) ON DELETE RESTRICT,\n    meal_id  TEXT REFERENCES meals (id) ON DELETE RESTRICT,\n    quantity REAL,\n    CHECK ((food_id IS NOT NULL) + (meal_id IS NOT NULL) = 1),\n    CHECK ((food_id IS NULL) = (quantity IS NULL)),\n    CHECK (quantity IS NULL OR quantity > 0)\n)",
+    "CREATE INDEX entries_by_user_date ON entries (user_id, date)",
     "CREATE INDEX entries_by_food ON entries (food_id)",
     "CREATE INDEX entries_by_meal ON entries (meal_id)",
     "CREATE TABLE meta (\n    key   TEXT PRIMARY KEY,\n    value TEXT NOT NULL\n)"
@@ -134,29 +123,28 @@
     "rule": "Nothing cascades. Every reference is ON DELETE RESTRICT, so the database itself refuses to break a reference (R11).",
     "why_both_layers": "The refusal a person sees has to name what still uses the record ('used in 2 meals (Typical breakfast, Pasta night)'), which is a query, not an error message. So the API checks first and explains; the foreign key is the backstop that holds even if a route forgets to check.",
     "reported_by": [
-      { "record": "food", "must_name": "the meals that use it, and the days that log it directly" },
-      { "record": "meal", "must_name": "the days that log it" }
+      { "record": "food", "must_name": "the meals that use it, and the dates that log it directly" },
+      { "record": "meal", "must_name": "the dates that log it" }
     ],
-    "not_deletable_in_the_mvp": ["days", "entries", "users"],
-    "note": "The app removes an entry (that is an entry/remove, not a delete of a record), but no route deletes a day or a user. Their references are RESTRICT anyway."
+    "not_deletable_in_the_mvp": ["entries", "users"],
+    "note": "The app removes an entry (that is an entry/remove, not a delete of a record), but no route deletes a user. Its references are RESTRICT anyway. There is no longer a day to delete: emptying a date is deleting its entries."
   },
   "seed": {
     "when": "Only when the database is empty - no rows in users. Checked before inserting anything, so a restart or a rebuild never re-seeds or duplicates.",
-    "what": "The same sample the frontend ships today: 31 foods, 5 meals, and 3 days (today, yesterday, the day before), for the MVP user.",
+    "what": "The same sample the frontend ships today: 31 foods, 5 meals, and 17 entries falling on 3 dates (today, yesterday, the day before), for the MVP user.",
     "whose": "user 'user', the only account the MVP signs in to.",
     "source_of_truth": "This moves to the backend, because the backend is what writes it. The frontend's lib/seed.ts stops being the source of the data and is retired in Part 7; the tests that compute expectations from it are re-pointed at the API then.",
-    "dates": "The three days are relative to the date of first run, as they are now. They do not re-date themselves later, so the seeded history ages."
+    "dates": "The three dates are relative to the date of first run, as they are now. They do not re-date themselves later, so the seeded history ages."
   },
   "not_in_this_schema": [
+    { "omitted": "a days table", "why": "Dropped on 2026-11-01, after the schema had been approved and built. A day of the log is the entries sharing a date, so a table holding it was a second home for the same fact - and a row that had to be created before anything could be logged into it, which is why an endpoint to open a day had to be invented in Part 6. With the date on the entry, logging any date works, a date with nothing on it reads as an empty day, and there is no 'no such day' to answer. What is given up: a stored empty day, and a place for facts about a day rather than about an entry. Neither is needed by any requirement; if one becomes needed, a small days(user_id, date) side table can hold it and be joined on the date, without touching entries." },
     { "omitted": "targets (2,200 kcal / 140 g protein / 250 g carbs / 70 g fat)", "why": "R10 and R17 say one place, frontend/lib/targets.ts. Nothing stores them yet, and the API returns sums, not judgements, so the frontend keeps comparing against them." },
     { "omitted": "created_at / updated_at", "why": "Nothing reads them. Add them when something does." },
-    { "omitted": "migrations", "why": "One version, created if absent, and a meta row that names it. A schema change before release means deleting the file; after release it means a migration, and that is a decision to take then rather than machinery to build now." },
+    { "omitted": "migrations", "why": "One version, created if absent, and a meta row that names it. A schema change before release means deleting the file; after release it means a migration, and that is a decision to take then rather than machinery to build now. The version went 1 to 2 when the days table was dropped, so a file written by the old shape is refused rather than misread." },
     { "omitted": "passwords and sessions", "why": "The MVP credential is a constant in the application (R1), and the session lives in a signed cookie. Neither is data." }
   ],
   "open_questions_for_sign_off": [
-    "Is TEXT id for every table acceptable, rather than integer keys? The seeded slugs ('hummus', 'post-workout-shake', and ISO dates for days) survive into the database, which is what the frontend's tests currently expect - the alternative is integers everywhere and a re-pointed test suite.",
-    "Is the meta table worth its one row, or is checking whether users is empty enough on its own?",
-    "The database file lives at /data/nutrition.db in a named volume so a rebuild does not wipe the log. Confirm that is where you want it.",
+    "Answered 2026-11-01: TEXT ids everywhere, the meta row stays, the file lives at /data/nutrition.db in a named volume, and targets stay out of the database.",
     "Should targets become per user later? Nothing in the schema stops it, and nothing in the schema does it."
   ]
 }
