@@ -76,9 +76,9 @@ gets a hint, not a guess), no editing of foods or meals, no voice, no photo meal
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 197 tests: routes, schema, guards, isolation, accounts, linking, the bot, and the container
+cd backend && uv run pytest          # 240 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 78 unit and component tests
+npm test                             # 84 unit and component tests
 npm run test:e2e                     # 24 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back

@@ -666,6 +666,28 @@ The only single-user thing in the application is `CREDENTIALS = {"user": "passwo
   in the chat with credentials typed into Telegram. The second puts a password into a chat history,
   which is reason enough to prefer the first.
 
+**Decisions taken 2026-11-02, after the code review (Robert):**
+
+- **D19 — a model is allowed, for Part 10 only.** D2 held for the MVP and still holds for the web app's
+  own screens. For the chat front end, a model may turn dictated or typed text into structured items
+  (food, quantity, unit, section). It never writes: the app validates every field against the person's
+  own foods and the known units, and **nothing is logged until the person confirms** (a button, not a
+  guess). Transcribed speech is wrong often enough that an unconfirmed write is not acceptable.
+- **D20 — USDA FoodData Central is the source for foods the catalogue lacks.** When a name is not found
+  the app searches USDA, offers up to three candidates with their figures, and on a pick creates the food
+  in that person's catalogue and logs the entry. USDA figures are per 100 g, so they are stored on the gram
+  basis (D13). A model's own estimate of nutrition values is **not** a source: it produces plausible
+  numbers that may be wrong, and they would be logged as if measured. The model may help *choose among*
+  USDA candidates; it does not supply figures. Needs a `source` column on foods (schema 5 to 6).
+- **D21 — the key is Robert's, held by the app.** One model key and one USDA key, in the app's
+  environment (never the bot's, never the image), with limits so one account cannot spend them: a
+  per-account daily cap on model calls and on lookups, on top of `app/ratelimit.py`, and a spend cap set
+  at the provider. The model sees only the text of a message and the names of that person's foods.
+  Consequence to state to users: their messages go to a third party.
+
+**Still open:** D16 (what transcribes a voice note - with a key held centrally a cloud speech-to-text is
+now possible as well as local whisper.cpp), D17 (what the email is for), and how many people this is for.
+
 **Open questions this draft raises rather than answers:**
 
 - **R12 says no search and no filter.** With one person and 31 seeded foods that is a discipline; with
@@ -698,9 +720,8 @@ work) rather than by the code. Nothing here is research; it is all work whose sh
 approves, amends or drops it before anything is built, and if it is approved it is built one numbered
 step at a time, each stopping for approval as every part before it has.
 
-**Note for whoever builds step 3:** it is not to be delegated to Claude Code, which Robert has scoped to
-the Hermes bot's own work — its skills, plugins and configuration — and not to this repository
-(2026-11-02).
+**Note for whoever builds step 3:** Claude Code may work on this repository (Robert, 2026-11-02, reversing
+an earlier instruction that scoped it to the Hermes bot's own work). `CLAUDE.md` is its entry point.
 
 ### Status — step 2 built, 2026-11-02
 

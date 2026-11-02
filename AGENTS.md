@@ -3,7 +3,7 @@
 ## Business Requirements
 
 - A user can sign in
-- New users will register with a telegram id and an email
+- New users will register with a username, an email and a password. A telegram chat is linked to the account afterwards, by a code the app shows and the chat sends back (a chat id typed into the registration form would be an unverified claim to someone else's chat)
 - When signed in the user can only see their information
 - An MVP of a Nutrition Tracker application as a web app  
 - The web app should be able to log daily meals
@@ -37,7 +37,7 @@ For the MVP, this will run locally (in a docker container)
 - Python FastAPI backend, including serving the static NextJS site at /
 - Everything packaged into a Docker container
 - Use "uv" as the package manager for python in the Docker container
-- AI is out of scope for this MVP: no OpenRouter call, no API key.
+- AI is out of scope for the MVP's own screens: no OpenRouter call, no API key there. Part 10 (docs/PLAN.md, D19-D21) admits a model for the chat front end only, behind a confirmation step, with the key held by the app.
 - Use SQLLite local database for the database, creating a new db if it doesn't exist
 - Start and Stop server scripts for Mac, PC, Linux in scripts/
 

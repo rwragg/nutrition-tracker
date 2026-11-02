@@ -13,7 +13,7 @@ Parts 1–8 are the finished MVP and `docs/COMPLETION-REPORT.md` carries every c
 with its evidence. Part 9 is the Telegram front end plus the gram basis and the first migration. Part 10
 is "other people":
 
-- **Step 1 — accounts (R24, R25): done.** Registration with an email and a telegram id, passwords stored
+- **Step 1 — accounts (R24, R25): done.** Registration with a username and an email (no telegram id: see the code review), passwords stored
   as hashes, and the isolation between two accounts proved.
 - **Step 2 — linking a chat to an account (R26): done at the API and the bot, *not* in the UI.** The app
   can mint a pairing code and the bot can redeem it; **nothing in the frontend shows a code yet**, so
@@ -32,8 +32,8 @@ resolves to an account — behind a compose profile, with tests of its own.
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 197 passed
-cd ../frontend && npm test              # 78 passed
+cd backend && uv run pytest -q          # 235 passed, plus 5 container tests (240 in all)
+cd ../frontend && npm test              # 84 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 24 passed, builds its own stack on :8100
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
@@ -88,6 +88,13 @@ screen that shows the code is not built; that is the first task below.
 - **Robert's own chat is bound** (`users.telegram_id = 8685521777`, set by hand because the screen does
   not exist yet), so his bot kept working across the change.
 
+## Code review, 2026-11-02
+
+`docs/CODE-REVIEW-2026-11-02.md` lists what a review of the whole tree found and, at the end, what was done
+about each item. Read its Resolution section before touching auth, the bot or the dialogs. Two changes
+matter for anything built next: **registration no longer takes a telegram id** (a chat is bound only by a
+pairing code), and **the port is published on loopback only** (`127.0.0.1:8000`).
+
 ## What is left — start here
 
 1. **The screen that shows the pairing code.** `POST /api/telegram/code` is implemented and tested and
@@ -99,9 +106,8 @@ screen that shows the code is not built; that is the first task below.
    is not, because `rewind()` in `backend/tests/test_db.py` has no branch for it. Small, and it is the
    only untested migration step.
 3. **Then step 3 (voice)**, gated on D16: whisper.cpp in the image, downloading a voice note from
-   Telegram, transcribing, then feeding the same commands. **Not to be handed to Claude Code** — Robert's
-   instruction, 2026-11-02: Claude Code is set up for the Hermes bot's own work (its skills, plugins and
-   configuration), not for this repository.
+   Telegram, transcribing, then feeding the same commands. Claude Code may work on this repository
+   (Robert, 2026-11-02, reversing his earlier instruction); `CLAUDE.md` at the root is its entry point.
 4. **Then step 4 (leaving, hosting)**, gated on D17 and on how many people this is for.
 
 ## What Part 10 step 1 did
@@ -163,7 +169,7 @@ Frontend: 96.1% statements, 82.5% branches.
 
 ## Rules that must not drift
 
-- **AI is out of scope.** No OpenRouter, no keys, no `.env` lines for it. The brief says so plainly, and
+- **AI is out of scope for the MVP's screens**, and admitted for the chat front end only by D19-D21 (2026-11-02): a model parses, the app validates, the person confirms, USDA supplies food figures, and the keys are Robert's, held by the app. Until that work is approved and started, nothing here changes. The brief said so plainly, and
   Part 9's D15 leans on it: the bot does not parse natural language, and text that is not a command gets
   a hint rather than a guess.
 - **No Tailwind anywhere**, in code or in docs. The brief mentions it once and was told to ignore it.
@@ -300,9 +306,10 @@ Frontend: 96.1% statements, 82.5% branches.
 
 ## On resume
 
-Nothing is outstanding. The plan is closed through Part 9, the server is running, the tree is clean and
-both snapshots are tagged. The open items above are all optional, and each is offered rather than
-pending: ask before starting any of them, and do not reopen a finished part without a reason.
+The plan is closed through Part 9 and the code review's fixes are in (uncommitted until Robert says
+otherwise). Part 10 step 2 is waiting on the pairing screen under "What is left". The open items further
+up are optional, and each is offered rather than pending: ask before starting any of them, and do not
+reopen a finished part without a reason.
 
 For older detail, the previous conversations are searchable:
 `session_search(query='<keywords>', session_id='20261102_123650_9ea56ce6')` (this build) and
