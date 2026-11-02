@@ -146,6 +146,26 @@ export async function registerAccount(input: {
   });
 }
 
+// --- linking a Telegram chat (R26, D18) ----------------------------------------------------
+
+/** A pairing code, and when it stops working (an ISO 8601 UTC time). */
+export type PairingCode = { code: string; expires: string };
+
+/** The chat this account is linked to, or null. */
+export async function getTelegramLink(): Promise<string | null> {
+  const link = await request<{ telegram_id: string | null }>("/api/telegram/link");
+  return link.telegram_id;
+}
+
+/** A fresh code. Asking for one retires any code the account already had. */
+export async function mintTelegramCode(): Promise<PairingCode> {
+  return await request<PairingCode>("/api/telegram/code", { method: "POST" });
+}
+
+export async function unlinkTelegram(): Promise<void> {
+  await request<void>("/api/telegram/link", { method: "DELETE" });
+}
+
 // --- foods and meals (R5, R7, R8) ---------------------------------------------------------
 
 export async function listFoods(): Promise<Food[]> {

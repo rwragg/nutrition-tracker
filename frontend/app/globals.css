@@ -357,6 +357,25 @@ body {
   color: var(--text);
 }
 
+/* ---------------------------------------------------------- pairing code ---- */
+
+/* The code is read off the screen and typed into a chat, so it is large, spaced and unambiguous. */
+.pairing-code {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.pairing-code strong {
+  color: var(--volt);
+  font-weight: 700;
+}
+
 /* --------------------------------------------------------------- dialog ---- */
 
 .brand-overlay {
@@ -366,6 +385,7 @@ body {
   --bs-modal-border-width: 0;
   --bs-modal-border-radius: 0.9rem;
   --bs-modal-inner-border-radius: calc(0.9rem - 1px);
+  --bs-modal-padding: 1.25rem;
   --bs-modal-header-padding: 1rem 1.25rem;
   --bs-modal-header-border-width: 1px;
   --bs-modal-header-border-color: var(--hairline);

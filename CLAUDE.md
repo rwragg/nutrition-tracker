@@ -10,12 +10,11 @@ The root `PLAN.md` is superseded; ignore it.
 Parts 1-9 of `docs/PLAN.md` are done. Part 10 ("other people") has steps 1 (accounts) and 2 (linking a
 chat to an account) built at the API and bot level. Schema version 5.
 
-**Next task:** the screen that shows the Telegram pairing code. `POST /api/telegram/code` exists and is
-tested; nothing in the frontend calls it. Build a header button, then a dialog showing the code, its
-expiry and the exact `/bind <code>` line, plus a linked state with an unlink button
-(`GET`/`DELETE /api/telegram/link`). Then a unit test for the dialog and an e2e test that shows a code.
-After that: a 4 -> 5 migration test (`rewind()` in `backend/tests/test_db.py` has no branch for v4).
-Steps 3 (voice) and 4 (leaving, hosting) are gated on open decisions D16, D17 and the numbers question.
+**Part 10 step 2 is complete**, including the pairing screen (`components/TelegramDialog.tsx`) and the
+4 -> 5 migration test. **Next, nothing is started:** confirm-before-write, a model parser, USDA lookup for
+unknown foods (D19-D21 in `docs/PLAN.md`), then voice (D16 still open) and hosting (D17 and the numbers
+question). Each stops for Robert's approval. See `docs/CODE-REVIEW-2026-11-02.md` for what was fixed
+and what was deliberately left.
 
 ## Layout
 
@@ -31,10 +30,10 @@ Steps 3 (voice) and 4 (leaving, hosting) are gated on open decisions D16, D17 an
 ```bash
 ./scripts/start.sh                       # build + start, app on :8000 (user / password)
 ./scripts/stop.sh
-cd backend && uv run pytest -q           # 240 tests
-cd frontend && npm test                  # 84 unit/component tests
+cd backend && uv run pytest -q           # 241 tests
+cd frontend && npm test                  # 94 unit/component tests
 cd frontend && npm run lint && npx tsc --noEmit
-cd frontend && npm run test:e2e          # 24 Playwright tests, own stack on :8100
+cd frontend && npm run test:e2e          # 25 Playwright tests, own stack on :8100
 ./scripts/e2e-persistence.sh             # write, rebuild image, read back
 docker compose --profile bot up -d --build   # optional Telegram bot
 ```

@@ -58,6 +58,12 @@ export function stubFetch(
     login?: (submitted: { username?: string; password?: string }) => LoginAnswer;
     /** Answer a registration. Refuse one with {ok:false, status:409, body:{detail:"..."}}. */
     register?: (submitted: { username?: string; email?: string }) => LoginAnswer;
+    /**
+     * The Telegram link. `linked` is the chat the account starts linked to. A code is minted as `code`
+     * and expires `expiresInMs` from now, which may be negative for a code that has already run out.
+     * The returned `chat` object is live: set `chat.id` to simulate the chat redeeming the code.
+     */
+    telegram?: { linked?: string | null; code?: string; expiresInMs?: number };
     /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
     intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
     /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */
@@ -65,6 +71,7 @@ export function stubFetch(
   } = {},
 ) {
   const data = world();
+  const chat = { id: handlers.telegram?.linked ?? (null as string | null), minted: 0 };
 
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
@@ -109,6 +116,22 @@ export function stubFetch(
     }
 
     if (path === "/api/logout") return answer({ status: "signed out" });
+
+    // --- the Telegram link ------------------------------------------------------------
+    if (path === "/api/telegram/link" && method === "GET") return answer({ telegram_id: chat.id });
+
+    if (path === "/api/telegram/link" && method === "DELETE") {
+      chat.id = null;
+      return answer(null, 204);
+    }
+
+    if (path === "/api/telegram/code" && method === "POST") {
+      chat.minted += 1;
+      const lasts = handlers.telegram?.expiresInMs ?? 15 * 60_000;
+      // The server's shape: whole seconds, UTC, a trailing Z.
+      const expires = new Date(Date.now() + lasts).toISOString().replace(/\.\d{3}Z$/, "Z");
+      return answer({ code: handlers.telegram?.code ?? `CODE${chat.minted}X`, expires }, 201);
+    }
 
     // --- foods ------------------------------------------------------------------------
     if (path === "/api/foods" && method === "GET") return answer(data.foods);
@@ -270,4 +293,6 @@ export function stubFetch(
 
     return answer({ detail: "not found" }, 404);
   });
+
+  return { chat };
 }

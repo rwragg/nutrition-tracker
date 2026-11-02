@@ -67,8 +67,10 @@ Two things are worth knowing about the secret: it is shared by **both** services
 bot's header against it, the bot sends it), and the bot checks it at startup — `docker compose logs bot`
 should say `the app accepted the bot secret`, and it refuses to start if it says otherwise.
 
-**Not built yet:** the screen in the app that shows the code, so the `/bind` path can only be used by
-minting a code through the API today. See [`docs/PLAN.md`](docs/PLAN.md), Part 10.
+**Linking a chat:** in the app, press **Telegram** in the header, then **Get a code**. It shows a line such
+as `/bind K7M2QX`; send that to the bot. The code works once and lasts 15 minutes, and the dialog moves
+to "linked" by itself when the bot redeems it. You never type your chat id: the bot reads it from the
+message. The same dialog unlinks the chat.
 
 What it deliberately does not do, in this cut: no natural-language parsing (text that is not a command
 gets a hint, not a guess), no editing of foods or meals, no voice, no photo meals.
@@ -76,10 +78,10 @@ gets a hint, not a guess), no editing of foods or meals, no voice, no photo meal
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 240 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
+cd backend && uv run pytest          # 241 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 84 unit and component tests
-npm run test:e2e                     # 24 Playwright tests, against its own container on :8100
+npm test                             # 94 unit and component tests
+npm run test:e2e                     # 25 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```

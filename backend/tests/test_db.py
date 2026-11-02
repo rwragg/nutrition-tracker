@@ -188,6 +188,9 @@ def rewind(path: Path, version: str) -> sqlite3.Connection:
         connection.execute("DROP TABLE users")
         connection.execute("ALTER TABLE users_v3 RENAME TO users")
 
+    if version < "5":  # before pairing codes
+        connection.execute("DROP TABLE telegram_codes")
+
     connection.execute("UPDATE meta SET value = ? WHERE key = 'schema_version'", (version,))
     connection.commit()
     return connection
@@ -302,6 +305,56 @@ def test_a_version_3_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
     finally:
         migrated.close()
 
+
+
+def test_a_version_4_file_is_migrated_rather_than_refused(tmp_path: Path) -> None:
+    """4 -> 5: pairing codes arrive as a new table. The step does nothing but create it, so the point
+    to prove is that everything already there - the log, the account, and the chat it is bound to - is
+    untouched, and that the table works afterwards. This was the one migration step with no test."""
+    path = tmp_path / "v4.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+
+    legacy = rewind(path, "4")
+    legacy.execute("UPDATE users SET telegram_id = '8685521777' WHERE id = 'user'")
+    legacy.commit()
+    tables = {row[0] for row in legacy.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "telegram_codes" not in tables
+    foods_before = legacy.execute("SELECT count(*) FROM foods").fetchone()[0]
+    entries_before = legacy.execute("SELECT count(*) FROM entries").fetchone()[0]
+    legacy.close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == db.SCHEMA_VERSION == "5"
+
+        assert migrated.execute("SELECT count(*) FROM foods").fetchone()[0] == foods_before
+        assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
+        assert migrated.execute(
+            "SELECT telegram_id FROM users WHERE id = 'user'"
+        ).fetchone()[0] == "8685521777"
+
+        # the new table is the one a fresh file has, and it enforces what it is for
+        assert {row[1] for row in migrated.execute("PRAGMA table_info(telegram_codes)")} == {
+            "code", "user_id", "expires", "used",
+        }
+        assert "telegram_codes_by_user" in {
+            row[1] for row in migrated.execute("PRAGMA index_list(telegram_codes)")
+        }
+        migrated.execute(
+            "INSERT INTO telegram_codes (code, user_id, expires) VALUES ('K7M2QX', 'user', '2026-11-02T10:00:00Z')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute(
+                "INSERT INTO telegram_codes (code, user_id, expires) VALUES ('BADDATE', 'user', 'not a date')"
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute(
+                "INSERT INTO telegram_codes (code, user_id, expires) VALUES ('NOUSER2', 'nobody', '2026-11-02T10:00:00Z')"
+            )
+    finally:
+        migrated.close()
 
 
 def test_a_version_with_no_migration_is_still_refused(tmp_path: Path) -> None:

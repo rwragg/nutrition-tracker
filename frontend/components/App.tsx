@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Send } from "lucide-react";
 import { getSession, signOut as endSession } from "@/lib/api";
 import type { View } from "@/lib/types";
 import { useTracker } from "@/lib/use-tracker";
@@ -8,6 +9,7 @@ import DayView from "./DayView";
 import FoodsView from "./FoodsView";
 import MealsView from "./MealsView";
 import SignIn from "./SignIn";
+import TelegramDialog from "./TelegramDialog";
 import TitleBar from "./TitleBar";
 import { BTN_GHOST } from "./styles";
 import { useIsClient } from "./use-is-client";
@@ -70,6 +72,7 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
   const tracker = useTracker();
   const [view, setView] = useState<View>("day");
   const [signOutFailed, setSignOutFailed] = useState(false);
+  const [telegramOpen, setTelegramOpen] = useState(false);
 
   async function signOut() {
     setSignOutFailed(false);
@@ -102,6 +105,16 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
       <span className="text-muted-brand small" data-testid="signed-in-as">
         {username}
       </span>
+
+      <button
+        type="button"
+        className={`${BTN_GHOST} d-inline-flex align-items-center gap-2`}
+        onClick={() => setTelegramOpen(true)}
+        data-testid="open-telegram"
+      >
+        <Send size={14} aria-hidden="true" />
+        Telegram
+      </button>
 
       <button type="button" className={BTN_GHOST} onClick={signOut} data-testid="sign-out">
         Log out
@@ -178,6 +191,8 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
           Saved. Your log is kept on the server, so it is here when you come back.
         </p>
       )}
+
+      {telegramOpen && <TelegramDialog onClose={() => setTelegramOpen(false)} />}
     </main>
   );
 }

@@ -522,6 +522,14 @@ test("opens the dialog as an opaque Bootstrap modal", async ({ page, request, co
     .evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(background).toBe("rgb(18, 22, 31)");
 
+  // The same defect, in the other variable Bootstrap only defines on .modal: --bs-modal-padding. Without
+  // it the body's padding is zero and every dialog's content sits hard against its edge, which no test
+  // noticed until a screenshot did.
+  const padding = await dialog
+    .locator(".modal-body")
+    .evaluate((element) => parseFloat(getComputedStyle(element).paddingLeft));
+  expect(padding).toBeGreaterThanOrEqual(16);
+
   expectQuiet(consoleErrors);
 });
 
@@ -647,4 +655,34 @@ test.describe("the sign-in gate", () => {
     // The 409 is the point of this test: the browser logs it as a console error like any other 4xx.
     expectQuietApartFrom(consoleErrors, ["409"]);
   });
+});
+
+test("shows a pairing code for linking a Telegram chat", async ({ page, consoleErrors }) => {
+  // The e2e stack has no bot, so the flow stops where the person would switch to Telegram. What can be
+  // checked here is the half the app owns: a real code from the real server, in the alphabet people can
+  // read, with the exact line to send - and that asking for one did not link anything.
+  await openTracker(page);
+
+  await page.getByTestId("open-telegram").click();
+  await expect(page.getByRole("dialog", { name: "Telegram" })).toBeVisible();
+  await expect(page.getByTestId("telegram-get-code")).toBeVisible();
+
+  await page.getByTestId("telegram-get-code").click();
+
+  const code = (await page.getByTestId("telegram-code").textContent()) ?? "";
+  expect(code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+  await expect(page.getByTestId("telegram-bind-line")).toHaveText(`/bind ${code}`);
+  await expect(page.getByTestId("telegram-expiry")).toContainText("minutes");
+
+  // a second code replaces the first, because two live codes would be two chances to bind
+  await page.getByTestId("telegram-new-code").click();
+  await expect(page.getByTestId("telegram-code")).not.toHaveText(code);
+
+  const link = await page.request.get("/api/telegram/link");
+  expect(await link.json()).toEqual({ telegram_id: null });
+
+  await page.getByTestId("close-dialog").click();
+  await expect(page.getByTestId("telegram-dialog")).toHaveCount(0);
+
+  expectQuiet(consoleErrors);
 });
