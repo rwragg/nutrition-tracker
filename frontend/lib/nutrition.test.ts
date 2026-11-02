@@ -13,36 +13,46 @@ import {
   totalMacros,
   ZERO,
 } from "@/lib/nutrition";
-import { createSeedStore } from "@/lib/seed";
-import type { Macros, Store } from "@/lib/types";
+import { DATES, dayWithSections, macrosOf, sampleStore } from "@/test/fixture";
 
-const TODAY = new Date(2026, 10, 1);
-const store = (): Store => createSeedStore(TODAY);
-
-const egg: Macros = { calories: 72, protein: 6.3, carbs: 0.4, fat: 4.8 };
+/**
+ * The app's own arithmetic, over the world written out in `test/fixture.ts`.
+ *
+ * The sample data the app ships is seeded into the backend's database now, so these tests no longer
+ * derive from it: the world below is the fixture's, and the fixture works its own figures out
+ * independently (`macrosOf`), which is what makes comparing against the app's maths mean something.
+ */
+const store = () => sampleStore();
+const day = (index = 0) => dayWithSections(DATES[index]);
 
 describe("macros", () => {
   it("scales a food by quantity", () => {
-    expect(entryMacros({ id: "a", kind: "food", foodId: "egg", quantity: 2 }, store())).toEqual(
-      scaleMacros(egg, 2),
+    const almonds = store().foods.find((food) => food.id === "almonds")!;
+
+    expect(entryMacros({ id: "a", kind: "food", foodId: "almonds", quantity: 2 }, store())).toEqual(
+      scaleMacros(almonds.macros, 2),
     );
   });
 
   it("scales fractionally", () => {
     const half = entryMacros({ id: "a", kind: "food", foodId: "oats", quantity: 0.5 }, store());
+
     expect(half.calories).toBeCloseTo(150);
     expect(half.protein).toBeCloseTo(5);
   });
 
   it("sums a meal from the foods in it", () => {
     const current = store();
-    const meal = current.meals.find((candidate) => candidate.id === "typical-breakfast")!;
+    const meal = current.meals.find((candidate) => candidate.id === "protein-lunch-bowl")!;
 
     const manual = meal.ingredients.reduce(
       (total, ingredient) =>
         addMacros(
           total,
-          entryMacros({ id: "", kind: "food", foodId: ingredient.foodId, quantity: ingredient.quantity }, current),
+          entryMacros(
+            { id: "", kind: "food", foodId: ingredient.foodId, quantity: ingredient.quantity },
+            current,
+          ),
         ),
       ZERO,
     );
@@ -52,21 +62,25 @@ describe("macros", () => {
   });
 
   it("totals an empty day as zero", () => {
-    const current = store();
-    const empty = { id: "empty", date: "2026-11-05", sections: { breakfast: [], lunch: [], dinner: [], snacks: [] } };
-    expect(dayMacros(empty, current)).toEqual(ZERO);
+    const empty = {
+      id: "empty",
+      date: "2026-11-05",
+      macros: ZERO,
+      sections: { breakfast: [], lunch: [], dinner: [], snacks: [] },
+    };
+
+    expect(dayMacros(empty, store())).toEqual(ZERO);
   });
 
   it("totals a day from its sections", () => {
     const current = store();
-    const day = current.days[0];
     const summed = (["breakfast", "lunch", "dinner", "snacks"] as const).reduce(
-      (total, section) => addMacros(total, sectionMacros(day, section, current)),
+      (total, section) => addMacros(total, sectionMacros(day(), section, current)),
       ZERO,
     );
-    const whole = dayMacros(day, current);
+    const whole = dayMacros(day(), current);
 
-    // Summation order differs, so compare each figure to a tolerance.
+    expect(whole.calories).toBeGreaterThan(0);
     expect(whole.calories).toBeCloseTo(summed.calories);
     expect(whole.protein).toBeCloseTo(summed.protein);
     expect(whole.carbs).toBeCloseTo(summed.carbs);
@@ -92,19 +106,19 @@ describe("labels and formatting", () => {
   });
 
   it("labels a meal with how many foods it holds", () => {
-    expect(entryLabel({ id: "a", kind: "meal", mealId: "light-dinner" }, store())).toEqual({
-      name: "Light dinner",
-      detail: "4 foods",
+    expect(entryLabel({ id: "a", kind: "meal", mealId: "post-workout-shake" }, store())).toEqual({
+      name: "Post-workout shake",
+      detail: "3 foods",
     });
   });
 
   it("breaks a meal into lines that add up to the meal", () => {
     const current = store();
-    const meal = current.meals.find((candidate) => candidate.id === "light-dinner")!;
+    const meal = current.meals.find((candidate) => candidate.id === "post-workout-shake")!;
     const lines = mealBreakdown(meal, current);
     const summed = lines.reduce((total, line) => total + line.calories, 0);
 
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(3);
     expect(summed).toBeCloseTo(mealMacros(meal, current).calories);
   });
 
@@ -125,31 +139,22 @@ describe("labels and formatting", () => {
 });
 
 describe("totals over the whole store", () => {
-  it("totals every seeded day without touching the others", () => {
+  it("totals the day's sections and nothing else", () => {
     const current = store();
-    const totals = current.days.map((day) => dayMacros(day, current).calories);
 
-    expect(totals).toHaveLength(3);
-    expect(totals.every((calories) => calories > 0)).toBe(true);
-    expect(Math.max(...totals)).toBe(totals[0]);
-  });
-
-  it("totals a section only from that section", () => {
-    const current = store();
-    const day = current.days[0];
-    expect(sectionMacros(day, "dinner", current).calories).toBeGreaterThan(0);
+    expect(sectionMacros(day(), "breakfast", current).calories).toBeGreaterThan(0);
+    expect(sectionMacros(day(), "dinner", current).calories).toBe(0);
     expect(totalMacros([], current)).toEqual(ZERO);
   });
-});
 
-describe("the seeded sample day", () => {
-  it("matches the figures the app reports for it", () => {
+  it("agrees with the fixture's own figures for every day", () => {
     const current = store();
-    const today = dayMacros(current.days[0], current);
 
-    expect(formatCalories(today.calories)).toBe("2,208");
-    expect(formatGrams(today.protein)).toBe("121");
-    expect(formatGrams(today.carbs)).toBe("303");
-    expect(formatGrams(today.fat)).toBe("68");
+    for (const summary of current.days) {
+      const sections = dayWithSections(summary.date).sections;
+      const asDay = { id: summary.date, date: summary.date, macros: ZERO, sections };
+
+      expect(dayMacros(asDay, current).calories).toBeCloseTo(macrosOf(sections).calories);
+    }
   });
 });

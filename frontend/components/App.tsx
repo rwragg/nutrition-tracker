@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useReducer, useState } from "react";
-import { createSeedStore } from "@/lib/seed";
-import { storeReducer } from "@/lib/store";
-import type { LogEntry, Section, View } from "@/lib/types";
+import { useEffect, useState } from "react";
+import { getSession, signOut as endSession } from "@/lib/api";
+import type { View } from "@/lib/types";
+import { useTracker } from "@/lib/use-tracker";
 import DayView from "./DayView";
 import FoodsView from "./FoodsView";
 import MealsView from "./MealsView";
@@ -21,12 +21,12 @@ const VIEWS: { id: View; label: string }[] = [
 type Session = { username: string };
 
 /**
- * The log is seeded from today's date and lives only in the browser, so the whole
- * tracker renders client-side: the prerendered page is the title bar and a placeholder.
+ * The log lives in the backend's database, so every date on screen comes from the server and the
+ * whole tracker renders client-side: the prerendered page is the title bar and a placeholder.
  *
- * Whether anyone is signed in is the server's answer, so the app asks before it renders
- * anything. Signed out it shows the sign-in screen; the protection itself is the guard
- * on every /api route, which refuses without a session whatever this page chooses to show.
+ * Whether anyone is signed in is the server's answer, so the app asks before it renders anything.
+ * Signed out it shows the sign-in screen; the protection itself is the guard on every /api route,
+ * which refuses without a session whatever this page chooses to show.
  */
 export default function App() {
   return useIsClient() ? <SessionGate /> : <Shell />;
@@ -38,9 +38,8 @@ function SessionGate() {
   useEffect(() => {
     let active = true;
 
-    fetch("/api/session")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: Session | null) => {
+    getSession()
+      .then((data) => {
         if (active) setSession(data);
       })
       .catch(() => {
@@ -58,74 +57,107 @@ function SessionGate() {
   return <Tracker username={session.username} onSignOut={() => setSession(null)} />;
 }
 
-function Shell() {
+function Shell({ children }: { children?: React.ReactNode }) {
   return (
     <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
       <TitleBar />
-      <div className="day-panel" style={{ height: "14rem", opacity: 0.15 }} />
+      {children ?? <div className="day-panel" style={{ height: "14rem", opacity: 0.15 }} />}
     </main>
   );
 }
 
 function Tracker({ username, onSignOut }: { username: string; onSignOut: () => void }) {
-  const [store, dispatch] = useReducer(storeReducer, null, () => createSeedStore());
+  const tracker = useTracker();
   const [view, setView] = useState<View>("day");
-  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
-
-  const day = store.days.find((candidate) => candidate.id === selectedDayId) ?? store.days[0];
 
   async function signOut() {
-    await fetch("/api/logout", { method: "POST" });
+    await endSession();
     onSignOut();
   }
 
+  const header = (
+    <div className="d-flex flex-wrap align-items-center gap-3">
+      <nav aria-label="Views" className="view-nav nav gap-1">
+        {VIEWS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className="nav-link"
+            aria-pressed={item.id === view}
+            onClick={() => setView(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      <span className="text-muted-brand small" data-testid="signed-in-as">
+        {username}
+      </span>
+
+      <button type="button" className={BTN_GHOST} onClick={signOut} data-testid="sign-out">
+        Log out
+      </button>
+    </div>
+  );
+
+  if (tracker.loading) {
+    return (
+      <Shell>
+        <p className="text-center text-muted-brand mb-0" data-testid="loading">
+          Loading your log...
+        </p>
+      </Shell>
+    );
+  }
+
+  if (!tracker.store || !tracker.day) {
+    return (
+      <Shell>
+        <p className="text-center text-ember mb-0" data-testid="load-failed">
+          {tracker.error ?? "Your log could not be loaded."}
+        </p>
+      </Shell>
+    );
+  }
+
+  const { store, day } = tracker;
+
   return (
     <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
-      <TitleBar>
-        <div className="d-flex flex-wrap align-items-center gap-3">
-          <nav aria-label="Views" className="view-nav nav gap-1">
-            {VIEWS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="nav-link"
-                aria-pressed={item.id === view}
-                onClick={() => setView(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
+      <TitleBar>{header}</TitleBar>
 
-          <span className="text-muted-brand small" data-testid="signed-in-as">
-            {username}
-          </span>
-
-          <button type="button" className={BTN_GHOST} onClick={signOut} data-testid="sign-out">
-            Log out
+      {tracker.error && (
+        <div className="d-flex align-items-start justify-content-between gap-3" data-testid="page-problem">
+          <p className="small text-ember mb-0">{tracker.error}</p>
+          <button type="button" className={BTN_GHOST} onClick={tracker.dismissError}>
+            Dismiss
           </button>
         </div>
-      </TitleBar>
+      )}
 
       {view === "day" && (
         <DayView
           store={store}
           day={day}
-          onSelectDay={setSelectedDayId}
-          onAddEntry={(section: Section, entry: LogEntry) =>
-            dispatch({ type: "entry/add", dayId: day.id, section, entry })
-          }
-          onRemoveEntry={(section: Section, entryId: string) =>
-            dispatch({ type: "entry/remove", dayId: day.id, section, entryId })
-          }
+          onSelectDay={(date) => {
+            void tracker.selectDay(date);
+          }}
+          onAddEntry={tracker.addEntry}
+          onRemoveEntry={tracker.removeEntry}
         />
       )}
 
-      {view === "foods" && <FoodsView store={store} dispatch={dispatch} />}
-      {view === "meals" && <MealsView store={store} dispatch={dispatch} />}
+      {view === "foods" && (
+        <FoodsView store={store} onSaveFood={tracker.saveFood} onDeleteFood={tracker.deleteFood} />
+      )}
 
-      <p className="text-center small text-muted-brand mb-0">
-        Nothing is saved. Reload the page to start again from the sample days.
+      {view === "meals" && (
+        <MealsView store={store} onSaveMeal={tracker.saveMeal} onDeleteMeal={tracker.deleteMeal} />
+      )}
+
+      <p className="text-center small text-muted-brand mb-0" data-testid="storage-note">
+        Saved. Your log is kept on the server, so it is here when you come back.
       </p>
     </main>
   );

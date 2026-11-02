@@ -46,20 +46,67 @@ export type LogEntry =
   | { id: string; kind: "food"; foodId: string; quantity: number }
   | { id: string; kind: "meal"; mealId: string };
 
+/** An entry as it is sent, before the server gives it an id. */
+export type EntryDraft =
+  | { kind: "food"; foodId: string; quantity: number }
+  | { kind: "meal"; mealId: string };
+
 export type DaySections = Record<Section, LogEntry[]>;
 
-/** A day of the log, addressed by its calendar date. */
+/**
+ * A day of the log, addressed by its calendar date: `id` is the date, because a day has no
+ * identity of its own.
+ *
+ * `macros` is the server's figure for the day, and it is always present - the day list carries it
+ * for every date. `sections` is filled in only for the day that is open; the arithmetic the views
+ * do over those sections is the app's own, and the two agree (a test asserts the open day's
+ * computed total against the server's figure).
+ */
 export interface Day {
   id: string;
   date: string;
+  macros: Macros;
   sections: DaySections;
 }
 
-/** Everything the app owns. In memory only, rebuilt on reload. */
+/** A food as it is sent, before the server gives it an id. */
+export interface FoodInput {
+  name: string;
+  unit: Unit;
+  macros: Macros;
+}
+
+/** A meal as it is sent, before the server gives it an id. */
+export interface MealInput {
+  name: string;
+  ingredients: Ingredient[];
+}
+
+/** Where a record is still in use, as the server reports it when it refuses a delete. */
+export interface RefusalUsage {
+  meals: { id: string; name: string }[];
+  days: string[];
+}
+
+export interface Refusal {
+  message: string;
+  usedBy: RefusalUsage;
+}
+
+/** The outcome of a write. A refusal is an answer, not an exception, so it is returned. */
+export type SaveResult = { ok: true } | { ok: false; message: string; refusal?: Refusal };
+
+/** One date in the day list, with the server's figure for it. */
+export interface DaySummary {
+  date: string;
+  macros: Macros;
+}
+
+/** The records the app holds, as the server last reported them. */
 export interface Store {
   foods: Food[];
   meals: Meal[];
-  days: Day[];
+  days: DaySummary[];
 }
 
 export type View = "day" | "foods" | "meals";

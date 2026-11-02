@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, type Dispatch } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
+import { toIsoDate } from "@/lib/dates";
 import { formatCalories, formatQuantity } from "@/lib/format";
 import { findFood, mealMacros } from "@/lib/nutrition";
-import { mealUsage, type StoreAction } from "@/lib/store";
-import type { Meal, Store } from "@/lib/types";
-import { describeMealUsage } from "@/lib/usage";
+import type { Meal, MealInput, SaveResult, Store } from "@/lib/types";
+import { describeRefusal } from "@/lib/usage";
 import DeleteDialog from "./DeleteDialog";
 import MealFormDialog from "./MealFormDialog";
 import { BTN_NEUTRAL, BTN_PRIMARY } from "./styles";
@@ -19,13 +19,15 @@ type Dialog =
 
 export default function MealsView({
   store,
-  dispatch,
+  onSaveMeal,
+  onDeleteMeal,
 }: {
   store: Store;
-  dispatch: Dispatch<StoreAction>;
+  onSaveMeal: (existingId: string | null, input: MealInput) => Promise<SaveResult>;
+  onDeleteMeal: (id: string) => Promise<SaveResult>;
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
-  const todayIso = store.days[0]?.date ?? "";
+  const todayIso = toIsoDate(new Date());
 
   return (
     <>
@@ -103,7 +105,7 @@ export default function MealsView({
         <MealFormDialog
           store={store}
           onClose={() => setDialog(null)}
-          onSubmit={(meal) => dispatch({ type: "meal/add", meal })}
+          onSubmit={(input: MealInput) => onSaveMeal(null, input)}
         />
       )}
 
@@ -112,53 +114,26 @@ export default function MealsView({
           meal={dialog.meal}
           store={store}
           onClose={() => setDialog(null)}
-          onSubmit={(meal) => dispatch({ type: "meal/update", meal })}
+          onSubmit={(input: MealInput) => onSaveMeal(dialog.meal.id, input)}
         />
       )}
 
       {dialog?.kind === "delete" && (
-        <DeleteMealConfirm
-          store={store}
-          meal={dialog.meal}
-          todayIso={todayIso}
+        <DeleteDialog
+          title={`Delete ${dialog.meal.name}?`}
+          body={`This removes ${dialog.meal.name} from your meal list.`}
+          confirmLabel="Delete meal"
           onClose={() => setDialog(null)}
-          onConfirm={() => dispatch({ type: "meal/delete", mealId: dialog.meal.id })}
+          onConfirm={async () => {
+            const result = await onDeleteMeal(dialog.meal.id);
+            if (result.ok) return null;
+
+            return (
+              (result.refusal && describeRefusal(result.refusal, "meal", todayIso)) ?? result.message
+            );
+          }}
         />
       )}
     </>
-  );
-}
-
-function DeleteMealConfirm({
-  store,
-  meal,
-  todayIso,
-  onConfirm,
-  onClose,
-}: {
-  store: Store;
-  meal: Meal;
-  todayIso: string;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  const days = mealUsage(store, meal.id);
-  const used = days.length > 0;
-
-  return (
-    <DeleteDialog
-      title={used ? `${meal.name} is in use` : `Delete ${meal.name}?`}
-      body={
-        used
-          ? `This meal cannot be deleted while it is ${describeMealUsage(
-              days,
-              todayIso,
-            )}. Remove it from those days first.`
-          : `This removes ${meal.name} from your meal list. It is not logged on any day.`
-      }
-      confirmLabel="Delete meal"
-      onConfirm={used ? undefined : onConfirm}
-      onClose={onClose}
-    />
   );
 }

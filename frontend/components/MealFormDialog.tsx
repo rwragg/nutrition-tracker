@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { formatQuantity } from "@/lib/format";
-import { createId } from "@/lib/store";
-import type { Ingredient, Meal, Store } from "@/lib/types";
+import type { Ingredient, Meal, MealInput, SaveResult, Store } from "@/lib/types";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_NEUTRAL, BTN_PRIMARY } from "./styles";
 
@@ -16,7 +15,8 @@ export default function MealFormDialog({
 }: {
   meal?: Meal;
   store: Store;
-  onSubmit: (meal: Meal) => void;
+  /** Saves through the API. A refusal is returned, so the dialog can stay open and say why. */
+  onSubmit: (input: MealInput) => Promise<SaveResult>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(meal?.name ?? "");
@@ -25,18 +25,28 @@ export default function MealFormDialog({
       { foodId: store.foods[0]?.id ?? "", quantity: 1 },
     ],
   );
+  const [problem, setProblem] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const canSave = name.trim().length > 0 && ingredients.length > 0 && store.foods.length > 0;
 
-  const save = () => {
-    if (!canSave) return;
-    onSubmit({
-      id: meal?.id ?? createId("meal"),
+  async function save() {
+    if (!canSave || saving) return;
+
+    setSaving(true);
+    const result = await onSubmit({
       name: name.trim(),
       ingredients: ingredients.filter((ingredient) => ingredient.foodId !== ""),
     });
+    setSaving(false);
+
+    if (!result.ok) {
+      setProblem(result.message);
+      return;
+    }
+
     onClose();
-  };
+  }
 
   const updateRow = (index: number, patch: Partial<Ingredient>) =>
     setIngredients((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -50,13 +60,24 @@ export default function MealFormDialog({
           <button type="button" onClick={onClose} className={BTN_GHOST}>
             Cancel
           </button>
-          <button type="button" onClick={save} disabled={!canSave} className={BTN_PRIMARY} data-testid="save-meal">
-            {meal ? "Save meal" : "Create meal"}
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave || saving}
+            className={BTN_PRIMARY}
+            data-testid="save-meal"
+          >
+            {saving ? "Saving..." : meal ? "Save meal" : "Create meal"}
           </button>
         </div>
       }
     >
       <div className="d-flex flex-column gap-3">
+        {problem && (
+          <p className="small mb-0 text-ember" data-testid="meal-problem">
+            {problem}
+          </p>
+        )}
         <div>
           <label className="form-label fw-medium" htmlFor="meal-name">
             Name

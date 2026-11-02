@@ -1,12 +1,13 @@
 # Nutrition Tracker
 
 An MVP built to a written brief: a food log you can keep for more than one day. A Next.js 16 frontend
-and a FastAPI backend in one container, with the data in SQLite.
+and a FastAPI backend in one container, with the log stored in SQLite.
 
 - The brief: [`AGENTS.md`](AGENTS.md)
 - The live plan, the phases and the decisions taken: [`docs/PLAN.md`](docs/PLAN.md)
 - The database approach: [`docs/DATABASE.md`](docs/DATABASE.md)
-- The app: [`frontend/`](frontend) - see [`frontend/README.md`](frontend/README.md) for how to run it
+- The app: [`frontend/`](frontend) - see [`frontend/AGENTS.md`](frontend/AGENTS.md) for how it works
+- Screenshots: [`docs/screenshots/`](docs/screenshots)
 
 (`PLAN.md` in the project root is the superseded v2 plan, kept for its history. The live plan is the
 one in `docs/`.)
@@ -21,8 +22,9 @@ one in `docs/`.)
 - Total each day against calorie and macronutrient targets
 - Deleting a record that a meal or a day still refers to is refused, with the reason
 
-Nothing is saved yet: the app still keeps its data in the browser and resets on reload. The API and the
-database are both built and tested - the frontend moves onto them in Part 7 of the plan.
+**The log is kept in the database**, so it is there when you come back, from another browser, and after
+the container is rebuilt. The app reads every view from the API - there is no sample data in the
+frontend, and nothing is held in the browser beyond what was last read from the server.
 
 ## Running the whole stack
 
@@ -35,24 +37,25 @@ One container: FastAPI serves the frontend at `/`, owns the API, and keeps a SQL
 ```
 
 On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http://localhost:8000/, and
-you sign in with `user` / `password`. The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
+you sign in with `user` / `password`. The first run seeds a sample log, once, into the empty database.
+The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
 
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 74 tests: routes, schema, guards, isolation, and the container
+cd backend && uv run pytest          # 80 tests: routes, schema, guards, isolation, and the container
 cd frontend && npm install
-npm test                             # 59 unit and component tests
-npm run test:e2e                     # 19 Playwright tests, against the container on :8000
+npm test                             # 35 unit and component tests
+npm run test:e2e                     # 22 Playwright tests, against its own container on :8100
 npm run lint
 ```
 
 The backend's container tests, and the Playwright suite, both exercise the built image rather than a
-development server: they bring the stack up themselves and check the app that the container actually
-serves. The browser tests compute their expected figures from the app's own pure functions, and the
-backend tests compute theirs from the raw records, so a failure means two implementations disagree.
+development server. The browser suite builds a **stack of its own** - its own compose project, volume
+and port, thrown away and rebuilt before every run - so it always starts from a freshly seeded database
+and never touches the one you are using. It runs one worker, because its tests share that database.
 
-**One known flake:** the Playwright suite runs `fullyParallel` with unbounded workers against a single
-container, and on a loaded machine one test in a run can time out waiting for the first render (the
-default 5s expectation) - it is a different test each time, and it passes 19/19 with `--workers=1`. Bound
-the workers or raise that first expectation when Part 7 reworks the suite.
+Expected figures come from two sides on purpose: the page's own arithmetic is asserted against the same
+calculations run over what the API returned, and the figures the server reports are asserted against the
+server's numbers. Comparing the two to each other would turn a float's summation order into a failure.
+

@@ -94,6 +94,13 @@ From `AGENTS.md`. R-numbers are assignment order, not reading order. Each is own
   empty day rather than a 404; no row has to be created before anything can be logged. The cost is a
   stored empty day and a home for day-level facts, neither of which any requirement asks for, and both
   recoverable later with a side table joined on the date. The schema version went 1 to 2.
+- **D12 — The browser holds a copy, never the truth.** Part 7 made the frontend a client of the API:
+  one module talks to the network, one hook reads the records and re-reads them after every write, and
+  nothing is edited locally and hoped for. The visible consequence is that a food edit moves every day
+  that logs it without the client knowing which days those are, and that a refused delete is an answer
+  the dialog renders rather than a rule the client predicts. The day chips show the server's figure;
+  the summary and section subtotals are the app's own arithmetic over what it fetched, and a test
+  asserts both so a disagreement fails instead of being hidden.
 
 ## Part 1 — Plan · **in review**
 
@@ -385,23 +392,66 @@ closed the API again.
 The brief: the frontend actually uses the backend API, so the app is a properly persistent nutrition
 tracker, tested thoroughly.
 
-- [ ] Replace `useReducer` + `createSeedStore()` with calls to the API
-- [ ] The seed becomes a first-run database seed rather than app state (D1, R14)
-- [ ] Loading and error states for the calls that now exist
-- [ ] Re-point the tests that assert against the pure reducer — expect the shape of three test files to
+- [x] Replace `useReducer` + `createSeedStore()` with calls to the API
+- [x] The seed becomes a first-run database seed rather than app state (D1, R14)
+- [x] Loading and error states for the calls that now exist
+- [x] Re-point the tests that assert against the pure reducer — expect the shape of three test files to
       change, not only their assertions
 
 **Tests:** the full Playwright suite against the container · a reload test proving data survives (the
 definition of R23) · both delete guards end to end · a second browser session seeing the same data.
 
-**Carried in from Part 6:** the Playwright suite runs `fullyParallel` with unbounded workers against a
-single container, and on a loaded machine one test in a run can time out waiting for the first render —
-a different test each time, and 19/19 when run with `--workers=1`. Bound the workers, or raise that first
-expectation, as part of reworking the suite here rather than debugging it again.
+**The flakiness carried in from Part 6 is fixed here, twice over.** The suite ran `fullyParallel` with
+unbounded workers against one container and threw a different timeout every few runs. Two causes, both
+addressed: the tests now share a real database, so it runs **one worker**; and the e2e helper signed in
+through the form, which raced the app's own session probe — `isVisible` does not wait — so it now signs
+in through the page's request context, which shares its cookie jar. Three consecutive runs of the whole
+suite came back 22/22.
 
 **Success criteria:** P7.1 data survives a reload and a container restart · P7.2 all three views still
 work · P7.3 both guards still refuse with the reason shown · P7.4 zero console errors · P7.5 no
 in-memory store remains as a source of truth.
+
+### Status — Part 7, complete 2026-11-01
+
+The frontend is the API's client. `lib/api.ts` is the only code that touches the network;
+`lib/use-tracker.ts` reads the records, writes through the API, and re-reads after every write, so what
+is on screen is what was last reported. `lib/store.ts` (the reducer), `lib/seed.ts` and the reducer's
+test file are **deleted** — the seed is the backend's first-run job and there is no client-side store
+left to be a source of truth.
+
+- **P7.1** data survives a reload — the Playwright test *the log survives a reload* logs a food, reloads
+  the page and finds it there — **and a container restart**: a script wrote a food and an entry through
+  the API, stopped the stack, rebuilt the image, started it again, and read them back, with the seed
+  correctly not re-running (32 foods, not 63).
+- **P7.2** all three views work against the API: the screenshots in `docs/screenshots/` are of the
+  running app, and the suite asserts each view's figures.
+- **P7.3** both guards refuse with the reason shown: the dialogs no longer predict the rule at all —
+  they ask, and render the server's refusal. The client's formatting keeps the app's own day labels
+  ("Today"), which is what the structured `usedBy` was for.
+- **P7.4** zero console errors, with two deliberate exceptions spelled out in the test that asks for
+  them: the 401 from the session probe when signed out, and the 409 from a refused delete. Both are the
+  app working; the browser logs any 4xx as a console error, so they are counted out by status rather
+  than dropped.
+- **P7.5** nothing in the browser is a source of truth. The day chips show the server's figure for each
+  date, and the summary and section subtotals are the app's arithmetic over the entries it fetched —
+  a test asserts both, so if they ever disagree it fails rather than silently picking one.
+
+**A real bug this part found, which no unit test could have.** The API's per-request database
+dependency closed its connection in FastAPI's dependency cleanup, which runs on a *different threadpool
+thread* from the route body — so `sqlite3` raised `ProgrammingError` and the request answered 500,
+intermittently, under a real server. The 80 backend tests never saw it because `TestClient` runs on one
+thread; the browser suite hit it within minutes. Fixed once, in `db.connect`, with the reasoning written
+down there.
+
+**Two things the frontend tests taught the suite.** The component tests now run against a stand-in
+server (`test/fetch-stub.ts`) over a small world written out by hand (`test/fixture.ts`) — the sample
+data is the backend's, so the frontend tests no longer derive from it, and the fixture's figures are
+computed independently, which is what makes comparing them to the app's maths mean anything. And the
+browser suite builds **its own stack** — its own compose project, volume and port, thrown away before
+every run — so it always starts from a freshly seeded database without touching the developer's.
+
+**Suites:** 80 backend · 35 unit and component · 22 Playwright, three runs in a row · tsc and lint clean.
 
 ## Part 8 — Handover
 

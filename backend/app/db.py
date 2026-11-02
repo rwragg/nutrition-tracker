@@ -166,8 +166,16 @@ def db_path() -> Path:
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
-    """A connection with the settings every guard in this schema depends on."""
-    connection = sqlite3.connect(Path(path) if path is not None else db_path())
+    """A connection with the settings every guard in this schema depends on.
+
+    `check_same_thread=False` because a connection made for a request is closed by FastAPI's
+    dependency cleanup, which does not have to be the thread the route body ran on: a sync route runs
+    in a worker thread, and the dependency's exit runs after it. Without this, closing raises
+    `ProgrammingError` and the request answers 500 - intermittently, and only under a real server,
+    which is how the end-to-end suite caught it. No two threads use one connection at the same time:
+    each request makes its own and they take turns.
+    """
+    connection = sqlite3.connect(Path(path) if path is not None else db_path(), check_same_thread=False)
     connection.row_factory = sqlite3.Row
 
     # SQLite defaults foreign_keys to OFF, and every delete guard here is a foreign key.

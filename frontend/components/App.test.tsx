@@ -1,18 +1,19 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import App from "@/components/App";
 import { formatCalories } from "@/lib/format";
 import { dayMacros, entryMacros } from "@/lib/nutrition";
-import { createSeedStore } from "@/lib/seed";
-import type { Store } from "@/lib/types";
+import { DATES, dayWithSections, sampleStore } from "@/test/fixture";
 
-const store = (): Store => createSeedStore();
+const store = () => sampleStore();
+const day = (index: number) => dayWithSections(DATES[index]);
 
 /**
- * The app asks the server who is signed in before it renders the tracker, so every
- * test here waits for that answer before it asserts anything. The signed-out screen
- * has its own tests in session-gate.test.tsx.
+ * The app asks the server who is signed in, then reads the log from the API, before it renders the
+ * tracker - so every test here waits for that answer before it asserts anything. The signed-out
+ * screen has its own tests in session-gate.test.tsx. The server is `test/fetch-stub.ts`, over the
+ * world in `test/fixture.ts`, and it is fresh for every test.
  */
 const renderApp = async () => {
   render(<App />);
@@ -23,29 +24,30 @@ const openView = async (user: ReturnType<typeof userEvent.setup>, label: string)
   user.click(screen.getByRole("button", { name: label }));
 
 describe("App", () => {
-  it("opens on the seeded day with its log and totals", async () => {
+  it("opens on today with its log and totals", async () => {
     await renderApp();
-    const seed = store();
 
     expect(screen.getByTestId("day-total-calories")).toHaveTextContent(
-      formatCalories(dayMacros(seed.days[0], seed).calories),
+      formatCalories(dayMacros(day(0), store()).calories),
     );
     for (const section of ["breakfast", "lunch", "dinner", "snacks"] as const) {
       expect(screen.getByTestId(`section-${section}`)).toBeInTheDocument();
     }
-    expect(within(screen.getByTestId("section-breakfast")).getByText("Typical breakfast")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("section-breakfast")).getByText("Typical breakfast"),
+    ).toBeInTheDocument();
   });
 
-  it("shows three seeded days with their calories", async () => {
+  it("shows the three days with the figures the server reports", async () => {
     await renderApp();
-    const seed = store();
     const switcher = within(screen.getByTestId("day-switcher"));
 
     expect(switcher.getByText("Today")).toBeInTheDocument();
     expect(switcher.getByText("Yesterday")).toBeInTheDocument();
-    for (const day of seed.days) {
-      expect(screen.getByTestId(`day-${day.id}-calories`)).toHaveTextContent(
-        formatCalories(dayMacros(day, seed).calories),
+
+    for (const summary of store().days) {
+      expect(screen.getByTestId(`day-${summary.date}-calories`)).toHaveTextContent(
+        formatCalories(summary.macros.calories),
       );
     }
   });
@@ -53,26 +55,27 @@ describe("App", () => {
   it("switches day and shows that day's log", async () => {
     const user = userEvent.setup();
     await renderApp();
-    const seed = store();
-    const yesterday = seed.days[1];
 
-    await user.click(screen.getByTestId(`day-${yesterday.id}`));
+    await user.click(screen.getByTestId(`day-${DATES[1]}`));
 
     expect(screen.getByTestId("day-total-calories")).toHaveTextContent(
-      formatCalories(dayMacros(yesterday, seed).calories),
+      formatCalories(dayMacros(day(1), store()).calories),
     );
-    expect(within(screen.getByTestId("section-lunch")).getByText("Protein lunch bowl")).toBeInTheDocument();
-    expect(within(screen.getByTestId("section-dinner")).getByText("Nothing logged yet.")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("section-lunch")).getByText("Protein lunch bowl"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("section-dinner")).getByText("Nothing logged yet."),
+    ).toBeInTheDocument();
   });
 
   it("logs a food onto the selected day", async () => {
     const user = userEvent.setup();
     await renderApp();
-    const seed = store();
     // One press of the stepper raises the default quantity of 1 by 0.25.
-    const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 1.25 }, seed);
-    const snacksBefore = seed.days[0].sections.snacks.reduce(
-      (total, entry) => total + entryMacros(entry, seed).calories,
+    const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 1.25 }, store());
+    const snacksBefore = dayWithSections(DATES[0]).sections.snacks.reduce(
+      (total, entry) => total + entryMacros(entry, store()).calories,
       0,
     );
 
@@ -87,7 +90,7 @@ describe("App", () => {
     );
     expect(within(screen.getByTestId("section-snacks")).getByText("Hummus")).toBeInTheDocument();
     expect(screen.getByTestId("day-total-calories")).toHaveTextContent(
-      formatCalories(dayMacros(seed.days[0], seed).calories + added.calories),
+      formatCalories(dayMacros(day(0), store()).calories + added.calories),
     );
   });
 
@@ -113,7 +116,9 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "Remove Blueberries from Breakfast" }));
 
-    expect(within(screen.getByTestId("section-breakfast")).queryByText("Blueberries")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("section-breakfast")).queryByText("Blueberries"),
+    ).not.toBeInTheDocument();
   });
 
   it("creates a food and then logs it", async () => {
@@ -130,24 +135,25 @@ describe("App", () => {
     await user.type(screen.getByTestId("food-fat"), "0.4");
     await user.click(screen.getByTestId("save-food"));
 
-    expect(screen.getByText("Cup of rice")).toBeInTheDocument();
+    expect(await screen.findByText("Cup of rice")).toBeInTheDocument();
 
     await openView(user, "Day");
     await user.click(screen.getByRole("button", { name: "Add food to Lunch" }));
     await user.click(screen.getByText("Cup of rice"));
     await user.click(screen.getByTestId("confirm-add-food"));
 
-    expect(within(screen.getByTestId("section-lunch")).getByText("Cup of rice")).toBeInTheDocument();
+    expect(
+      await within(screen.getByTestId("section-lunch")).findByText("Cup of rice"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("day-total-calories")).toHaveTextContent(
-      formatCalories(dayMacros(store().days[0], store()).calories + 205),
+      formatCalories(dayMacros(day(0), store()).calories + 205),
     );
   });
 
   it("edits a food and the day totals follow", async () => {
     const user = userEvent.setup();
     await renderApp();
-    const seed = store();
-    const before = dayMacros(seed.days[0], seed).calories;
+    const before = dayMacros(day(0), store()).calories;
 
     await openView(user, "Foods");
     await user.click(screen.getByRole("button", { name: "Edit Almonds" }));
@@ -161,14 +167,15 @@ describe("App", () => {
     );
   });
 
-  it("refuses to delete a food that is in use, and says where", async () => {
+  it("refuses a delete the server refuses, and says where the food is used", async () => {
     const user = userEvent.setup();
     await renderApp();
 
     await openView(user, "Foods");
     await user.click(screen.getByRole("button", { name: "Delete Banana" }));
+    await user.click(screen.getByTestId("confirm-delete"));
 
-    const message = screen.getByTestId("delete-message");
+    const message = await screen.findByTestId("delete-problem");
     expect(message).toHaveTextContent("cannot be deleted");
     expect(message).toHaveTextContent("Typical breakfast");
     expect(message).toHaveTextContent("Post-workout shake");
@@ -184,10 +191,10 @@ describe("App", () => {
     await user.type(screen.getByTestId("food-name"), "Temporary food");
     await user.click(screen.getByTestId("save-food"));
 
-    await user.click(screen.getByRole("button", { name: "Delete Temporary food" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Temporary food" }));
     await user.click(screen.getByTestId("confirm-delete"));
 
-    expect(screen.queryByText("Temporary food")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Temporary food")).not.toBeInTheDocument());
   });
 
   it("builds a meal from foods", async () => {
@@ -202,19 +209,21 @@ describe("App", () => {
     await user.selectOptions(screen.getByTestId("row-food-1"), "white-rice");
     await user.click(screen.getByTestId("save-meal"));
 
-    const row = screen.getByText("Rice and beans").closest("li") as HTMLElement;
+    const row = (await screen.findByText("Rice and beans")).closest("li") as HTMLElement;
     expect(within(row).getByText(/Black beans, cooked 1 cup/)).toBeInTheDocument();
   });
 
-  it("refuses to delete a meal that a day logs", async () => {
+  it("refuses a meal delete the server refuses", async () => {
     const user = userEvent.setup();
     await renderApp();
 
     await openView(user, "Meals");
     await user.click(screen.getByRole("button", { name: "Delete Typical breakfast" }));
+    await user.click(screen.getByTestId("confirm-delete"));
 
-    expect(screen.getByTestId("delete-message")).toHaveTextContent("cannot be deleted");
-    expect(screen.getByTestId("delete-message")).toHaveTextContent("Today");
+    const message = await screen.findByTestId("delete-problem");
+    expect(message).toHaveTextContent("cannot be deleted");
+    expect(message).toHaveTextContent("Today");
     expect(screen.queryByTestId("confirm-delete")).not.toBeInTheDocument();
   });
 
@@ -227,10 +236,10 @@ describe("App", () => {
     await user.type(screen.getByTestId("meal-name"), "Temporary meal");
     await user.click(screen.getByTestId("save-meal"));
 
-    await user.click(screen.getByRole("button", { name: "Delete Temporary meal" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Temporary meal" }));
     await user.click(screen.getByTestId("confirm-delete"));
 
-    expect(screen.queryByText("Temporary meal")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Temporary meal")).not.toBeInTheDocument());
   });
 
   it("closes a dialog with Escape", async () => {

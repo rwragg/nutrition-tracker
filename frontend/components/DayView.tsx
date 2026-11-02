@@ -1,12 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { dayLabel } from "@/lib/dates";
+import { dayLabel, toIsoDate } from "@/lib/dates";
 import { formatCalories } from "@/lib/format";
 import { dayMacros } from "@/lib/nutrition";
-import { createId } from "@/lib/store";
 import { DAILY_TARGETS } from "@/lib/targets";
-import { SECTIONS, type Day, type LogEntry, type Section, type Store } from "@/lib/types";
+import {
+  SECTIONS,
+  type Day,
+  type EntryDraft,
+  type SaveResult,
+  type Section,
+  type Store,
+} from "@/lib/types";
 import AddFoodDialog from "./AddFoodDialog";
 import AddMealDialog from "./AddMealDialog";
 import DaySummary from "./DaySummary";
@@ -23,29 +29,36 @@ export default function DayView({
 }: {
   store: Store;
   day: Day;
-  onSelectDay: (dayId: string) => void;
-  onAddEntry: (section: Section, entry: LogEntry) => void;
-  onRemoveEntry: (section: Section, entryId: string) => void;
+  onSelectDay: (date: string) => void;
+  onAddEntry: (section: Section, draft: EntryDraft) => Promise<SaveResult>;
+  onRemoveEntry: (section: Section, entryId: string) => Promise<SaveResult>;
 }) {
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null);
-  const todayIso = store.days[0]?.date ?? day.date;
+  const [problem, setProblem] = useState<string | null>(null);
+  const todayIso = toIsoDate(new Date());
 
   return (
     <>
+      {problem && (
+        <p className="small text-ember mb-0" data-testid="day-problem">
+          {problem}
+        </p>
+      )}
+
       <section aria-label="Days" className="d-flex flex-wrap gap-2" data-testid="day-switcher">
         {store.days.map((candidate) => (
           <button
-            key={candidate.id}
+            key={candidate.date}
             type="button"
-            aria-pressed={candidate.id === day.id}
-            data-testid={`day-${candidate.id}`}
-            onClick={() => onSelectDay(candidate.id)}
+            aria-pressed={candidate.date === day.date}
+            data-testid={`day-${candidate.date}`}
+            onClick={() => onSelectDay(candidate.date)}
             className="day-chip"
           >
             <span className="d-block fw-semibold small">{dayLabel(candidate.date, todayIso)}</span>
             <span className="day-chip-kcal">
-              <span data-testid={`day-${candidate.id}-calories`}>
-                {formatCalories(dayMacros(candidate, store).calories)}
+              <span data-testid={`day-${candidate.date}-calories`}>
+                {formatCalories(candidate.macros.calories)}
               </span>{" "}
               kcal
             </span>
@@ -64,7 +77,11 @@ export default function DayView({
               store={store}
               onAddFood={(target) => setOpenDialog({ kind: "food", section: target })}
               onAddMeal={(target) => setOpenDialog({ kind: "meal", section: target })}
-              onRemoveEntry={onRemoveEntry}
+              onRemoveEntry={(target, entryId) => {
+                void onRemoveEntry(target, entryId).then((result) => {
+                  setProblem(result.ok ? null : result.message);
+                });
+              }}
             />
           </div>
         ))}
@@ -75,9 +92,12 @@ export default function DayView({
           section={openDialog.section}
           store={store}
           onClose={() => setOpenDialog(null)}
-          onAdd={(foodId, quantity) =>
-            onAddEntry(openDialog.section, { id: createId("entry"), kind: "food", foodId, quantity })
-          }
+          onAdd={(foodId, quantity) => {
+            const section = openDialog.section;
+            void onAddEntry(section, { kind: "food", foodId, quantity }).then((result) => {
+              setProblem(result.ok ? null : result.message);
+            });
+          }}
         />
       )}
 
@@ -86,9 +106,12 @@ export default function DayView({
           section={openDialog.section}
           store={store}
           onClose={() => setOpenDialog(null)}
-          onAdd={(mealId) =>
-            onAddEntry(openDialog.section, { id: createId("entry"), kind: "meal", mealId })
-          }
+          onAdd={(mealId) => {
+            const section = openDialog.section;
+            void onAddEntry(section, { kind: "meal", mealId }).then((result) => {
+              setProblem(result.ok ? null : result.message);
+            });
+          }}
         />
       )}
     </>

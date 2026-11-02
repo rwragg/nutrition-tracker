@@ -5,7 +5,12 @@ services:
       dockerfile: backend/Dockerfile
     image: nutrition-tracker:local
     ports:
-      - "8000:8000"
+      - "${NUTRITION_PORT:-8000}:8000"
+    environment:
+      # The sample is seeded with dates relative to "today", and the browser decides what today is
+      # when it opens the log. A container on UTC would seed a day ahead of the person reading it,
+      # so the seeded day would not be the day the app opens on. Override TZ for another zone.
+      TZ: "${TZ:-America/New_York}"
     volumes:
       # The database lives here. Without the volume, `docker compose up --build` would
       # start from an empty file every time and the log would look like it was wiped.

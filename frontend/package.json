@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "docker compose -f ../docker-compose.yml -p nutrition-e2e down -v >/dev/null 2>&1; playwright test; status=$?; docker compose -f ../docker-compose.yml -p nutrition-e2e down -v >/dev/null 2>&1; exit $status"
   },
   "dependencies": {
     "bootstrap": "^5.3.8",

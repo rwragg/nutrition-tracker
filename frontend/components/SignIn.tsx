@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "@/lib/api";
 import { BTN_PRIMARY } from "./styles";
 import TitleBar from "./TitleBar";
 
@@ -24,20 +25,16 @@ export default function SignIn({ onSignedIn }: Props) {
     setBusy(true);
     setFailed(false);
 
-    const response = await fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-
-    setBusy(false);
-
-    if (response.ok) {
-      onSignedIn(await response.json());
+    try {
+      await signIn(username, password);
+    } catch {
+      setBusy(false);
+      setFailed(true);
       return;
     }
 
-    setFailed(true);
+    setBusy(false);
+    onSignedIn({ username });
   }
 
   return (

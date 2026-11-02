@@ -30,7 +30,12 @@ router = APIRouter(prefix="/api", tags=["nutrition"])
 
 
 def database() -> Iterator[sqlite3.Connection]:
-    """One connection per request, closed when the request ends."""
+    """One connection per request, closed when the request ends.
+
+    The close happens in a dependency's cleanup, which FastAPI may run on a different threadpool
+    thread from the one the route body used - see `db.connect` for why that needs
+    `check_same_thread=False`.
+    """
     connection = connect()
     try:
         yield connection

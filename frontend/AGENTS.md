@@ -10,39 +10,48 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # The frontend app, as it stands
 
-This describes the code that exists today. Serving it from FastAPI and making it persistent are later
-parts of the plan; what is here now is a client-rendered app over an in-memory store.
+A client-rendered app over the backend's API. Every record it shows comes from the server, and every
+change it makes goes to the server; nothing is kept in the browser beyond what was last read.
 
 ## What it is
 
-A Next.js 16 app with three views — Day, Foods, Meals — over a single in-memory store. It makes **no
-network call of any kind** except one: it asks `/api/session` who is signed in before it renders
-anything. Signed out it shows the sign-in screen; signed in it shows the tracker with a log-out control
-in the header. It persists nothing: the store is seeded on load and resets on reload.
+A Next.js 16 app with three views — Day, Foods, Meals — reading and writing the FastAPI backend's
+`/api` routes. Signed out it shows the sign-in screen; signed in it shows the tracker with a log-out
+control in the header. The log lives in the database, so it is there after a reload, in another browser,
+and after the container is rebuilt.
 
 It is built as a **static export** (`output: "export"` in `next.config.ts`) and served by the FastAPI
-backend at `/`, so there is no Next.js server in the deployment. Export mode rules out partial
-prefetching and the `cacheComponents` machinery that enables it; neither is used here, so the app holds
-no data-fetching or caching behaviour that the export loses.
+backend at `/`, so there is no Next.js server in the deployment — which is also why the app asks the
+server who is signed in rather than being gated server-side. Export mode rules out partial prefetching
+and the `cacheComponents` machinery that enables it; neither is used here.
 
 ## Layout
 
 - `app/` — `layout.tsx` imports Bootstrap's CSS and `globals.css` and sets `data-bs-theme="dark"` on
   the document; `page.tsx` renders `App`; `globals.css` holds every palette token and the bridge into
   Bootstrap's `--bs-*` variables.
-- `components/` — `App.tsx` is the shell: the session gate, the client gate and the view switcher.
-  `SignIn.tsx` is the sign-in screen, and `TitleBar.tsx` the header both share. `DayView`,
-  `FoodsView` and `MealsView` are the three views. `DaySummary` renders the day's ring and figures,
-  `MacroBar` a single nutrient bar, `SectionCard` a meal section, `EntryRow` a logged entry. `Dialog`
-  is the overlay every dialog is built on; `AddFoodDialog`, `AddMealDialog`, `FoodFormDialog` and
-  `MealFormDialog` are the add and edit flows, and `DeleteDialog` the guarded-delete flow. `styles.ts`
-  holds the shared class-name constants and `use-is-client.ts` the hook that gates client rendering.
-- `test/fetch-stub.ts` — the fetch the unit tests run against. Signed in by default; a test that needs
-  the signed-out screen or a refused sign-in overrides the handler it cares about.
-- `lib/` — `types.ts` (`Unit`, `Macros`, `Food`, `Meal`, `LogEntry`, `Day`, `Store`, `View`),
-  `seed.ts` (31 foods, 5 meals, 3 seeded days), `store.ts` (the reducer), `nutrition.ts` (all macro
-  maths, pure), `dates.ts`, `format.ts`, `targets.ts` (the four targets, in one place), `usage.ts`.
-- `e2e/` — `tracker.spec.ts`, Playwright against a production build on :3100.
+- `lib/api.ts` — the only place the app talks to the network. One function per route, returning the
+  app's own types, and `ApiError`, which carries the status and, for a refused delete, the structured
+  reason behind it.
+- `lib/use-tracker.ts` — the app's copy of what the server holds: reads the records, hands writes to the
+  API, re-reads after every write. Not a source of truth; the database is.
+- `components/` — `App.tsx` is the shell: the session gate, the client gate, the view switcher, and the
+  loading and error states. `SignIn.tsx` is the sign-in screen and `TitleBar.tsx` the header.
+  `DayView`, `FoodsView` and `MealsView` are the three views. `DaySummary` renders the day's ring and
+  figures, `MacroBar` a single nutrient bar, `SectionCard` a meal section, `EntryRow` a logged entry.
+  `Dialog` is the overlay every dialog is built on; `AddFoodDialog`, `AddMealDialog`, `FoodFormDialog`
+  and `MealFormDialog` are the add and edit flows, and `DeleteDialog` the delete flow. `styles.ts` holds
+  the shared class-name constants and `use-is-client.ts` the hook that gates client rendering.
+- `lib/` — `types.ts` (`Unit`, `Macros`, `Food`, `Meal`, `LogEntry`, `Day`, `Store`, `View`, and the
+  input shapes), `api.ts`, `use-tracker.ts`, `nutrition.ts` (all macro maths, pure), `dates.ts`,
+  `format.ts`, `targets.ts` (the four targets, in one place), `usage.ts` (putting the server's refusal
+  into the app's own words).
+- `test/fixture.ts` — a small world for the tests, written out rather than derived from the seed, which
+  lives in the backend now.
+- `test/fetch-stub.ts` — a stand-in for the backend over that world. The app is API-backed, so a
+  component test needs a server to talk to; this answers the same routes with the same shapes and
+  refuses a delete the same way. Fresh for every test.
+- `e2e/` — `tracker.spec.ts`, Playwright against a stack of its own on :8100.
 
 ## How it works
 
@@ -50,16 +59,22 @@ no data-fetching or caching behaviour that the export loses.
   pending it shows the shell, on a 401 it shows `SignIn`, and on a user it shows the tracker. The
   protection is not this screen — it is the guard on every `/api` route, which refuses without a session
   whatever the page chooses to render.
-- **State.** `useReducer(storeReducer, null, () => createSeedStore())` in `App.tsx`. One store,
-  immutable updates, eight reducer cases. Nothing is written anywhere.
-- **The client gate.** `App` returns `useIsClient() ? <Tracker/> : <Shell/>`. Every date on screen is
-  derived from "now", which a prerendered page cannot know without a hydration mismatch, so the gate
-  sits *above* the reducer rather than inside it.
-- **Guarded deletes.** A food or a meal that anything still uses cannot be deleted. `usage.ts`
-  computes where a record is referenced, the reducer refuses, and the dialog names the reference.
-  Nothing cascades.
+- **State is a cache, not the truth.** `useTracker` reads foods, meals, the day list and the open day,
+  and re-reads all of it after any write — so a food edit moves every day that logs it without the
+  client having to know which days those are. The hook holds no record the server did not give it.
+- **Writes return their refusal.** A delete the server refuses comes back as a value, not an exception,
+  and the dialog shows it and stays open. The client does not predict the rule; it asks and reports.
+- **Every figure the API reports is used where the API reports it.** A day chip shows the server's figure
+  for that date; the summary and the section subtotals are the app's own arithmetic over the entries it
+  fetched. A test asserts both, so a disagreement shows up rather than being hidden by picking one.
+- **The client gate.** `App` returns `useIsClient() ? <SessionGate/> : <Shell/>`. Every date on screen is
+  derived from "now", which a prerendered page cannot know without a hydration mismatch, so the gate sits
+  above everything that reads a clock.
+- **Loading and error states.** The tracker shows a loading panel until the first read answers, a failure
+  panel if it cannot read at all, and a dismissible line if a later refresh fails. A dialog reports its
+  own failure inline and stays open.
 - **Targets.** `lib/targets.ts` is the only place the targets live: 2,200 kcal / 140 g protein /
-  250 g carbs / 70 g fat.
+  250 g carbs / 70 g fat. They are not stored — the API returns sums, and the app compares.
 
 ## Conventions
 
@@ -78,12 +93,11 @@ cd frontend
 npm install
 npm run dev        # development server, for working on the UI
 npm run build      # static export to out/ - this is what the image serves
-npm test           # 55 unit and component tests (Vitest + Testing Library)
-npm run test:e2e   # 14 Playwright tests, against the container on :8000 (needs docker)
+npm test           # 35 unit and component tests (Vitest + Testing Library)
+npm run test:e2e   # 22 Playwright tests, against its own stack on :8100 (needs docker)
 npm run lint
 ```
 
-`npm run test:e2e` starts the stack itself with `docker compose up --build --wait` and stops it again,
-so it tests the built image rather than a `next start` server. Locally it reuses a stack that is already
-running; in CI it always builds fresh. `next start` is no longer used anywhere — the app is a static
-export, and `next start` does not serve one.
+`npm run test:e2e` takes its own compose stack down before and after the run, so every run starts from a
+freshly seeded database and the stack you are using is left alone. `next start` is not used anywhere —
+the app is a static export, and `next start` does not serve one.
