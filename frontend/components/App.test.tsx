@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import App from "@/components/App";
 import { formatCalories } from "@/lib/format";
 import { dayMacros, entryMacros } from "@/lib/nutrition";
-import { DATES, dayWithSections, sampleStore } from "@/test/fixture";
+import { stubFetch } from "@/test/fetch-stub";
+import { DATES, FOODS, dayWithSections, sampleStore } from "@/test/fixture";
 
 const store = () => sampleStore();
 const day = (index: number) => dayWithSections(DATES[index]);
@@ -251,5 +252,124 @@ describe("App", () => {
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("takes a food back out of a meal before saving it", async () => {
+    const user = userEvent.setup();
+    await renderApp();
+
+    await openView(user, "Meals");
+    await user.click(screen.getByTestId("new-meal"));
+    await user.type(screen.getByTestId("meal-name"), "One food");
+    await user.click(screen.getByTestId("add-row"));
+    await user.click(screen.getByTestId("remove-row-1"));
+    await user.click(screen.getByTestId("save-meal"));
+
+    const row = (await screen.findByText("One food")).closest("li") as HTMLElement;
+    // The form starts a row on the first food in the list, so ask the fixture which that is.
+    const contents = within(row).getByText(new RegExp(FOODS[0].name));
+
+    // One food, not two: the second row was removed before saving.
+    expect(contents.textContent).not.toContain("·");
+  });
+});
+
+/**
+ * The paths a working server never takes. They exist - a load that cannot happen, a write that is
+ * refused, a server that is not there - and nothing else in the suite runs them, so they are asserted
+ * here rather than assumed.
+ */
+describe("when the server is not co-operating", () => {
+  it("says the log could not be loaded, and repeats what the server said", async () => {
+    stubFetch({
+      intercept: ({ path }) =>
+        path === "/api/foods"
+          ? { ok: false, status: 503, body: { detail: "the foods list is unavailable" } }
+          : undefined,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByTestId("load-failed")).toHaveTextContent("the foods list is unavailable");
+  });
+
+  it("says so in the app's own words when the server cannot be reached at all", async () => {
+    // The session answers; the records do not, because the server is not there for them.
+    stubFetch({ offline: ({ path }) => path.startsWith("/api/days") || path.startsWith("/api/foods") });
+
+    render(<App />);
+
+    expect(await screen.findByTestId("load-failed")).toHaveTextContent("Could not reach the server");
+  });
+
+  it("shows the sign-in screen when the session cannot be checked", async () => {
+    stubFetch({ offline: true });
+
+    render(<App />);
+
+    expect(await screen.findByTestId("sign-in")).toBeInTheDocument();
+  });
+
+  it("keeps the page, and says a refresh failed", async () => {
+    let failing = false;
+    stubFetch({
+      intercept: ({ path }) =>
+        failing && path === "/api/foods"
+          ? { ok: false, status: 503, body: { detail: "try again" } }
+          : undefined,
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByTestId("day-total-calories");
+
+    failing = true;
+    await user.click(screen.getByRole("button", { name: "Remove Blueberries from Breakfast" }));
+
+    expect(await screen.findByTestId("page-problem")).toHaveTextContent("try again");
+    // The page is still the day it was, rather than blanked by a failed refresh.
+    expect(screen.getByTestId("day-total-calories")).toBeInTheDocument();
+  });
+
+  it("closes that notice when it is dismissed", async () => {
+    let failing = false;
+    stubFetch({
+      intercept: ({ path }) =>
+        failing && path === "/api/foods" ? { ok: false, status: 503, body: { detail: "try again" } } : undefined,
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByTestId("day-total-calories");
+
+    failing = true;
+    await user.click(screen.getByRole("button", { name: "Remove Blueberries from Breakfast" }));
+    await screen.findByTestId("page-problem");
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(screen.queryByTestId("page-problem")).not.toBeInTheDocument();
+  });
+
+  it("shows a refused save inside the form, and leaves the form open", async () => {
+    stubFetch({
+      intercept: ({ path, method }) =>
+        method === "POST" && path === "/api/foods"
+          ? { ok: false, status: 422, body: { detail: "a food needs a name" } }
+          : undefined,
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByTestId("day-total-calories");
+
+    await openView(user, "Foods");
+    await user.click(screen.getByTestId("new-food"));
+    await user.type(screen.getByTestId("food-name"), "Refused food");
+    await user.click(screen.getByTestId("save-food"));
+
+    expect(await screen.findByTestId("food-problem")).toHaveTextContent("a food needs a name");
+    expect(screen.getByTestId("save-food")).toBeInTheDocument();
+    expect(screen.queryByText("Refused food")).not.toBeInTheDocument();
   });
 });

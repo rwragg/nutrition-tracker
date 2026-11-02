@@ -75,7 +75,7 @@ export function entryLabel(entry: LogEntry, store: Store): { name: string; detai
   const meal = findMeal(store, entry.mealId);
   return {
     name: meal?.name ?? "Missing meal",
-    detail: meal ? `${meal.ingredients.length} foods` : "",
+    detail: meal ? `${meal.ingredients.length} ${meal.ingredients.length === 1 ? "food" : "foods"}` : "",
   };
 }
 

@@ -2,8 +2,11 @@ import { vi } from "vitest";
 import type { Day, Food, LogEntry, Meal, Section } from "@/lib/types";
 import { DATES, EMPTY_SECTIONS, FOODS, MEALS, SECTIONS_BY_DATE, macrosOf } from "./fixture";
 
-type SessionAnswer = { ok: boolean; body?: unknown };
-type LoginAnswer = { ok: boolean; body?: unknown };
+type SessionAnswer = { ok: boolean; body?: unknown; status?: number };
+type LoginAnswer = { ok: boolean; body?: unknown; status?: number };
+
+/** What an intercepting handler returns: an answer, or nothing to let the stub handle it. */
+type Intercepted = { ok: boolean; body?: unknown; status?: number } | undefined;
 
 type World = {
   foods: Food[];
@@ -53,6 +56,10 @@ export function stubFetch(
   handlers: {
     session?: SessionAnswer;
     login?: (submitted: { username?: string; password?: string }) => LoginAnswer;
+    /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
+    intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
+    /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */
+    offline?: boolean | ((request: { path: string; method: string }) => boolean);
   } = {},
 ) {
   const data = world();
@@ -68,15 +75,24 @@ export function stubFetch(
         new Response(status === 204 ? null : JSON.stringify(payload ?? {}), { status }),
       );
 
+    const unreachable =
+      handlers.offline === true || (typeof handlers.offline === "function" && handlers.offline({ path, method }));
+    if (unreachable) {
+      return Promise.reject(new TypeError("Failed to fetch"));
+    }
+
+    const intercepted = handlers.intercept?.({ path, method, body });
+    if (intercepted) return answer(intercepted.body, intercepted.status ?? (intercepted.ok ? 200 : 500));
+
     // --- the session ------------------------------------------------------------------
     if (path === "/api/session") {
       const session = handlers.session ?? { ok: true, body: { username: "user" } };
-      return answer(session.body, session.ok ? 200 : 401);
+      return answer(session.body, session.status ?? (session.ok ? 200 : 401));
     }
 
     if (path === "/api/login") {
       const login = handlers.login?.(body ?? {}) ?? { ok: true, body: { username: body?.username } };
-      return answer(login.body ?? { username: body?.username }, login.ok ? 200 : 401);
+      return answer(login.body ?? { username: body?.username }, login.status ?? (login.ok ? 200 : 401));
     }
 
     if (path === "/api/logout") return answer({ status: "signed out" });

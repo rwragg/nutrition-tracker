@@ -13,7 +13,7 @@ import {
   totalMacros,
   ZERO,
 } from "@/lib/nutrition";
-import { DATES, dayWithSections, macrosOf, sampleStore } from "@/test/fixture";
+import { DATES, FOODS, dayWithSections, macrosOf, sampleStore } from "@/test/fixture";
 
 /**
  * The app's own arithmetic, over the world written out in `test/fixture.ts`.
@@ -24,6 +24,15 @@ import { DATES, dayWithSections, macrosOf, sampleStore } from "@/test/fixture";
  */
 const store = () => sampleStore();
 const day = (index = 0) => dayWithSections(DATES[index]);
+
+/** A store holding one one-food meal, for the singular. */
+function singleFoodStore() {
+  return {
+    foods: FOODS,
+    meals: [{ id: "single", name: "One-food meal", ingredients: [{ foodId: "oats", quantity: 1 }] }],
+    days: [],
+  };
+}
 
 describe("macros", () => {
   it("scales a food by quantity", () => {
@@ -91,6 +100,16 @@ describe("macros", () => {
     expect(entryMacros({ id: "a", kind: "food", foodId: "gone", quantity: 3 }, store())).toEqual(ZERO);
   });
 
+  it("reports zero for a missing meal rather than throwing", () => {
+    expect(entryMacros({ id: "a", kind: "meal", mealId: "gone" }, store())).toEqual(ZERO);
+  });
+
+  it("counts a meal's missing ingredient as nothing, and the rest of the meal normally", () => {
+    const partial = { id: "x", name: "Partly missing", ingredients: [{ foodId: "gone", quantity: 2 }] };
+
+    expect(mealMacros(partial, store())).toEqual(ZERO);
+  });
+
   it("computes percentages against a target", () => {
     expect(percentOfTarget(1100, 2200)).toBe(50);
     expect(percentOfTarget(0, 2200)).toBe(0);
@@ -112,6 +131,32 @@ describe("labels and formatting", () => {
     });
   });
 
+  it("counts a meal of one food in the singular", () => {
+    expect(entryLabel({ id: "a", kind: "meal", mealId: "single" }, singleFoodStore())).toEqual({
+      name: "One-food meal",
+      detail: "1 food",
+    });
+  });
+
+  it("names a missing food and a missing meal rather than throwing", () => {
+    expect(entryLabel({ id: "a", kind: "food", foodId: "gone", quantity: 1 }, store())).toEqual({
+      name: "Missing food",
+      detail: "",
+    });
+    expect(entryLabel({ id: "a", kind: "meal", mealId: "gone" }, store())).toEqual({
+      name: "Missing meal",
+      detail: "",
+    });
+  });
+
+  it("leaves a missing food out of a meal's breakdown, and counts it as nothing", () => {
+    const partial = { id: "x", name: "Partly missing", ingredients: [{ foodId: "gone", quantity: 2 }] };
+
+    expect(mealBreakdown(partial, store())).toEqual([
+      { name: "Missing food", detail: "", calories: 0 },
+    ]);
+  });
+
   it("breaks a meal into lines that add up to the meal", () => {
     const current = store();
     const meal = current.meals.find((candidate) => candidate.id === "post-workout-shake")!;
@@ -129,6 +174,12 @@ describe("labels and formatting", () => {
     expect(formatQuantity(2, "cup")).toBe("2 cups");
     expect(formatQuantity(0.25, "tsp")).toBe("1/4 tsp");
     expect(formatQuantity(0.5, "oz")).toBe("1/2 oz");
+  });
+
+  it("writes a quantity that is not a common fraction as a decimal", () => {
+    // Below one the unit stays singular, as it does for "1/2 cup".
+    expect(formatQuantity(0.3, "cup")).toBe("0.3 cup");
+    expect(formatQuantity(1.125, "cup")).toBe("1.13 cups");
   });
 
   it("rounds calories and grams for display", () => {
