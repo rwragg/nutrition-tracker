@@ -40,11 +40,13 @@ npm run test:e2e                        # 24 passed, builds its own stack on :81
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
 ```
 
-Current commits: this repository is HEAD here (Part 9, 2026-11-02), hermes-home `64da0d7`,
-hermes-skills `f81a1e6`, hermes-notes `264f04a`, pm `ae223d6`. Tags
-`snapshot-2026-11-02-pre-telegram` (before this work) and `skeleton-2026-11-02-grams-and-bot` (after it)
-sit on the four repositories. `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses
-with 403 — the token has no write on that repo (see Open items).
+Current commits, read back rather than assumed: this repository is `5ca385f` (Part 10 step 2, 2026-11-02),
+hermes-home `64da0d7`, hermes-skills `f81a1e6`, hermes-notes `6dd2338`, pm `ae223d6`. Tags
+`snapshot-2026-11-02-pre-telegram` (before the Telegram work), `skeleton-2026-11-02-grams-and-bot` (the
+skeleton and the gram basis) and `linked-chats-2026-11-02` (step 2) sit on the four repositories, and
+`~/backups/nutrition/2026-11-02-linked-chats/` holds a database copy with a `SNAPSHOT.md` beside it.
+`spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with 403 — the token has no write
+on that repo (see Open items).
 
 ## What Part 9 did
 
