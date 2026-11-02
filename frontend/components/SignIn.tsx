@@ -106,9 +106,7 @@ export default function SignIn({ onSignedIn }: Props) {
               </label>
 
               <label className="d-flex flex-column gap-1">
-                <span className="small text-muted-brand">
-                  Telegram id <span className="text-muted-brand">(optional, for logging from a chat)</span>
-                </span>
+                <span className="small text-muted-brand">Telegram id (optional)</span>
                 <input
                   className="form-control"
                   name="telegram_id"
@@ -122,8 +120,7 @@ export default function SignIn({ onSignedIn }: Props) {
 
           <label className="d-flex flex-column gap-1">
             <span className="small text-muted-brand">
-              Password{" "}
-              {mode === "register" && <span className="text-muted-brand">(at least 8 characters)</span>}
+              Password {mode === "register" && <span className="text-muted-brand">(at least 8 characters)</span>}
             </span>
             <input
               className="form-control"
