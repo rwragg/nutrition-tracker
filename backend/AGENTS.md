@@ -10,9 +10,12 @@ Part 7.
   database, the session middleware, the routers, the open health check, and the static mount. The API
   routes are declared first and the export is mounted at `/` last, so `/api/*` wins the match. `html=True`
   makes the mount serve `index.html` at `/`.
-- `app/auth.py` - sign-in and the guard: `CREDENTIALS`, the session secret, `POST /api/login`,
-  `POST /api/logout`, `GET /api/session`, and `current_user` - the dependency every protected route takes
-  to get the user id or a 401 (R2).
+- `app/auth.py` - accounts and the guard: `POST /api/register`, `POST /api/login`, `POST /api/logout`,
+  `GET /api/session`, and `current_user` - the dependency every protected route takes to get the user id
+  or a 401 (R2). The connection dependency (`Connection`) lives here too, because both routers take it.
+- `app/passwords.py` - how a password is stored and checked: pbkdf2-sha256 with a salt per password,
+  constant-time comparison, and a value that is missing or malformed fails closed. Standard library only,
+  so there is no new dependency to keep patched for calling two functions from one.
 - `app/api.py` - the nutrition routes. Twelve of them: foods and meals CRUD, and the dates and entries.
 - `app/db.py` - the schema, the connection settings and the first-run seed. Read `docs/DATABASE.md` for
   the reasoning; `docs/schema.json` is the approved proposal, and a test asserts the two still describe

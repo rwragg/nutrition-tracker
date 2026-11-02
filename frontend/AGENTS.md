@@ -36,7 +36,8 @@ and the `cacheComponents` machinery that enables it; neither is used here.
 - `lib/use-tracker.ts` — the app's copy of what the server holds: reads the records, hands writes to the
   API, re-reads after every write. Not a source of truth; the database is.
 - `components/` — `App.tsx` is the shell: the session gate, the client gate, the view switcher, and the
-  loading and error states. `SignIn.tsx` is the sign-in screen and `TitleBar.tsx` the header.
+  loading and error states. `SignIn.tsx` is the way in - sign in, or register a new account, which then
+  starts on an empty log of its own - and `TitleBar.tsx` the header.
   `DayView`, `FoodsView` and `MealsView` are the three views. `DaySummary` renders the day's ring and
   figures, `MacroBar` a single nutrient bar, `SectionCard` a meal section, `EntryRow` a logged entry.
   `Dialog` is the overlay every dialog is built on; `AddFoodDialog`, `AddMealDialog`, `FoodFormDialog`
@@ -93,8 +94,8 @@ cd frontend
 npm install
 npm run dev        # development server, for working on the UI
 npm run build      # static export to out/ - this is what the image serves
-npm test           # 74 unit and component tests (Vitest + Testing Library)
-npm run test:e2e   # 22 Playwright tests, against its own stack on :8100 (needs docker)
+npm test           # 78 unit and component tests (Vitest + Testing Library)
+npm run test:e2e   # 24 Playwright tests, against its own stack on :8100 (needs docker)
 npm run lint
 ```
 
