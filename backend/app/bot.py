@@ -1,24 +1,31 @@
 """The Telegram front end: a second client of this API, not a second implementation of it.
 
-Two commands, one each way:
+Three commands:
 
-    /today                                  read the day back
-    /log <food> <quantity> <unit> [section]  log a food into today
+    /bind <code>                             link this chat to an account
+    /today                                   read the day back
+    /log <food> <quantity> <unit> [section]   log a food into today
 
 Everything the bot knows it asks the API for — it holds no records and computes no macros.
 So a food edited in the web app moves the figures the bot reports, and the bot cannot
 disagree with the app about anything, because it has no opinion to disagree with.
 
-Deliberate limits, for the first cut:
+**It speaks for a chat, not for an account** (R26). Each request names the chat it is answering and
+carries a secret that proves it is the bot; the app decides which account that chat has been linked
+to, and answers 403 until it has been. So a chat that was never linked can read nothing and write
+nothing, and two linked chats cannot see each other's log. `/bind` is how a chat stops being a
+stranger: the person is shown a code in the app and sends it here.
 
-- **No natural-language parsing.** Text that is not one of the two commands gets a one-line
-  hint. Turning "a cup of rice and a banana" into entries needs a model or a grammar, and
-  that decision (AI in or out) is not taken yet — see docs/PLAN.md, Part 9.
+Deliberate limits, for this cut:
+
+- **No natural-language parsing.** Text that is not one of the commands gets a one-line hint.
+  Turning "a cup of rice and a banana" into entries needs a model or a grammar, and that decision
+  (AI in or out) is not taken yet — see docs/PLAN.md, D15.
 - **The targets are not here.** They live in one place, `frontend/lib/targets.ts` (R10), and
   the API returns sums rather than judgements. The bot therefore reports the day's figures
   and does not grade them against a target it would have to duplicate.
-- **One user.** It signs in with the MVP credential, so every chat that is allowed to talk
-  to it writes the same log. Per-user accounts are R3 and are not built.
+- **Voice is not here.** A voice note is not text, so it is ignored rather than guessed at; that is
+  step 3 of Part 10, gated on D16.
 
 Standard library only: long polling and the app's own API are both a handful of HTTP calls,
 and a bot that needs no dependency is a bot the image already contains.
@@ -158,9 +165,9 @@ def find_food(name: str, foods: list[dict]) -> tuple[dict | None, list[dict]]:
 
 # ---------------------------------------------------------------------------- client ---
 
-# What `handle` needs of a client, stated as a shape rather than a class: the tests drive
-# the two commands against a stand-in, and a stub that satisfies this is as good as the
-# real thing.
+# What `handle` needs of a client, stated as a shape rather than a class: the tests drive the
+# commands against a stand-in, and a stub that satisfies this is as good as the real thing.
+# Every method takes a chat id, because that is the real client's shape (R26).
 class Client(Protocol):
     """What `handle` needs: the API, understood as one particular chat."""
 

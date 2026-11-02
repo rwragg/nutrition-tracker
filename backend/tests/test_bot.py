@@ -3,8 +3,8 @@
 The bot is a second client of this API, so most of what can go wrong is not in the
 network: it is a message parsed into the wrong arguments, a name resolved to the wrong
 food, or a number reported that the app does not hold. Those are asserted here against a
-stub client, and the two commands are exercised end to end through `handle` — the only
-part that needs a real app is `Api`, which the container test covers.
+stub client, and the commands are exercised end to end through `handle` — the only part that needs
+a real app is `Api`, which the container test covers.
 """
 
 from collections.abc import Iterator

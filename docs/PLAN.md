@@ -543,8 +543,10 @@ P9.7 the app, its scripts and its browser suite are unaffected by the bot's exis
   rows, which are per 100 g.
 - **D14 — the bot is a client, not a second implementation.** It holds no records and computes no
   macros; it asks the API. That is why a food edited in the web app moves what the bot reports, and
-  why the bot cannot disagree with the app. It signs in with the MVP credential, so it writes the
-  one log that exists — per-user accounts are R3 and are not built.
+  why the bot cannot disagree with the app. **Superseded in part by step 2 of Part 10:** it used to
+  sign in with the MVP credential and write the one log that existed, and it now speaks for a chat,
+  which the app resolves to an account (R26). The principle is unchanged — the bot still knows nothing
+  the app does not — but its identity is a chat, not a credential.
 - **D15 — no natural-language parsing yet, and the targets stay in the frontend.** Turning "a cup of
   rice and a banana" into entries needs a model or a grammar, and AI is out of scope by the brief's
   own decision (D2). Text that is not a command gets a hint rather than a guess. The bot reports
