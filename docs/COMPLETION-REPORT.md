@@ -24,7 +24,7 @@ Re-run today, on this machine, against the finished tree (HEAD `0f714a9`, workin
 | `cd frontend && npm test` | **74 passed** (8 files) |
 | `npm run lint` | clean |
 | `npx tsc --noEmit` | clean |
-| `npm run test:e2e` | **22 passed**, 12 of 14 runs; 2 runs hit a browser-level flake — see below |
+| `npm run test:e2e` | **22 passed**, 6 consecutive runs on the final code; 29 runs before the fixes, 4 single-test failures — see below |
 | `scripts/e2e-persistence.sh` | **passed**: writes survived a stop + image rebuild + restart, the seed did not re-run |
 | `curl http://localhost:8000/` | `200 text/html`, 8,765 bytes, `<title>Nutrition Tracker</title>` |
 | `/api/health` · `/api/foods` signed out | `200` · `401` |
@@ -167,27 +167,49 @@ cd ~/hermes_workspace/nutrition && docker compose down -v && ./scripts/start.sh
 Not run here: it destroys the log the running stack holds, and that is Robert's call rather than the
 handover's.
 
-## Known flake in the browser suite, stated plainly
+## Two things the browser suite was hiding, and what was done about them
 
-Across 14 runs of `npm run test:e2e` today, 12 passed 22/22 and 2 failed a single test.
+Across 29 runs of `npm run test:e2e` today — before anything was changed — 25 passed 22/22 and 4 failed
+a single test. Neither cause was the app. One of them was a defect in the test itself.
 
-- In the second failure the console carried `Failed to load resource: net::ERR_NETWORK_CHANGED` four
-  times, and the failing assertion was the console-quiet check at the end of *opens on the newest day*.
-  That one is not the app: it is the browser failing to fetch something.
-- The first failure was a failed assertion in *logs a meal and expands it into its foods*, at the line
-  asserting the meal's "N foods" detail. Its full error text was not kept — the run's log was overwritten
-  before it was read — so the cause is inferred from the class rather than read: the same suite, on the
-  same host, failing on a browser-level fetch failure. Re-run: it passed, as it has every time since.
+### 1. One test was unsound, and passed by winning a race. Fixed.
 
-`expectQuiet` asserts the console is completely empty, which means a resource the browser could not
-fetch — for a reason that has nothing to do with the app — fails the run. On this host the docker
-network is rebuilt for every run and the stack is torn down and brought up again around it, which is
-the likely source. It is a rare, environmental failure with a rerun as the remedy, and it is recorded
-here rather than left for the next person to discover.
+*logs a meal and expands it into its foods* took the first meal with more than one food — **Light
+dinner** — and added it to Dinner. The sample for today's Dinner **already contains Light dinner**. So
+after the write, the section held two identical rows, and the assertions were made against the section
+rather than against the row the test had just created.
 
-If it is worth removing, the narrow fix is to count `net::` failures out by the same rule the 401 and
-the 409 are already counted out by — turning it into a stated decision instead of a surprise. Not done:
-it changes what the suite asserts, and that is Robert's call, not the handover's.
+That made the verdict depend on a race with the app's own re-read, and both outcomes were wrong:
+
+- Assert straight after the click, as the suite did, and the DOM still shows the *one* seeded row; both
+  assertions pass — against the meal that was already there, not the one just added.
+- Let the app re-read first and there are two rows; both assertions fail on a strict-mode violation.
+
+Reproduced deterministically, both ways, with a scratch Playwright script against a freshly seeded
+stack: `1 rows, 1 name matches, 1 "N foods" matches` → both pass, while the API already held
+`["t-dn-1","entry-8c9e…"]`; then, after waiting for the re-read, `2 rows, 2 name matches, 2 "N foods"
+matches` → both fail.
+
+It also broke its own contract. The cleanup removed **every** entry for that meal, including the
+sample's own dinner, so the next test read a day the seed had not written: today's total was 1,583.5
+kcal where the seed says 2,207.5.
+
+**Fixed in `e2e/tracker.spec.ts`:** the test now picks a meal the day does not already hold, waits for
+the `POST` response and asserts inside `entry-<the created id>`, and its cleanup deletes only that one
+entry. Verified after the change: six consecutive full runs, 22/22 each; and a six-test run leaves
+today at **2,207.5 kcal with `dinner: ["t-dn-1"]`** — exactly what the seed wrote.
+
+### 2. A rare browser-level transport failure. Recorded, not fixed.
+
+Three of the 29 runs failed a test on the console carrying `Failed to load resource:
+net::ERR_NETWORK_CHANGED` — three times per failure, on a different test each time (the day view, the
+meal log, the entry removal). `expectQuiet` asserts the console is completely empty, so a resource the
+browser could not fetch fails the run. That is the transport, not the app: the docker network is torn
+down and rebuilt around every run on this host.
+
+The narrow fix is to count `net::` failures out by the same rule the 401 and the 409 are already counted
+out by — a stated decision instead of a surprise. Not done: it changes what the suite asserts, and that
+is Robert's call.
 
 ## Verifying this yourself
 

@@ -218,8 +218,17 @@ test("logs a food with a quantity onto the selected day", async ({ page, request
 
 test("logs a meal and expands it into its foods", async ({ page, request, consoleErrors }) => {
   const { store, open } = await state(request);
-  // Whichever meal the sample holds with more than one food in it.
-  const meal = store.meals.find((candidate) => candidate.ingredients.length > 1)!;
+  // A meal with more than one food that this day does not already log. Adding one that is already
+  // there leaves two rows with the same name and the same "N foods" detail, so an assertion inside
+  // the section can be satisfied by the row that was there before the write - which passed here for
+  // months by winning a race against the app's own re-read.
+  const meal = store.meals.find(
+    (candidate) =>
+      candidate.ingredients.length > 1 &&
+      !open.sections.dinner.some(
+        (entry) => entry.kind === "meal" && entry.mealId === candidate.id,
+      ),
+  )!;
   const firstFood = store.foods.find(
     (food) => food.id === meal.ingredients[0]!.foodId,
   )!;
@@ -227,16 +236,26 @@ test("logs a meal and expands it into its foods", async ({ page, request, consol
   await openTracker(page);
   await page.getByRole("button", { name: "Add meal to Dinner" }).click();
   await page.getByTestId(`meal-${meal.id}`).click();
+
+  const posted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/days/${open.date}/entries`) &&
+      response.request().method() === "POST",
+  );
   await page.getByTestId("confirm-add-meal").click();
+  const created = (await (await posted).json()) as { id: string };
 
-  const dinner = page.getByTestId("section-dinner");
-  await expect(dinner.getByText(meal.name)).toBeVisible();
-  await expect(dinner.getByText(`${meal.ingredients.length} foods`)).toBeVisible();
+  // Scoped to the entry the write created, by id: no other row can stand in for it.
+  const row = page.getByTestId(`entry-${created.id}`);
+  await expect(row.getByText(meal.name)).toBeVisible();
+  await expect(row.getByText(`${meal.ingredients.length} foods`)).toBeVisible();
 
-  await dinner.getByRole("button", { name: `Show foods in ${meal.name}` }).click();
-  await expect(dinner.getByText(firstFood.name)).toBeVisible();
+  await row.getByRole("button", { name: `Show foods in ${meal.name}` }).click();
+  await expect(row.getByText(firstFood.name)).toBeVisible();
 
-  await removeEntries(request, open.date, (entry) => entry.kind === "meal" && entry.mealId === meal.id);
+  // Only what this test wrote. Removing every entry for the meal would take the sample's own dinner
+  // with it, so the next test would read a day the seed did not write.
+  await request.delete(`/api/days/${open.date}/entries/${created.id}`);
   expectQuiet(consoleErrors);
 });
 

@@ -131,14 +131,20 @@ Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branche
   of 1 Nov), and the seed only ever writes once, so the offset sticks. A fresh volume is right, which is
   why the browser suite never sees it. Fix, not run here because it throws the log away:
   `docker compose down -v && ./scripts/start.sh`.
-- **The browser suite is rarely flaky, and it is the transport, not the app.** Across 14 runs on
-  2026-11-01, 2 runs failed one test each. One was read: `net::ERR_NETWORK_CHANGED` four times in the
-  console, caught by the console-quiet assertion at the end of *opens on the newest day* — the browser
-  failing to fetch, not the app. The other, a failed assertion in *logs a meal and expands it into its
-  foods*, was not read before its log was overwritten, so its cause is inferred from that class rather
-  than known. `expectQuiet` asserts an empty console, so an unfetchable resource fails the run; a rerun
-  clears it. The narrow fix, if Robert wants it, is to count `net::` failures out by the same rule the
-  401 and the 409 are counted out by — deliberately not done, because it changes what the suite asserts.
+- **The browser suite still has one rare transport failure, which is not the app.** Across 29 runs on
+  2026-11-01, 3 failed a test with `Failed to load resource: net::ERR_NETWORK_CHANGED` in the console —
+  a different test each time. `expectQuiet` asserts an empty console, so an unfetchable resource fails
+  the run; a rerun clears it. The narrow fix, if Robert wants it, is to count `net::` failures out by the
+  same rule the 401 and the 409 are counted out by — deliberately not done, because it changes what the
+  suite asserts.
+- **One browser test was unsound and has been fixed** (the fourth failure in those 29 runs). *logs a meal
+  and expands it into its foods* added "Light dinner" to a Dinner that already held it, then asserted on
+  the *section* — so it passed by asserting against the seeded row before the app's re-read rendered the
+  new one, and failed with a strict-mode violation when the re-read won. Its cleanup also deleted the
+  seed's own dinner, leaving later tests reading a day the seed never wrote (1,583.5 kcal where the seed
+  says 2,207.5). It now picks a meal the day does not hold, asserts inside `entry-<the POST's id>`, and
+  deletes only what it wrote. Six consecutive full runs green afterwards. The lesson generalises: a test
+  that writes must assert on *its* row, not on a section that may already contain one like it.
 
 ## On resume
 

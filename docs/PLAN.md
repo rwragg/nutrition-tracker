@@ -490,11 +490,19 @@ and states plainly where any was met differently. The short version:
 **Re-verified at close-out, on this machine:** 80 backend tests, 74 unit and component, lint and `tsc`
 clean, 22 browser tests, container healthy on `http://localhost:8000`.
 
-**One thing to know, stated plainly:** across 14 runs of the browser suite today, 2 runs failed a single
-test. One was read and is not the app: `net::ERR_NETWORK_CHANGED` in the console, caught by the
-console-quiet assertion, which asserts an empty console. The other was not read before its log was
-overwritten, so its cause is inferred from that class rather than known. Recorded in the report and the
-README, and left as a decision rather than papered over with `.first()` or a retry.
+**Two things the browser suite was hiding, both now written down in the report.** Across 29 runs today,
+4 failed a single test, and neither cause is the app:
+
+- **A rare transport failure.** 3 runs failed on `net::ERR_NETWORK_CHANGED` in the console, a different
+  test each time — the browser failing to fetch while docker rebuilt the network around the run. Left as
+  a stated decision; the narrow fix is Robert's to call.
+- **An unsound test, now fixed.** *logs a meal and expands it into its foods* added a meal the sample's
+  Dinner already held and then asserted on the whole section, so it passed by asserting against the
+  seeded row before the app's re-read, and failed on a strict-mode violation when the re-read won. Its
+  cleanup also removed the seed's own dinner, so later tests read a day the seed never wrote. It now
+  picks a meal the day does not hold, waits for the `POST` and asserts inside `entry-<created id>`, and
+  deletes only what it wrote. Six consecutive full runs green afterwards; a six-test run leaves today at
+  the seed's own 2,207.5 kcal.
 
 ## Open questions
 
