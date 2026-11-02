@@ -55,29 +55,32 @@ def test_a_malformed_login_is_refused(client: TestClient) -> None:
     assert client.post("/api/login", json={"username": "user"}).status_code == 422
 
 
-@pytest.mark.parametrize("path", ["/api/session", "/api/hello"])
+@pytest.mark.parametrize("path", ["/api/session", "/api/foods", "/api/meals", "/api/days"])
 def test_protected_routes_refuse_without_a_session(client: TestClient, path: str) -> None:
-    """P4.2: what is protected is the data, and this is the guard that protects it."""
+    """P4.2, P6.3: what is protected is the data, and this is the guard that protects it."""
     assert client.get(path).status_code == 401
 
 
 def test_logout_clears_the_session(client: TestClient) -> None:
     sign_in(client)
     assert client.get("/api/session").status_code == 200
+    assert client.get("/api/foods").status_code == 200
 
     assert client.post("/api/logout").status_code == 200
 
     assert client.get("/api/session").status_code == 401
-    assert client.get("/api/hello").status_code == 401
+    assert client.get("/api/foods").status_code == 401
 
 
-def test_hello_returns_json_when_signed_in(client: TestClient) -> None:
+def test_the_api_answers_once_signed_in(client: TestClient) -> None:
+    """The other half of the guard: with a session, the same route answers."""
     sign_in(client)
 
-    response = client.get("/api/hello")
+    response = client.get("/api/foods")
 
     assert response.status_code == 200
-    assert response.json()["message"] == "Hello from the API"
+    assert [food["name"] for food in response.json()][:3] == ["Almonds", "Avocado, half", "Banana"]
+    assert response.json()[0]["macros"].keys() == {"calories", "protein", "carbs", "fat"}
 
 
 def test_root_is_404_when_the_export_has_not_been_built(client: TestClient) -> None:

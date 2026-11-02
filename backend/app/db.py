@@ -163,9 +163,9 @@ def db_path() -> Path:
     return Path(os.environ.get("NUTRITION_DB", DEFAULT_DB_PATH))
 
 
-def connect(path: Path | None = None) -> sqlite3.Connection:
+def connect(path: Path | str | None = None) -> sqlite3.Connection:
     """A connection with the settings every guard in this schema depends on."""
-    connection = sqlite3.connect(path or db_path())
+    connection = sqlite3.connect(Path(path) if path is not None else db_path())
     connection.row_factory = sqlite3.Row
 
     # SQLite defaults foreign_keys to OFF, and every delete guard here is a foreign key.
@@ -250,12 +250,12 @@ def seed(connection: sqlite3.Connection, today: date) -> bool:
     return True
 
 
-def initialise(path: Path | None = None, today: date | None = None) -> sqlite3.Connection:
+def initialise(path: Path | str | None = None, today: date | None = None) -> sqlite3.Connection:
     """Create the file if it is absent, create the schema, and seed an empty database (R17).
 
     The caller gets a connection they can use; it is theirs to close.
     """
-    target = path or db_path()
+    target = Path(path) if path is not None else db_path()
     target.parent.mkdir(parents=True, exist_ok=True)
 
     connection = connect(target)

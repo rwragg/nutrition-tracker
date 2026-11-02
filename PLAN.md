@@ -1,5 +1,9 @@
 # Nutrition Tracker — Plan (v2)
 
+> **Superseded.** This is the v2 plan, written before the project was broken into the eight parts that
+> now govern it. It predates the backend, the database and sign-in, so where the two disagree - and they
+> do - the live plan in [`docs/PLAN.md`](docs/PLAN.md) wins. Kept for the record of why v1 was scrapped.
+
 Source of truth: `AGENTS.md`. Deliverable: Next.js client-rendered web app in `frontend/`, no
 persistence, no auth, seeded with dummy history, server running at the end.
 

@@ -355,7 +355,7 @@ test.describe("the sign-in gate", () => {
 
   test("the API refuses a signed-out caller", async ({ request }) => {
     // The screen is a convenience; this is the protection.
-    expect((await request.get("/api/hello")).status()).toBe(401);
+    expect((await request.get("/api/foods")).status()).toBe(401);
   });
 
   test("the data is what is protected, not the markup", async ({ page }) => {

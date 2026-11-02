@@ -109,7 +109,7 @@ def test_container_serves_the_built_bundles(container: str) -> None:
 
 def test_container_refuses_the_api_without_a_session(container: str) -> None:
     with pytest.raises(HTTPError) as refusal:
-        urlopen(f"{container}/api/hello", timeout=5)
+        urlopen(f"{container}/api/foods", timeout=5)
 
     assert refusal.value.code == 401
 
@@ -129,9 +129,9 @@ def test_container_serves_the_api_with_a_session(container: str) -> None:
 
     assert opener.open(login, timeout=5).status == 200
 
-    with opener.open(f"{container}/api/hello", timeout=5) as response:
+    with opener.open(f"{container}/api/foods", timeout=5) as response:
         assert response.status == 200
-        assert b"Hello from the API" in response.read()
+        assert b"Hummus" in response.read()
 
 
 def test_container_refuses_a_wrong_password(container: str) -> None:

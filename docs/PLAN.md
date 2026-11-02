@@ -313,11 +313,11 @@ document cannot quietly drift from what runs.
 The brief: API routes letting the backend read and change a given user's tracker data, thoroughly
 tested with backend unit tests, creating the database if it does not exist.
 
-- [ ] CRUD routes for foods and meals (R7, R8)
-- [ ] Routes for days and entries, including the day's summary figures (R4–R6, R9, R10)
-- [ ] Both delete guards, returning *where* the record is referenced (R11)
-- [ ] Every route scoped to the signed-in user (R2)
-- [ ] Database created if absent (R17)
+- [x] CRUD routes for foods and meals (R7, R8)
+- [x] Routes for days and entries, including the day's summary figures (R4–R6, R9, R10)
+- [x] Both delete guards, returning *where* the record is referenced (R11)
+- [x] Every route scoped to the signed-in user (R2)
+- [x] Database created if absent (R17)
 
 **Tests:** `pytest` per route; each guard refusing and naming the reference; a second user unable to
 see the first user's data; the day's totals computed independently of the API and compared.
@@ -325,6 +325,47 @@ see the first user's data; the day's totals computed independently of the API an
 **Success criteria:** P6.1 every route has tests · P6.2 both guards demonstrably refuse and name the
 reference · P6.3 user isolation tested with two users · P6.4 the database is created when absent ·
 P6.5 the frontend is unchanged and still green.
+
+### Status — Part 6, complete 2026-11-01
+
+Implemented in `app/api.py` (the routes), `app/auth.py` (sign-in and the guard, moved out of
+`main.py`) and `main.py` (which now only wires the app together).
+
+- **P6.1** all thirteen routes have tests: `GET/POST /api/foods`, `PUT/DELETE /api/foods/{id}`,
+  `GET/POST /api/meals`, `PUT/DELETE /api/meals/{id}`, `GET /api/days`, `POST /api/days`,
+  `GET /api/days/{id}`, `POST /api/days/{id}/entries`, `DELETE /api/days/{id}/entries/{id}`.
+- **P6.2** both guards refuse and name the reference: 409 with a human message *and* structured
+  `usedBy` lists, naming the meals that use a food and the dates that log a food or a meal.
+- **P6.3** isolation is tested with a second user's records in the same database: invisible in every
+  list, 404 rather than 403 on direct access, and unwritable. There is one credential (R1), so the
+  second user's rows are written straight to the database — the API cannot create them, and that is
+  the point.
+- **P6.4** the database is created and seeded by the app's startup, so every one of these tests runs
+  against a database that did not exist a moment earlier.
+- **P6.5** the frontend is unchanged apart from one line in its e2e suite, which pointed at a route
+  this part retired.
+
+**Figures are checked by a second implementation.** Every expected number in the tests is worked out
+in Python from the raw records — a meal's figures from its ingredients, a day's from its foods and
+ingredients — never from the API's own arithmetic. The arithmetic under test is SQL joins; Python is
+the independent check.
+
+**One requirement this part had to add.** The plan's substeps had no way to create a day. The seed
+makes three days, dated when it first ran, so a day later there is no day for *today* and R4 — log
+your meals — becomes impossible. `POST /api/days` opens the day for a date, creating it if this is
+the first time and returning the existing one if not. Without it, Part 7 would have been wiring the
+frontend onto an API that could not log today's lunch.
+
+**Two routes carry deliberate choices worth knowing.** `/api/hello` (the Part 2 demonstration route)
+is retired now that real routes exist; another user's record answers 404, not 403, because a 403
+would confirm that the record exists.
+
+**Verified in the running container over HTTP**, not only in the unit suite: signed out the API
+refuses; signed in it lists 31 foods, 5 meals and 3 days; a food logged for 2 cups moved the day by
+exactly 200 kcal and 20 g protein and the lunch section with it; deleting the food while the day used
+it gave 409 naming the date; removing the entry gave the food back and the day back to its earlier
+figure; a date beyond the seed opened a new empty day, twice, as the same day; and signing out closed
+the API again.
 
 ## Part 7 — Frontend + Backend · **persistence lands here**
 
@@ -339,6 +380,11 @@ tracker, tested thoroughly.
 
 **Tests:** the full Playwright suite against the container · a reload test proving data survives (the
 definition of R23) · both delete guards end to end · a second browser session seeing the same data.
+
+**Carried in from Part 6:** the Playwright suite runs `fullyParallel` with unbounded workers against a
+single container, and on a loaded machine one test in a run can time out waiting for the first render —
+a different test each time, and 19/19 when run with `--workers=1`. Bound the workers, or raise that first
+expectation, as part of reworking the suite here rather than debugging it again.
 
 **Success criteria:** P7.1 data survives a reload and a container restart · P7.2 all three views still
 work · P7.3 both guards still refuse with the reason shown · P7.4 zero console errors · P7.5 no
