@@ -93,7 +93,7 @@ cd frontend
 npm install
 npm run dev        # development server, for working on the UI
 npm run build      # static export to out/ - this is what the image serves
-npm test           # 35 unit and component tests (Vitest + Testing Library)
+npm test           # 74 unit and component tests (Vitest + Testing Library)
 npm run test:e2e   # 22 Playwright tests, against its own stack on :8100 (needs docker)
 npm run lint
 ```
