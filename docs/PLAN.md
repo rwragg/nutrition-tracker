@@ -102,7 +102,7 @@ From `AGENTS.md`. R-numbers are assignment order, not reading order. Each is own
   the summary and section subtotals are the app's own arithmetic over what it fetched, and a test
   asserts both so a disagreement fails instead of being hidden.
 
-## Part 1 — Plan · **in review**
+## Part 1 — Plan · **complete**
 
 The brief: enrich the step list with substeps as a checklist, tests and success criteria per part, add
 an `AGENTS.md` in `frontend/` describing the existing code, and get Robert's approval.
@@ -111,8 +111,12 @@ an `AGENTS.md` in `frontend/` describing the existing code, and get Robert's app
 - [x] Requirements (R1–R23) and decisions (D1–D10) written down
 - [x] This document, with per-part substeps, tests and success criteria
 - [x] `AGENTS.md` reconciled with D1 and D2
-- [ ] `frontend/AGENTS.md` describing the existing code (D9)
-- [ ] **Robert approves this plan — gate: no part below starts before this**
+- [x] `frontend/AGENTS.md` describing the existing code (D9) — delivered in `de729f9`; the box was left
+      unticked at the time and is ticked here
+- [x] **Robert approves this plan — gate: no part below starts before this** — approved in session, and
+      Parts 2–7 each ran only after the go-ahead at their own gate. Recorded at close-out on
+      2026-11-01, which is late: the heading said "in review" for the whole build even though the
+      approval had been given and acted on.
 
 **Success criteria:** P1.1 every requirement in `AGENTS.md` appears as a numbered R with an owning part ·
 P1.2 every part states its substeps, tests and success criteria · P1.3 the persistence sequencing is
@@ -453,16 +457,43 @@ every run — so it always starts from a freshly seeded database without touchin
 
 **Suites:** 80 backend · 35 unit and component · 22 Playwright, three runs in a row · tsc and lint clean.
 
+*(Corrected at close-out, 2026-11-01: the unit and component figure was 35 as this part left it.
+Commit `a5b62a9` then closed the coverage gaps the failure paths were hiding and took that suite to
+**74**, so 35 is the figure at Part 7's end and 74 is the figure now. The README carried the stale one
+until Part 8.)*
+
 ## Part 8 — Handover
 
-- [ ] README accurate: start, stop, and where the database file lives
-- [ ] `curl` on the served URL returns the app
-- [ ] Screenshots of all three views plus the sign-in screen
-- [ ] A completion report listing every success criterion above with its evidence
-- [ ] Server left running and ready
+- [x] README accurate: start, stop, and where the database file lives
+- [x] `curl` on the served URL returns the app
+- [x] Screenshots of all three views plus the sign-in screen
+- [x] A completion report listing every success criterion above with its evidence
+- [x] Server left running and ready
 
 **Success criteria:** P8.1 the README matches reality · P8.2 `curl` returns the app · P8.3 screenshots
 captured · P8.4 every P-criterion accounted for, met or explicitly not met.
+
+### Status — Part 8, complete 2026-11-01
+
+The report is `docs/COMPLETION-REPORT.md`, which carries all of P1.1 to P8.4 with the evidence for each
+and states plainly where any was met differently. The short version:
+
+- **P8.1** the README was already true about starting, stopping, the port, the credentials and the
+  database file in its volume — checked against the running stack rather than re-read. One number was
+  stale: it claimed 35 unit and component tests where `a5b62a9` had taken the suite to 74. Corrected,
+  and corrected here rather than quietly.
+- **P8.2** run, not described: `/` returns `200 text/html`, 8,765 bytes, with the app's title; the
+  health route answers 200 and a protected route answers 401 signed out.
+- **P8.3** the four screenshots were already in `docs/screenshots/` and are of the running app.
+- **P8.4** every criterion is accounted for in the report; none was dropped.
+
+**Re-verified at close-out, on this machine:** 80 backend tests, 74 unit and component, lint and `tsc`
+clean, 22 browser tests, container healthy on `http://localhost:8000`.
+
+**One thing to know, stated plainly:** across 14 runs of the browser suite today, 2 runs failed a single
+test on a browser-level `net::ERR_NETWORK_CHANGED` console error — the transport, not the app, and the
+console-quiet assertion counts it. Recorded in the report and in the README with the evidence, and left
+as a decision rather than papered over with `.first()` or a retry.
 
 ## Open questions
 

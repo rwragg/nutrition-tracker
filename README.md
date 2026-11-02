@@ -6,6 +6,7 @@ and a FastAPI backend in one container, with the log stored in SQLite.
 - The brief: [`AGENTS.md`](AGENTS.md)
 - The live plan, the phases and the decisions taken: [`docs/PLAN.md`](docs/PLAN.md)
 - The database approach: [`docs/DATABASE.md`](docs/DATABASE.md)
+- The completion report: [`docs/COMPLETION-REPORT.md`](docs/COMPLETION-REPORT.md)
 - The app: [`frontend/`](frontend) - see [`frontend/AGENTS.md`](frontend/AGENTS.md) for how it works
 - Screenshots: [`docs/screenshots/`](docs/screenshots)
 
@@ -45,7 +46,7 @@ The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
 ```bash
 cd backend && uv run pytest          # 80 tests: routes, schema, guards, isolation, and the container
 cd frontend && npm install
-npm test                             # 35 unit and component tests
+npm test                             # 74 unit and component tests
 npm run test:e2e                     # 22 Playwright tests, against its own container on :8100
 npm run lint
 ```
@@ -54,6 +55,10 @@ The backend's container tests, and the Playwright suite, both exercise the built
 development server. The browser suite builds a **stack of its own** - its own compose project, volume
 and port, thrown away and rebuilt before every run - so it always starts from a freshly seeded database
 and never touches the one you are using. It runs one worker, because its tests share that database.
+
+A run can fail rarely on a browser-level `net::ERR_NETWORK_CHANGED` console error, which the suite's
+"no console errors" assertion counts and which has nothing to do with the app; a rerun is the remedy.
+See `docs/COMPLETION-REPORT.md` for the evidence.
 
 Expected figures come from two sides on purpose: the page's own arithmetic is asserted against the same
 calculations run over what the API returned, and the figures the server reports are asserted against the

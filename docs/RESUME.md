@@ -1,12 +1,13 @@
 # Picking this up again
 
 Everything needed to resume without re-reading a long conversation. Written 2026-11-01, when Parts 1–7
-were complete and Part 8 had not started.
+were complete and Part 8 had not started; **updated the same day when Part 8 was closed out.**
 
 ## Where it stands
 
-Parts 1–7 of `docs/PLAN.md` are **done and pushed**. Part 8 (handover) is the only part left, and it has
-not been started.
+**All eight parts of `docs/PLAN.md` are done.** The build is finished and handed over, and
+`docs/COMPLETION-REPORT.md` carries every success criterion from P1.1 to P8.4 with its evidence. Nothing
+is in flight; what remains is the list of open items at the bottom, none of which blocks the MVP.
 
 The app is finished: a Next.js 16 frontend served by a FastAPI backend in one container, the log in
 SQLite, sign-in gated, all three views reading and writing the API, tested at three levels.
@@ -14,7 +15,7 @@ SQLite, sign-in gated, all three views reading and writing the API, tested at th
 ## Verify the state before doing anything
 
 ```bash
-cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # a5b62a9, clean
+cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
 cd backend && uv run pytest -q          # 80 passed
 cd ../frontend && npm test              # 74 passed
 npm run lint && npx tsc --noEmit        # clean
@@ -25,22 +26,16 @@ Current commits: nutrition `a5b62a9`, hermes-home `f45c214`, hermes-skills `f531
 `c6ec8f4`, pm `ae223d6`. `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with
 403 — the token has no write on that repo (see Open items).
 
-## What Part 8 needs
+## What Part 8 did
 
-From the plan:
+Closed out on 2026-11-01. The substance was `docs/COMPLETION-REPORT.md` — every criterion P1.1 … P8.4
+with its evidence, including the one met as restated (P4.2: the *data* is protected, not the markup) and
+the one recorded late (P1.4, approval). Everything else on the list was already in place: the README
+(true except one stale test count, now 74), `curl` on the served URL, the four screenshots, and the
+container left running.
 
-- [ ] README accurate: start, stop, and where the database file lives — **already reads true**: Part 7
-      rewrote it (it gives the scripts, both platforms, the port, the credentials and the volume). Re-read
-      it against reality rather than assuming, but expect this to be a tick, not a rewrite.
-- [ ] `curl` on the served URL returns the app — do it, don't describe it.
-- [ ] Screenshots of all three views plus the sign-in screen — **done**, in `docs/screenshots/`.
-- [ ] A completion report listing every success criterion (P1.1 … P8.4) with its evidence — this is the
-      real work left. The evidence already exists in the per-part Status sections of `docs/PLAN.md`;
-      the report gathers it in one place and says plainly where anything was met differently (P4.2 was
-      restated: the *data* is protected, not the markup).
-- [ ] Server left running and ready.
-
-**P8.4 wants every criterion accounted for, met or explicitly not met.** Do not quietly drop one.
+Part 1's heading still said "in review" and two of its boxes were unticked for the whole build; both are
+fixed now, with a note saying the approval was given at the time and written down at close-out.
 
 ## How to run it
 
@@ -128,12 +123,19 @@ Backend: 100% statements and branches. Frontend: 96.1% statements, 82.5% branche
   built from the book's text, and are flagged as such. Chapters 4–10 are source-verified. Offered to
   rebuild 1–3 properly.
 - **A "granola" knock-on** was noted in an earlier session and never chased.
+- **The browser suite is rarely flaky, and it is the transport, not the app.** Across 14 runs on
+  2026-11-01, 2 runs failed one test on a browser-level `net::ERR_NETWORK_CHANGED` console error: once in
+  the console-quiet assertion at the end of *opens on the newest day*, once as a failed assertion in
+  *logs a meal and expands it into its foods*. `expectQuiet` asserts an empty console, so an unfetchable
+  resource fails the run. A rerun clears it. The narrow fix, if Robert wants it, is to count `net::`
+  failures out by the same rule the 401 and the 409 are already counted out by — deliberately not done,
+  because it changes what the suite asserts.
 
 ## On resume
 
-Ask Robert whether to close out **Part 8** (the completion report is the substance of it), and say
-plainly that the README and screenshots are already in place. Do not start anything else without the
-gate.
+Nothing is outstanding. The plan is closed, the report is written, the server is running and the tree is
+clean. The open items above are all optional, and each is offered rather than pending: ask before
+starting any of them, and do not reopen a finished part without a reason.
 
 For older detail, the previous conversation is searchable:
 `session_search(query='<keywords>', session_id='20261101_132202_4a9b1aef')`.
