@@ -69,9 +69,17 @@ function Shell({ children }: { children?: React.ReactNode }) {
 function Tracker({ username, onSignOut }: { username: string; onSignOut: () => void }) {
   const tracker = useTracker();
   const [view, setView] = useState<View>("day");
+  const [signOutFailed, setSignOutFailed] = useState(false);
 
   async function signOut() {
-    await endSession();
+    setSignOutFailed(false);
+    try {
+      await endSession();
+    } catch {
+      // Still signed in, and saying nothing would look like a button that does not work.
+      setSignOutFailed(true);
+      return;
+    }
     onSignOut();
   }
 
@@ -127,10 +135,19 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
     <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
       <TitleBar>{header}</TitleBar>
 
-      {tracker.error && (
+      {(tracker.error || signOutFailed) && (
         <div className="d-flex align-items-start justify-content-between gap-3" data-testid="page-problem">
-          <p className="small text-ember mb-0">{tracker.error}</p>
-          <button type="button" className={BTN_GHOST} onClick={tracker.dismissError}>
+          <p className="small text-ember mb-0">
+            {tracker.error ?? "Could not log out. Check your connection and try again."}
+          </p>
+          <button
+            type="button"
+            className={BTN_GHOST}
+            onClick={() => {
+              tracker.dismissError();
+              setSignOutFailed(false);
+            }}
+          >
             Dismiss
           </button>
         </div>
@@ -156,9 +173,11 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
         <MealsView store={store} onSaveMeal={tracker.saveMeal} onDeleteMeal={tracker.deleteMeal} />
       )}
 
-      <p className="text-center small text-muted-brand mb-0" data-testid="storage-note">
-        Saved. Your log is kept on the server, so it is here when you come back.
-      </p>
+      {!tracker.error && (
+        <p className="text-center small text-muted-brand mb-0" data-testid="storage-note">
+          Saved. Your log is kept on the server, so it is here when you come back.
+        </p>
+      )}
     </main>
   );
 }

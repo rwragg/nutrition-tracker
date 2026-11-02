@@ -16,6 +16,10 @@ Part 7.
   `X-Bot-Secret` proves it is the bot and `X-Telegram-Chat` says which log, with the app resolving that
   chat to an account. The connection dependency (`Connection`) and the guarded-caller alias (`User`) live
   here too, because both routers take them.
+- `app/ratelimit.py` - an in-memory limiter for the routes a stranger can hammer: failed sign-ins (per
+  username and per address), registrations (per address) and failed attempts to redeem a pairing code
+  (per chat). Per process and reset on restart, which is the whole deployment today; a second container
+  would need a shared store, and that is a hosting decision (R30).
 - `app/passwords.py` - how a password is stored and checked: pbkdf2-sha256 with a salt per password,
   constant-time comparison, and a value that is missing or malformed fails closed. Standard library only,
   so there is no new dependency to keep patched for calling two functions from one.
@@ -50,15 +54,24 @@ Part 7.
 
 ## Accounts, credentials and the session
 
-- **An account is a row** (R3, R24): a generated id, a username, an email, an optional telegram id and a
+- **An account is a row** (R3, R24): a generated id, a username, an email, a chat binding that only a pairing code can set, and a
   password hash. `POST /api/register` creates one and does not sign it in; signing in is its own step.
 - **A password is never stored, compared as a string, logged or returned.** `app/passwords.py` is the
   only place that knows how, and a null or malformed hash fails closed rather than raising.
 - **R1's hardcoded credential is superseded, not deleted.** The seeded account carries `user` /
   `password` (`db.SEED_PASSWORD`), hashed, so the app still opens the way it always did and a test pins
   it.
-- **A wrong username and a wrong password get the same 401**, and the `register` refusal names the field
-  that collided ("that email is already registered") because that is the thing the person has to change.
+- **A wrong username and a wrong password get the same 401 and cost the same time**, and the `register`
+  refusal names the field that collided ("that email is already registered") because that is the thing
+  the person has to change.
+- **Registration cannot set a chat.** There is no telegram id in the body; a chat is bound only by redeeming
+  a pairing code, so nobody can claim a chat id they do not hold.
+- **A hash is upgraded at sign-in.** The stored value carries its iteration count (600,000 now), so raising
+  it invalidates nothing; a successful sign-in rewrites an older hash while the password is in hand.
+- **Too many failures answer 429**, and a success clears the username's count.
+- **A 422 does not repeat what was sent** (`main.py`): the default body echoes each rejected value, which
+  returned a too-short password and crashed on a non-finite number. Numbers that are not finite are refused
+  at the model, and names are trimmed, non-blank and at most 200 characters.
 - **The session secret is generated per process**, so restarting the container signs everyone out. A
   persisted secret belongs with the database rather than in the image.
 - **The session carries a user id**, which is what makes every route's scoping (R2) and the isolation

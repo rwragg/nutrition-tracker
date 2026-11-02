@@ -90,4 +90,59 @@ describe("the dialog", () => {
     expect(document.activeElement).toBe(opener);
     opener.remove();
   });
+
+  it("does not pull focus back to the first field when its parent re-renders", () => {
+    // Callers pass an inline onClose, so every parent render hands the dialog a new function. That used
+    // to re-run the effect that focuses the first control, in the middle of someone typing.
+    function Host({ tick }: { tick: number }) {
+      return (
+        <Dialog title="Add food" onClose={() => undefined} footer={<span>{tick}</span>}>
+          <input aria-label="Quantity" />
+          <input aria-label="Name" />
+        </Dialog>
+      );
+    }
+
+    const { rerender } = render(<Host tick={0} />);
+    const name = screen.getByLabelText("Name");
+    name.focus();
+
+    rerender(<Host tick={1} />);
+    rerender(<Host tick={2} />);
+
+    expect(name).toHaveFocus();
+  });
+
+  it("calls the latest onClose, not the one it opened with", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(
+      <Dialog title="Add food" onClose={first} footer={null}>
+        <input aria-label="Quantity" />
+      </Dialog>,
+    );
+    rerender(
+      <Dialog title="Add food" onClose={second} footer={null}>
+        <input aria-label="Quantity" />
+      </Dialog>,
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw on Tab when there is nothing to focus", () => {
+    render(
+      <Dialog title="Empty" onClose={vi.fn()} footer={null}>
+        <p>Nothing here</p>
+      </Dialog>,
+    );
+    screen.getByRole("button", { name: "Close" }).blur();
+    // The close button is always there, so remove it to model a panel with no controls at all.
+    screen.getByRole("button", { name: "Close" }).remove();
+
+    expect(() => fireEvent.keyDown(document, { key: "Tab" })).not.toThrow();
+  });
 });

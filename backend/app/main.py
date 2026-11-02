@@ -12,7 +12,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -39,6 +41,24 @@ app.add_middleware(
     same_site="lax",
     https_only=False,
 )
+
+
+
+@app.exception_handler(RequestValidationError)
+async def refuse_invalid(_: Request, error: RequestValidationError) -> JSONResponse:
+    """A 422 that does not repeat what was sent.
+
+    The default body echoes each rejected value back as `input`. For a number that is not finite that
+    crashed the response itself (`inf` is not JSON), turning a refusal into a 500; and for a password
+    that was too short it handed the password back in the response. The location and the reason are
+    what a client needs; the value is not.
+    """
+    detail = [
+        {key: value for key, value in item.items() if key not in ("input", "ctx")}
+        for item in error.errors()
+    ]
+    return JSONResponse({"detail": detail}, status_code=422)
+
 
 app.include_router(session_router)
 app.include_router(telegram_router)

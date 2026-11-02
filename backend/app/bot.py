@@ -322,7 +322,7 @@ def handle(text: str, api: Client, chat_id: str, today: str | None = None) -> st
             account = api.bind(chat_id, args["code"])
         except urllib.error.HTTPError as error:
             return app_refusal(error)
-        except OSError:
+        except (OSError, ValueError):
             return "I could not reach the app, so nothing was linked."
         return (f"Linked. This chat is {account['username']}'s log now — "
                 f"/today to read it back, /log to add to it.")
@@ -351,10 +351,19 @@ def handle(text: str, api: Client, chat_id: str, today: str | None = None) -> st
         api.add_food_entry(chat_id, today, args["section"], food["id"], args["quantity"])
     except urllib.error.HTTPError as error:
         return app_refusal(error, ". Nothing was logged.")
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError is a body that was not JSON: a proxy's error page, say. Not the person's mistake
+        # and not worth dying over.
         return "I could not reach the app. Nothing was logged."
 
-    day = api.day(chat_id, today)
+    # The entry is written. Reading the day back is only to report it, so if that fails the person is
+    # told the truth - it was logged - instead of the bot dying with the write already done.
+    try:
+        day = api.day(chat_id, today)
+    except (urllib.error.HTTPError, OSError, ValueError):
+        return (f"Logged {args['quantity']:g} {args['unit']} of {food['name']} to {args['section']}, "
+                "but I could not read the day back to give you the totals.")
+
     entry = day["sectionMacros"][args["section"]]
     return (f"Logged {args['quantity']:g} {args['unit']} of {food['name']} to "
             f"{args['section']}.\n{args['section'].capitalize()} now {round(entry['calories'])} kcal · "
@@ -364,12 +373,19 @@ def handle(text: str, api: Client, chat_id: str, today: str | None = None) -> st
 # ---------------------------------------------------------------------- telegram loop ---
 
 
+# Telegram refuses a message over 4096 characters; a long /today could reach it.
+MESSAGE_LIMIT = 4096
+
+
 def send(token: str, chat_id: int, text: str) -> None:
-    urllib.request.urlopen(
-        f"{TELEGRAM}/bot{token}/sendMessage",
-        data=urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode(),
-        timeout=30,
-    ).read()
+    for start in range(0, max(len(text), 1), MESSAGE_LIMIT):
+        urllib.request.urlopen(
+            f"{TELEGRAM}/bot{token}/sendMessage",
+            data=urllib.parse.urlencode(
+                {"chat_id": chat_id, "text": text[start:start + MESSAGE_LIMIT]}
+            ).encode(),
+            timeout=30,
+        ).read()
 
 
 def allowed_users() -> set[str]:
@@ -405,15 +421,26 @@ def poll(token: str, api: Api) -> None:
             handled.add(update["update_id"])
             handled = set(sorted(handled)[-200:])
 
-            message = update.get("message") or {}
-            chat_id = (message.get("chat") or {}).get("id")
-            text = message.get("text") or ""
-            if chat_id is None or not text:
-                continue
-            if allowed and str(chat_id) not in allowed:
-                send(token, chat_id, "This log is not yours.")
-                continue
-            send(token, chat_id, handle(text, api, str(chat_id)))
+            try:
+                answer_update(token, api, allowed, update)
+            except Exception as error:  # noqa: BLE001 - one bad update must not stop the bot
+                # A user who blocked the bot, a network blip on send, a reply Telegram refused: none
+                # of these is a reason to stop answering everyone else. The update is already
+                # marked handled above, so it is not retried into the same failure.
+                print(f"update {update.get('update_id')} failed: {type(error).__name__}: {error}", flush=True)
+
+
+def answer_update(token: str, api: Api, allowed: set[str], update: dict) -> None:
+    """Reply to one update. Anything it raises is the caller's to log."""
+    message = update.get("message") or {}
+    chat_id = (message.get("chat") or {}).get("id")
+    text = message.get("text") or ""
+    if chat_id is None or not text:
+        return
+    if allowed and str(chat_id) not in allowed:
+        send(token, chat_id, "This log is not yours.")
+        return
+    send(token, chat_id, handle(text, api, str(chat_id)))
 
 
 def preflight(api: Api) -> tuple[bool, str]:

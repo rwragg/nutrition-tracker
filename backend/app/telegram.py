@@ -24,6 +24,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.auth import BOT_SECRET_HEADER, Connection, User, require_bot
+from app.ratelimit import BIND_FAILURES
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
 
@@ -148,7 +149,14 @@ def bind(
 
     code = body.code.strip().upper().replace(" ", "")
     chat_id = body.chat_id.strip()
-    row = live_code(connection, code)
+
+    # Only failures count, so a person redeeming a good code is never held up by someone else's typos.
+    BIND_FAILURES.refuse_if_blocked(chat_id)
+    try:
+        row = live_code(connection, code)
+    except HTTPException:
+        BIND_FAILURES.record(chat_id)
+        raise
 
     bound_to_chat = connection.execute(
         "SELECT id, username FROM users WHERE telegram_id = ?", (chat_id,)
@@ -169,14 +177,25 @@ def bind(
             detail="that account is already linked to another chat — unlink it in the app first",
         )
 
-    with connection:
-        connection.execute(
-            "UPDATE users SET telegram_id = ? WHERE id = ?", (chat_id, row["user_id"])
-        )
-        # Burnt, used or not: a code that has done its job, and any other code this account was
-        # holding, so a stale one cannot be redeemed later.
-        connection.execute("UPDATE telegram_codes SET used = 1 WHERE user_id = ?", (row["user_id"],))
+    try:
+        with connection:
+            connection.execute(
+                "UPDATE users SET telegram_id = ? WHERE id = ?", (chat_id, row["user_id"])
+            )
+            # Burnt, used or not: a code that has done its job, and any other code this account was
+            # holding, so a stale one cannot be redeemed later.
+            connection.execute(
+                "UPDATE telegram_codes SET used = 1 WHERE user_id = ?", (row["user_id"],)
+            )
+    except sqlite3.IntegrityError:
+        # Two binds to one chat can both pass the checks above; the unique index is what decides, and
+        # to the loser it is the same fact as the first check: that chat is taken.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this chat is already linked to another account — unlink it there first",
+        ) from None
 
+    BIND_FAILURES.clear(chat_id)
     account = connection.execute(
         "SELECT id, username FROM users WHERE id = ?", (row["user_id"],)
     ).fetchone()

@@ -82,7 +82,6 @@ describe("the sign-in gate", () => {
 
     await user.type(screen.getByLabelText("Username"), "alice");
     await user.type(screen.getByLabelText("Email"), "alice@example.com");
-    await user.type(screen.getByLabelText(/Telegram id/), "111111");
     await user.type(screen.getByLabelText(/^Password/), "a-long-enough-password");
     await user.click(screen.getByTestId("sign-in-submit"));
 
@@ -93,33 +92,49 @@ describe("the sign-in gate", () => {
       username: "alice",
       email: "alice@example.com",
       password: "a-long-enough-password",
-      telegram_id: "111111",
     });
   });
 
-  it("leaves the telegram id out when it is not given", async () => {
+  it("has no telegram id field: a chat is linked with a code, not typed into a form", async () => {
     const user = userEvent.setup();
-    let registered: Record<string, unknown> | null = null;
-    stubFetch({
-      session: { ok: false },
-      register: (submitted) => {
-        registered = submitted;
-        return { ok: true, status: 201, body: { id: "user-1", username: submitted.username } };
-      },
-    });
+    stubFetch({ session: { ok: false } });
 
     render(<App />);
     await screen.findByTestId("sign-in");
     await user.click(screen.getByTestId("show-register"));
     await screen.findByTestId("register");
 
-    await user.type(screen.getByLabelText("Username"), "bob");
-    await user.type(screen.getByLabelText("Email"), "bob@example.com");
-    await user.type(screen.getByLabelText(/^Password/), "another-good-password");
+    expect(screen.queryByLabelText(/telegram/i)).not.toBeInTheDocument();
+  });
+
+  it("says the account was made when only the sign-in after it failed", async () => {
+    const user = userEvent.setup();
+    stubFetch({ session: { ok: false }, login: () => ({ ok: false }) });
+
+    render(<App />);
+    await screen.findByTestId("sign-in");
+    await user.click(screen.getByTestId("show-register"));
+    await screen.findByTestId("register");
+
+    await user.type(screen.getByLabelText("Username"), "carol");
+    await user.type(screen.getByLabelText("Email"), "carol@example.com");
+    await user.type(screen.getByLabelText(/^Password/), "a-long-enough-password");
     await user.click(screen.getByTestId("sign-in-submit"));
 
+    // "could not be created" would be wrong, and would send her to register again into a 409
+    expect(await screen.findByRole("alert")).toHaveTextContent("account was created");
+  });
+
+  it("says so when logging out fails, and stays signed in", async () => {
+    const user = userEvent.setup();
+    stubFetch({ offline: ({ path }) => path === "/api/logout" });
+
+    render(<App />);
     await screen.findByTestId("day-total-calories");
-    expect(registered).toMatchObject({ telegram_id: null });
+    await user.click(screen.getByTestId("sign-out"));
+
+    expect(await screen.findByTestId("page-problem")).toHaveTextContent("Could not log out");
+    expect(screen.getByTestId("day-total-calories")).toBeInTheDocument();
   });
 
   it("shows why a registration was refused, and stays on the form", async () => {

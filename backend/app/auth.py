@@ -11,8 +11,10 @@ Two rules are load-bearing:
   person may want to change and a primary key is not.
 - **A password is never stored, compared or returned as a string.** It is hashed on the way in
   and verified with a constant-time comparison on the way back (`app.passwords`), and no route
-  answers with a hash. A wrong username and a wrong password give the same refusal, so the API
-  does not tell a stranger which usernames exist.
+  answers with a hash. A wrong username and a wrong password give the same refusal and take the
+  same time (an unknown username is hashed against a dummy value), so the API does not tell a
+  stranger which usernames exist. Registration is the deliberate exception: it names the field that
+  collided, because the person has to change it.
 
 R1's hardcoded credential is superseded here rather than deleted: the account it named is
 seeded with it (see `db.SEED_PASSWORD`), so the app still opens with the documented
@@ -30,7 +32,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 
 from app.db import database
-from app.passwords import hash_password, verify_password
+from app.passwords import DUMMY_HASH, hash_password, needs_rehash, verify_password
+from app.ratelimit import (
+    LOGIN_FAILURES_BY_ADDRESS,
+    LOGIN_FAILURES_BY_USER,
+    REGISTRATIONS,
+    client_key,
+)
 
 # A fresh secret each start. Sessions are stateless, so restarting the container signs everyone
 # out - honest for an MVP, and a persisted secret belongs with the database rather than the image.
@@ -54,12 +62,16 @@ class Credentials(BaseModel):
 
 
 class Registration(BaseModel):
-    """What a new account sends: R3 asks for a username, an email and a telegram id."""
+    """What a new account sends: a username, an email and a password.
+
+    There is deliberately no telegram id here. R3 asked for one, but a chat id typed into a form is a
+    claim nobody checks: anyone could register with somebody else's id, be served that person's chat,
+    and lock them out of linking. A chat is bound only by redeeming a code (R26, D18).
+    """
 
     username: str = Field(min_length=3, max_length=64)
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=8, max_length=256)
-    telegram_id: str | None = Field(default=None, max_length=32)
 
     @model_validator(mode="after")
     def well_formed(self) -> "Registration":
@@ -73,11 +85,6 @@ class Registration(BaseModel):
         local, _, domain = self.email.partition("@")
         if not local or not domain or "." not in domain:
             raise ValueError("that does not look like an email address")
-
-        if self.telegram_id is not None:
-            self.telegram_id = self.telegram_id.strip() or None
-            if self.telegram_id is not None and not self.telegram_id.isdigit():
-                raise ValueError("a telegram id is digits")
 
         return self
 
@@ -161,9 +168,12 @@ def account(connection: sqlite3.Connection, user_id: str) -> sqlite3.Row:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def register(body: Registration, connection: Connection) -> dict[str, str | None]:
+def register(
+    body: Registration, request: Request, connection: Connection
+) -> dict[str, str | None]:
     """Create an account (R3, R24). Does not sign anyone in: signing in is its own step, and a
     route that does both cannot be tested for either."""
+    REGISTRATIONS.check(client_key(request))
     # A list of the fields that actually collided, not a dict of every lookup: a dict with three
     # keys is truthy even when all three values are None, which is how this read as "taken" for a
     # registration on an empty database.
@@ -172,7 +182,6 @@ def register(body: Registration, connection: Connection) -> dict[str, str | None
         for column, value in (
             ("username", body.username),
             ("email", body.email),
-            ("telegram_id", body.telegram_id),
         )
         if value is not None
         and connection.execute(
@@ -190,42 +199,50 @@ def register(body: Registration, connection: Connection) -> dict[str, str | None
     try:
         with connection:
             connection.execute(
-                "INSERT INTO users (id, username, email, telegram_id, password_hash)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (
-                    user_id,
-                    body.username,
-                    body.email,
-                    body.telegram_id,
-                    hash_password(body.password),
-                ),
+                "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+                (user_id, body.username, body.email, hash_password(body.password)),
             )
     except sqlite3.IntegrityError:
         # The unique indexes are the backstop for the gap between the check above and this
         # insert. The same answer either way, because to a caller they are the same fact.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="that username, email or telegram id is already registered",
+            detail="that username or email is already registered",
         ) from None
 
-    return {
-        "id": user_id,
-        "username": body.username,
-        "email": body.email,
-        "telegram_id": body.telegram_id,
-    }
+    return {"id": user_id, "username": body.username, "email": body.email}
 
 
 @router.post("/login")
 def login(credentials: Credentials, request: Request, connection: Connection) -> dict[str, str]:
     """Sign in and start a session (R1, R24)."""
+    address = client_key(request)
+    LOGIN_FAILURES_BY_USER.refuse_if_blocked(credentials.username)
+    LOGIN_FAILURES_BY_ADDRESS.refuse_if_blocked(address)
+
     row = connection.execute(
         "SELECT id, password_hash FROM users WHERE username = ?", (credentials.username,)
     ).fetchone()
 
-    # One refusal for both cases: whether a username exists is not a stranger's business.
-    if row is None or not verify_password(credentials.password, row["password_hash"]):
+    # A password is hashed whether or not the username exists, so the two refusals take the same time
+    # as well as saying the same thing: how long this answers is also something a stranger can read.
+    stored = row["password_hash"] if row is not None else DUMMY_HASH
+    matches = verify_password(credentials.password, stored)
+
+    if row is None or not matches:
+        LOGIN_FAILURES_BY_USER.record(credentials.username)
+        LOGIN_FAILURES_BY_ADDRESS.record(address)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    LOGIN_FAILURES_BY_USER.clear(credentials.username)
+
+    # A hash written with fewer iterations than today's is upgraded now, while the password is in hand.
+    if needs_rehash(row["password_hash"]):
+        with connection:
+            connection.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (hash_password(credentials.password), row["id"]),
+            )
 
     request.session["user_id"] = row["id"]
     return {"username": credentials.username}

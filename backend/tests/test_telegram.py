@@ -337,3 +337,50 @@ def test_a_browser_cannot_reach_the_nutrition_routes_by_claiming_to_be_a_chat(cl
     client.post("/api/logout")
 
     assert client.get("/api/foods", headers={BOT_CHAT_HEADER: "111"}).status_code == 401
+
+
+# --- guessing a code, and two binds at once ------------------------------------------------
+
+
+def test_failed_attempts_to_redeem_a_code_are_limited_per_chat(client: TestClient) -> None:
+    from app.ratelimit import BIND_FAILURES
+
+    for _ in range(BIND_FAILURES.limit):
+        assert bind(client, "777", "AAAAAA").status_code == 404
+
+    assert bind(client, "777", "AAAAAA").status_code == 429
+
+    # Another chat is not held up by this one's guessing.
+    assert bind(client, "888", "AAAAAA").status_code == 404
+
+
+def test_a_good_code_clears_the_failures_for_its_chat(client: TestClient) -> None:
+    from app.ratelimit import BIND_FAILURES
+
+    for _ in range(BIND_FAILURES.limit - 1):
+        bind(client, "777", "AAAAAA")
+    code = code_for(client)
+
+    assert bind(client, "777", code).status_code == 200
+    assert not BIND_FAILURES.blocked("777")
+
+
+def test_losing_a_race_to_bind_a_chat_is_a_409_not_a_server_error(client: TestClient) -> None:
+    """Two binds to one chat can both pass the up-front checks, and the unique index then decides. The
+    loser used to get an unhandled IntegrityError. A trigger stands in for the other bind landing in
+    between: it makes the UPDATE fail the way the unique index would."""
+    code = code_for(client)
+    connection = db.connect()
+    try:
+        with connection:
+            connection.execute(
+                "CREATE TRIGGER lost_the_race BEFORE UPDATE OF telegram_id ON users "
+                "BEGIN SELECT RAISE(ABORT, 'UNIQUE constraint failed: users.telegram_id'); END"
+            )
+    finally:
+        connection.close()
+
+    response = bind(client, "999", code)
+
+    assert response.status_code == 409
+    assert "already linked" in response.json()["detail"]

@@ -57,7 +57,7 @@ export function stubFetch(
     session?: SessionAnswer;
     login?: (submitted: { username?: string; password?: string }) => LoginAnswer;
     /** Answer a registration. Refuse one with {ok:false, status:409, body:{detail:"..."}}. */
-    register?: (submitted: { username?: string; email?: string; telegram_id?: string | null }) => LoginAnswer;
+    register?: (submitted: { username?: string; email?: string }) => LoginAnswer;
     /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
     intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
     /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */

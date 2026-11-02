@@ -94,3 +94,16 @@ def test_root_is_404_when_the_export_has_not_been_built(client: TestClient) -> N
 
 def test_unknown_route_is_404(client: TestClient) -> None:
     assert client.get("/api/nothing-here").status_code == 404
+
+
+def test_a_validation_refusal_does_not_echo_what_was_sent(client: TestClient) -> None:
+    """The default 422 repeats each rejected value as `input`: a too-short password would come back in
+    the response body, and a non-finite number would crash the response itself."""
+    response = client.post(
+        "/api/register",
+        json={"username": "alice", "email": "alice@example.com", "password": "short-pw"[:7]},
+    )
+
+    assert response.status_code == 422
+    assert "short-p" not in response.text
+    assert all("input" not in item for item in response.json()["detail"])

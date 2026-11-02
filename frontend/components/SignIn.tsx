@@ -26,7 +26,6 @@ export default function SignIn({ onSignedIn }: Props) {
   const [mode, setMode] = useState<Mode>("sign-in");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [telegramId, setTelegramId] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
@@ -42,19 +41,27 @@ export default function SignIn({ onSignedIn }: Props) {
     setBusy(true);
     setFailed("");
 
+    // Two calls when registering: the account, then the session. They fail differently, so they are
+    // told apart: an account that was made but could not be signed into is not "could not be created".
+    let created = false;
     try {
-      if (mode === "register") await registerAccount({ username, email, password, telegramId });
+      if (mode === "register") {
+        await registerAccount({ username, email, password });
+        created = true;
+      }
       await signIn(username, password);
     } catch (error) {
       setBusy(false);
       // The server's sentence is more useful than a guess: it names the field in the way
       // ("that email is already registered"), which is the thing the person has to change.
       setFailed(
-        error instanceof ApiError && error.status !== 401
-          ? error.message
-          : mode === "register"
-            ? "That account could not be created."
-            : "That username and password did not match.",
+        created
+          ? "The account was created, but signing in failed. Try signing in."
+          : error instanceof ApiError && error.status !== 401
+            ? error.message
+            : mode === "register"
+              ? "That account could not be created."
+              : "That username and password did not match.",
       );
       return;
     }
@@ -76,7 +83,7 @@ export default function SignIn({ onSignedIn }: Props) {
         <p className="text-muted-brand small mb-4">
           {mode === "register"
             ? "Your log is yours: another account cannot see or change it."
-            : "This MVP also signs in with user / password."}
+            : "Sign in to your log."}
         </p>
 
         <form className="d-flex flex-column gap-3" onSubmit={submit}>
@@ -92,30 +99,17 @@ export default function SignIn({ onSignedIn }: Props) {
           </label>
 
           {mode === "register" && (
-            <>
-              <label className="d-flex flex-column gap-1">
-                <span className="small text-muted-brand">Email</span>
-                <input
-                  className="form-control"
-                  type="email"
-                  name="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </label>
-
-              <label className="d-flex flex-column gap-1">
-                <span className="small text-muted-brand">Telegram id (optional)</span>
-                <input
-                  className="form-control"
-                  name="telegram_id"
-                  inputMode="numeric"
-                  value={telegramId}
-                  onChange={(event) => setTelegramId(event.target.value)}
-                />
-              </label>
-            </>
+            <label className="d-flex flex-column gap-1">
+              <span className="small text-muted-brand">Email</span>
+              <input
+                className="form-control"
+                type="email"
+                name="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
           )}
 
           <label className="d-flex flex-column gap-1">

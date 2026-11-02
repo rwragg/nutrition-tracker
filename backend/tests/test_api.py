@@ -543,3 +543,56 @@ def test_another_users_entry_cannot_be_removed(api: TestClient, someone_else: di
         theirs = connection.execute("SELECT count(*) FROM entries WHERE id = 'their-entry'").fetchone()[0]
 
     assert theirs == 1
+
+
+# --- values that are not numbers, and names that are not names --------------------------
+
+
+@pytest.mark.parametrize("field", ["calories", "protein", "carbs", "fat"])
+@pytest.mark.parametrize("value", ["Infinity", "-Infinity", "NaN"])
+def test_a_macro_that_is_not_finite_is_refused(api: TestClient, field: str, value: str) -> None:
+    """JSON cannot carry these, SQLite stores them without complaint, and the totals they reach came
+    back null - which the app reads as zero. A wrong total with no error is the worst way to fail."""
+    body = (
+        '{"name": "bad", "unit": "g", "calories": 1, "protein": 1, "carbs": 1, "fat": 1}'
+    ).replace(f'"{field}": 1', f'"{field}": {value}')
+
+    response = api.post("/api/foods", content=body, headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 422
+    assert all(food["name"] != "bad" for food in api.get("/api/foods").json())
+
+
+@pytest.mark.parametrize("value", ["Infinity", "NaN"])
+def test_a_quantity_that_is_not_finite_is_refused_everywhere_it_appears(api: TestClient, value: str) -> None:
+    food = add_food(api)
+    raw = {"Content-Type": "application/json"}
+
+    entry = api.post(
+        "/api/days/2026-11-02/entries",
+        content=f'{{"section": "snacks", "food_id": "{food["id"]}", "quantity": {value}}}',
+        headers=raw,
+    )
+    meal = api.post(
+        "/api/meals",
+        content=f'{{"name": "m", "ingredients": [{{"food_id": "{food["id"]}", "quantity": {value}}}]}}',
+        headers=raw,
+    )
+
+    assert entry.status_code == 422
+    assert meal.status_code == 422
+
+
+@pytest.mark.parametrize("name", ["", "   ", "\t\n"])
+def test_a_blank_name_is_refused_for_foods_and_meals(api: TestClient, name: str) -> None:
+    assert api.post("/api/foods", json=food_body(name=name)).status_code == 422
+    assert api.post("/api/meals", json={"name": name, "ingredients": []}).status_code == 422
+
+
+def test_a_name_is_stored_without_its_surrounding_space(api: TestClient) -> None:
+    assert add_food(api, name="  Padded  ")["name"] == "Padded"
+
+
+def test_a_name_has_a_length_limit(api: TestClient) -> None:
+    assert api.post("/api/foods", json=food_body(name="x" * 201)).status_code == 422
+    assert api.post("/api/foods", json=food_body(name="x" * 200)).status_code == 201

@@ -12,6 +12,7 @@ from typing import get_args
 import io
 import json
 import urllib.error
+import urllib.parse
 
 import pytest
 
@@ -471,3 +472,111 @@ def test_the_allowed_list_is_read_from_the_environment(monkeypatch: pytest.Monke
     assert bot.allowed_users() == {"8685521777", "42"}
     monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "")
     assert bot.allowed_users() == set()
+
+
+# --- a failure must not stop the bot ----------------------------------------------------
+
+
+def test_a_failed_read_back_after_a_write_says_it_was_logged_and_does_not_raise() -> None:
+    """The entry is written; only the report of the new totals failed. The bot used to die here, with
+    the write already done and the person told nothing."""
+
+    class ReadBackFails(FakeApi):
+        def day(self, chat_id: str, day: str) -> dict:
+            raise urllib.error.HTTPError("u", 500, "boom", {}, None)  # type: ignore[arg-type]
+
+    api = ReadBackFails()
+    reply = bot.handle("/log oats 1 cup", api, CHAT, today=TODAY)
+
+    assert len(api.posted) == 1
+    assert "Logged" in reply and "could not read the day back" in reply
+
+
+@pytest.mark.parametrize("command", ["/today", "/log oats 1 cup", "/bind ABC234"])
+def test_a_reply_that_is_not_json_is_reported_rather_than_raised(command: str) -> None:
+    """A proxy's error page is a ValueError at json.loads, not an OSError, and it used to escape."""
+
+    class NotJson(FakeApi):
+        def _boom(self, *args, **kwargs):
+            raise json.JSONDecodeError("Expecting value", "<html>", 0)
+
+        foods = day = bind = _boom  # type: ignore[assignment]
+
+    reply = bot.handle(command, NotJson(), CHAT, today=TODAY)
+
+    assert "could not reach the app" in reply
+
+
+class FakeTelegram:
+    """urllib.request.urlopen for the poll loop: updates in, replies recorded, and a way to fail a send."""
+
+    def __init__(self, updates: list[dict], fail_sends: int = 0) -> None:
+        self.updates = updates
+        self.fail_sends = fail_sends
+        self.sent: list[dict] = []
+        self.polls = 0
+
+    def __call__(self, target, data=None, timeout=None):
+        url = target if isinstance(target, str) else target.full_url
+        if "getUpdates" in url:
+            self.polls += 1
+            if self.polls > 1:
+                raise KeyboardInterrupt  # the loop is endless by design; this is how the test leaves it
+            return io.BytesIO(json.dumps({"result": self.updates}).encode())
+
+        if self.fail_sends:
+            self.fail_sends -= 1
+            raise urllib.error.URLError("telegram is unreachable")
+        self.sent.append(dict(urllib.parse.parse_qsl(data.decode())))
+        return io.BytesIO(b"{}")
+
+
+def run_poll(monkeypatch: pytest.MonkeyPatch, telegram: FakeTelegram, api: FakeApi) -> None:
+    monkeypatch.setattr(bot.urllib.request, "urlopen", telegram)
+    monkeypatch.setattr(bot.time, "sleep", lambda _: None)
+    monkeypatch.delenv("TELEGRAM_ALLOWED_USERS", raising=False)
+    api.base = "http://fake-app"  # type: ignore[attr-defined]
+    with pytest.raises(KeyboardInterrupt):
+        bot.poll("token", api)  # type: ignore[arg-type]
+
+
+def message(update_id: int, text: str) -> dict:
+    return {"update_id": update_id, "message": {"chat": {"id": 42}, "text": text}}
+
+
+def test_a_failed_send_does_not_stop_the_bot_answering_the_next_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A user who blocked the bot, or a network blip on send, used to kill the process."""
+    telegram = FakeTelegram([message(1, "/help"), message(2, "/help")], fail_sends=1)
+
+    run_poll(monkeypatch, telegram, FakeApi())
+
+    assert len(telegram.sent) == 1  # the first failed, the second was still answered
+    assert telegram.sent[0]["chat_id"] == "42"
+
+
+def test_a_message_that_crashes_a_command_is_skipped_not_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Explodes(FakeApi):
+        def foods(self, chat_id: str) -> list[dict]:
+            raise RuntimeError("something nobody planned for")
+
+    telegram = FakeTelegram([message(1, "/log oats 1 cup"), message(2, "/help")])
+
+    run_poll(monkeypatch, telegram, Explodes())
+
+    assert len(telegram.sent) == 1
+
+
+def test_a_long_reply_is_sent_in_pieces_telegram_will_accept(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(
+        bot.urllib.request,
+        "urlopen",
+        lambda url, data=None, timeout=None: sent.append(dict(urllib.parse.parse_qsl(data.decode()))["text"])
+        or io.BytesIO(b"{}"),
+    )
+
+    bot.send("token", 42, "x" * (bot.MESSAGE_LIMIT * 2 + 10))
+
+    assert [len(piece) for piece in sent] == [bot.MESSAGE_LIMIT, bot.MESSAGE_LIMIT, 10]

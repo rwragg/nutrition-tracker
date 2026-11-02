@@ -135,9 +135,12 @@ export function useTracker(): Tracker {
       setDay(emptyDay(date));
 
       try {
-        setDay(await api.getDay(date));
+        const loaded = await api.getDay(date);
+        // Another day may have been picked while this one was in flight. The newer pick wins: a slow
+        // answer for a day nobody is looking at any more must not overwrite the one they are.
+        if (openDate.current === date) setDay(loaded);
       } catch (cause) {
-        setError(messageOf(cause));
+        if (openDate.current === date) setError(messageOf(cause));
       }
     },
     [],

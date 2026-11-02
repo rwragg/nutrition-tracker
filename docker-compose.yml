@@ -5,7 +5,10 @@ services:
       dockerfile: backend/Dockerfile
     image: nutrition-tracker:local
     ports:
-      - "${NUTRITION_PORT:-8000}:8000"
+      # Loopback only. The app ships a well-known sign-in (user / password), so publishing it on every
+      # interface would hand the log to anyone on the network. Hosting it for others (R30) goes behind
+      # a reverse proxy that terminates TLS, not onto a published port.
+      - "127.0.0.1:${NUTRITION_PORT:-8000}:8000"
     environment:
       # The sample is seeded with dates relative to "today", and the browser decides what today is
       # when it opens the log. A container on UTC would seed a day ahead of the person reading it,
@@ -36,9 +39,10 @@ services:
   #
   #   docker compose --profile bot up -d --build
   #
-  # restart is deliberately "no". The bot exits non-zero with a reason when it has no token
-  # or cannot reach the API, and a restart policy would turn that into a loop of identically
-  # failing starts — a misconfiguration dressed up as a service.
+  # restart is on-failure with a ceiling, not always. The bot exits non-zero with a reason when it
+  # has no token or cannot reach the API, and an unconditional restart would turn that into an endless
+  # loop of identically failing starts. A ceiling keeps that safe: a misconfiguration burns five
+  # attempts and stops, while a crash at runtime recovers on its own.
   bot:
     profiles: ["bot"]
     image: nutrition-tracker:local
@@ -51,7 +55,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    restart: "no"
+    restart: "on-failure:5"
 
 volumes:
   nutrition-data:

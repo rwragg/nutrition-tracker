@@ -5,7 +5,7 @@ whose whole job is to call them is a dependency to keep patched for no reason (R
 
 The stored value carries its own parameters, in one string:
 
-    pbkdf2_sha256$200000$<salt hex>$<digest hex>
+    pbkdf2_sha256$600000$<salt hex>$<digest hex>
 
 so the iteration count can be raised later without a migration — an old value still verifies
 against the parameters it was written with, and the four parts it splits into are all checked
@@ -23,7 +23,9 @@ import hmac
 import secrets
 
 ALGORITHM = "pbkdf2_sha256"
-ITERATIONS = 200_000
+# OWASP's figure for PBKDF2-HMAC-SHA256. A stored value carries its own count, so raising this never
+# invalidates an old hash; `needs_rehash` is how the old ones catch up.
+ITERATIONS = 600_000
 SALT_BYTES = 16
 
 
@@ -63,3 +65,20 @@ def verify_password(password: str, stored: str | None) -> bool:
 
     candidate = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, rounds)
     return hmac.compare_digest(candidate, expected)
+
+
+
+def needs_rehash(stored: str | None) -> bool:
+    """Whether a stored value was written with fewer iterations than this build uses."""
+    parts = (stored or "").split("$")
+    if len(parts) != 4 or parts[0] != ALGORITHM:
+        return False
+    try:
+        return int(parts[1]) < ITERATIONS
+    except ValueError:
+        return False
+
+
+# Verified against when a username does not exist, so an unknown user costs the same as a wrong
+# password. Made at import time with the current cost; nobody's password hashes to it.
+DUMMY_HASH = hash_password(secrets.token_hex(16))

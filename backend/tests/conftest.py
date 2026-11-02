@@ -16,3 +16,13 @@ def temporary_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Itera
     path = tmp_path / "nutrition-test.db"
     monkeypatch.setenv("NUTRITION_DB", str(path))
     yield path
+
+
+@pytest.fixture(autouse=True)
+def fresh_limits() -> Iterator[None]:
+    """The limiters are process-wide, so one test's failed sign-ins must not count against the next."""
+    from app import ratelimit
+
+    for limiter in ratelimit.ALL:
+        limiter.reset()
+    yield

@@ -104,9 +104,15 @@ function toDay(wire: {
 // --- the session (R1) ---------------------------------------------------------------------
 
 /** Who is signed in, or null. A 401 is an answer here, not a failure. */
-export async function getSession(): Promise<{ username: string } | null> {
+export async function getSession(): Promise<{
+  username: string;
+  email: string | null;
+  telegram_id: string | null;
+} | null> {
   try {
-    return await request<{ username: string }>("/api/session");
+    return await request<{ username: string; email: string | null; telegram_id: string | null }>(
+      "/api/session",
+    );
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return null;
     throw error;
@@ -129,7 +135,6 @@ export async function registerAccount(input: {
   username: string;
   email: string;
   password: string;
-  telegramId?: string;
 }): Promise<{ id: string; username: string }> {
   return await request<{ id: string; username: string }>("/api/register", {
     method: "POST",
@@ -137,7 +142,6 @@ export async function registerAccount(input: {
       username: input.username,
       email: input.email,
       password: input.password,
-      telegram_id: input.telegramId?.trim() || null,
     }),
   });
 }

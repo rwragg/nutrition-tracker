@@ -15,7 +15,7 @@ from datetime import date as calendar_date
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.auth import Connection, User
 
@@ -35,23 +35,47 @@ router = APIRouter(prefix="/api", tags=["nutrition"])
 # --- what a client sends -----------------------------------------------------------------
 
 
+# A number that is not finite is not a quantity or a macro: JSON cannot carry it, SQLite stores it
+# without complaint, and the totals it reaches come back null, which the app reads as zero.
+Finite = {"allow_inf_nan": False}
+NAME = {"min_length": 1, "max_length": 200}
+
+
+def tidy_name(value: str) -> str:
+    """A name with its surrounding space removed, and refused if that leaves nothing."""
+    value = value.strip()
+    if not value:
+        raise ValueError("a name cannot be blank")
+    return value
+
+
 class FoodIn(BaseModel):
-    name: str = Field(min_length=1)
+    name: str = Field(**NAME)
     unit: Unit
-    calories: float = Field(ge=0)
-    protein: float = Field(ge=0)
-    carbs: float = Field(ge=0)
-    fat: float = Field(ge=0)
+    calories: float = Field(ge=0, **Finite)
+    protein: float = Field(ge=0, **Finite)
+    carbs: float = Field(ge=0, **Finite)
+    fat: float = Field(ge=0, **Finite)
+
+    @field_validator("name")
+    @classmethod
+    def name_is_not_blank(cls, value: str) -> str:
+        return tidy_name(value)
 
 
 class IngredientIn(BaseModel):
     food_id: str
-    quantity: float = Field(gt=0)
+    quantity: float = Field(gt=0, **Finite)
 
 
 class MealIn(BaseModel):
-    name: str = Field(min_length=1)
-    ingredients: list[IngredientIn] = []
+    name: str = Field(**NAME)
+    ingredients: list[IngredientIn] = Field(default=[], max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def name_is_not_blank(cls, value: str) -> str:
+        return tidy_name(value)
 
 
 class EntryIn(BaseModel):
@@ -60,7 +84,7 @@ class EntryIn(BaseModel):
     section: Section
     food_id: str | None = None
     meal_id: str | None = None
-    quantity: float | None = None
+    quantity: float | None = Field(default=None, **Finite)
 
     @model_validator(mode="after")
     def one_reference_and_a_matching_quantity(self) -> "EntryIn":

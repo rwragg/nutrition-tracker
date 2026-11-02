@@ -16,12 +16,20 @@ export default function Dialog({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Callers pass an inline arrow, so `onClose` has a new identity on every render of the parent. As an
+  // effect dependency that re-ran the effect each time - tearing down the key handler and moving focus
+  // back to the first field while the person was typing. Held in a ref, the effect runs once per open.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -30,6 +38,11 @@ export default function Dialog({
       const focusable = panelRef.current.querySelectorAll<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
       );
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
 
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -50,7 +63,7 @@ export default function Dialog({
       document.removeEventListener("keydown", onKeyDown);
       previouslyFocused?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div
