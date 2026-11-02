@@ -593,6 +593,109 @@ Every criterion met, each verified by running it rather than by reading the code
 photo meals, per-user accounts, and anything that changes a food or a meal from the chat. The
 skeleton logs and reads; it does not edit.
 
+## Part 10 — other people · **draft for approval, nothing built**
+
+Robert's constraint, 2026-11-02: *"If I let other people use, I don't want them to need hermes."*
+
+**What that turned out to mean.** Nothing has to be removed. The application and the bot contain no
+reference to Hermes, the vault or Obsidian — and no dependency on any of them. The check, so it is
+repeatable rather than remembered: `git grep -niE "hermes|obsidian|vault" -- ':!*package-lock.json'`
+over the repository matches **only documentation** — this plan, the completion report and the resume,
+each quoting a workspace path like `~/hermes_workspace` — and it matched one comment in `.env.example`
+that pointed at a script in `~/.hermes`, **now removed**, because a file a stranger copies should not
+describe Robert's machine. Without that lockfile exclusion it also matches `hermes-parser`, a Meta npm
+package unrelated to any of this. Nothing under `backend/`, `frontend/app|components|lib`, the
+`Dockerfile` or the compose file matches at all, and `grep -rl` over `/app` inside the built image
+finds nothing either.
+
+Hermes is a front end *Robert* uses for *his* own logging, into the vault, which is a different log from
+the app's database. So Part 10 is not "take Hermes out"; it is **make R3 real**, so the app can hold more
+than one person and each of them reaches it with nothing but a browser or a chat.
+
+**Why this is small on the data side.** Every route already scopes by `user_id` (R2), every table carries
+it, and `users` exists — D4 shaped the schema for R3 in Part 5 precisely so it would need no migration.
+The only single-user thing in the application is `CREDENTIALS = {"user": "password"}` in
+`backend/app/auth.py`, one constant in one file. The work is identity, not structure.
+
+**Requirements (R24 onward — these are proposals, not yet requirements):**
+
+- **R24 — Anyone can make their own account**, with a Telegram id and an email as R3 asks, without an
+  operator touching the database or a file. *Check:* register two accounts through the API alone, sign
+  in as each, and get a session back; nothing in the path requires shell access.
+- **R25 — Two accounts cannot see or touch each other's log.** *Check:* as account A, reading B's day,
+  editing B's food and deleting B's entry each fail and write nothing; A's own day still totals what it
+  did. This is R2 restated as the test that proves it, because R2 has never been tested against a
+  second user — there has only ever been one.
+- **R26 — The bot knows who it is talking to.** A chat is bound to exactly one account, and an unbound
+  chat is refused with how to bind, rather than being refused vaguely or silently served someone else's
+  log. *Check:* an unbound chat gets a refusal and no entry is written; once bound, `/log` writes into
+  that account's day and `/today` reads back that account's figures, not another's.
+- **R27 — No user needs Hermes, the vault, Obsidian, or any agent runtime.** *Check:* a test that scans
+  what actually ships — `backend/`, `frontend/app|components|lib`, the `Dockerfile`, the compose file,
+  and every file in the built image — for those names, and fails if it finds one. Scoped deliberately:
+  scanning the whole repository would fail on this plan and on a lockfile entry called `hermes-parser`,
+  neither of which any user ever runs, and a check that cries wolf gets switched off. Plus a documented
+  run from a clean host with nothing but Docker.
+- **R28 — A voice note is transcribed by the bot itself.** The transcript is then treated exactly as
+  typed text — the same commands, the same refusals, the same nothing-written-when-a-refusal-fires.
+  *Check:* a fixture voice note through the API produces the entry the same words would have.
+- **R29 — A person can leave.** Their account and its log can be removed by them, and the deletion
+  names what it would take with it. *Check:* delete an account, then assert it is gone and no row
+  refers to it. R11's `RESTRICT` makes this a decision rather than a line of code: something must
+  decide what "delete my account" means for the foods a meal still uses.
+- **R30 — It runs somewhere other than Robert's machine**, reachable over TLS, with the token and the
+  session secret in the environment rather than in the image. *Check:* the app answers on a host that
+  is not this one, and a rebuild there keeps the log.
+
+**Decisions to take before building (these are the real content of this draft):**
+
+- **D16 — what transcribes a voice note.** Local whisper.cpp baked into the image (no key, no per-use
+  cost, a bigger image, CPU time per note) or a cloud STT call (a key in `.env`, per-use cost, no image
+  weight). Robert already runs whisper.cpp locally with `medium.en`, so the local option is proven on
+  this machine — the question is whether it belongs in a stranger's container. **This one also decides
+  whether D2 still holds**: D2 banned AI as an OpenRouter call, key and chat widget, and a local
+  transcription model is none of those three but is still a model. Answer that honestly rather than by
+  looking for the loophole.
+- **D17 — what the email in R3 is for.** Telegram is the identity a chat arrives with. If email is the
+  login and Telegram is linked to it, there are two things to verify and one to recover; if Telegram is
+  the identity and email is a contact address, there is one. R3 asks for both without saying which is
+  which, and this draft should not guess.
+- **D18 — how a chat binds to an account.** A code the app shows and the chat redeems, or a `/login`
+  in the chat with credentials typed into Telegram. The second puts a password into a chat history,
+  which is reason enough to prefer the first.
+
+**Open questions this draft raises rather than answers:**
+
+- **R12 says no search and no filter.** With one person and 31 seeded foods that is a discipline; with
+  strangers and their own foods it may be a wall — a catalogue you cannot search is a catalogue you
+  cannot use. Reversing R12 is allowed (it has been done before, in writing) but it should be reversed
+  deliberately, not discovered in the middle of building a catalogue.
+- **Whose log is the log?** If the app becomes Robert's own, the `vault-logging` pipeline and the daily
+  summary would be retired in favour of it — a change to his own habit, his vault's history and his
+  cron, and therefore his decision. Nothing in R24–R30 requires it, and this draft assumes neither
+  way.
+- **What is "other people" in numbers?** Two friends and two hundred are different builds: the first is
+  accounts and a VPS, the second is backups, rate limits, abuse handling and a way to answer a support
+  question. Worth naming before the first line of code.
+
+**Order, if approved — each step gated, none started:**
+
+1. Accounts and registration (R24), with the isolation tests (R25) written first, as the part that
+   proves the schema was right.
+2. The bot's binding (R26), which is what makes a second person's chat safe rather than shared.
+3. Voice (R28), gated on D16 — it is the only genuinely new machinery here, and the only capability
+   Hermes is quietly lending Robert today.
+4. Leaving (R29) and hosting (R30), gated on D17, D18 and the numbers question.
+
+**Size, honestly.** The app's own calibration: Part 9 — a bot with two commands, a new unit through four
+layers, the first migration and 44 tests — took about a day. On that basis this is roughly **4 to 6 days
+of building**, with the calendar set by the decisions above (D16 and R12 are the two that can change the
+work) rather than by the code. Nothing here is research; it is all work whose shape is known.
+
+**Staged inert.** No code, no schema change, no bot change, no new file outside this plan. Robert
+approves, amends or drops it before anything is built, and if it is approved it is built one numbered
+step at a time, each stopping for approval as every part before it has.
+
 ## Open questions
 
 - **Q1 — Registration is deferred, not dropped.** `AGENTS.md` asks for registration with a telegram id
