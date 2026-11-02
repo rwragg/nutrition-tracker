@@ -22,7 +22,8 @@ npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 22 passed, builds its own stack on :8100
 ```
 
-Current commits: nutrition `a5b62a9`, hermes-home `f45c214`, hermes-skills `f531172`, hermes-notes
+Current commits: this repository is HEAD here (Part 8's handover commit, 2026-11-01), hermes-home
+`f45c214`, hermes-skills `f531172`, hermes-notes
 `c6ec8f4`, pm `ae223d6`. `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with
 403 — the token has no write on that repo (see Open items).
 
