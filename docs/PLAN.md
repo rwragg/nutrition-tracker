@@ -825,6 +825,65 @@ touching the log that was there.
   function) and the loop writes it, so no step can jump the queue again. Found by the 2 → 4 chain test,
   which is the reason that test runs the whole chain rather than one step.
 
+## Part 11 - suggest a food that is not in the list · **draft for approval, nothing built**
+
+Robert's ask, 2026-11-02: *"can the ui suggest a match for food not already in the list"*. This is the web
+app's half of D20; the chat's half (a model parser, confirm-before-write) is separate and waits behind it.
+No model is involved here: the first tier is string matching over the person's own foods, the second is a
+lookup in USDA FoodData Central.
+
+**Requirements (R31 onward, to be approved):**
+
+- **R31 - a name that is not in the list gets suggestions from the list first.** Typing "greek yogurt" when
+  the catalogue holds "Greek yogurt, plain 0%" offers that food before anything is created, and offers it
+  in the New food form as well as in Add food to a day. *Check:* a unit test per entry point, and an e2e
+  test that the duplicate is not created when the suggestion is taken.
+- **R32 - when nothing in the list is close, the app can look the food up in USDA** and show up to three
+  candidates with their calories, protein, carbs and fat. *Check:* the route is tested against a stub of
+  USDA's responses, and one manual run against the real service is recorded with its output.
+- **R33 - a looked-up food is never added silently.** In the New food form a pick fills the form and the
+  person saves it; in Add food to a day a pick creates the food and logs the entry in one step, with the
+  figures shown before the button is pressed. *Check:* tests that nothing is written until the person acts.
+- **R34 - a looked-up food is stored on the gram basis** (D13): USDA's per-100 g figures divided by 100,
+  unit `g`. Household units are out of scope for the first cut and said so on screen. *Check:* a test that
+  183 g of a looked-up food logs 183 times its per-gram figure.
+- **R35 - the key stays on the server and use is capped** (D21): the browser calls the app, the app calls
+  USDA, a missing key is a clear "lookup is not configured" and not a failure, and each account has a
+  daily cap. *Check:* the cap and the unconfigured answer each have a test; the key does not appear in the
+  frontend bundle or in any response.
+- **R36 - where a food came from is recorded.** `foods.source` (`typed` or `usda`) and, for a looked-up
+  food, USDA's id, so a figure can be traced to its origin. This is the 5 -> 6 migration. *Check:* the
+  migration test in the pattern of 4 -> 5, and a test that existing foods read as `typed`.
+- **R37 - USDA being down or slow never blocks the app.** The lookup has a short timeout and a plain
+  failure message, and every other route is unaffected. *Check:* a test with the stub timing out.
+
+**Decisions to take (the first two are the real content of this draft):**
+
+- **D22 - which USDA datasets.** Foundation and SR Legacy are generic foods with reliable figures; Branded
+  is large, noisy and often a different product from the one meant. Proposed: generic only, with branded
+  left for a later part. Robert to confirm.
+- **D23 - where a food that is both typed and found lives.** Proposed: the person's own food always wins in
+  the suggestions and is shown first, and a looked-up food is a copy owned by that account, so editing it
+  never touches anyone else's.
+- **D24 - R12.** The brief said no search. A lookup inside a create form is not a search over the log, but
+  it is the nearest thing to one the app has had, so it is recorded as a deliberate change.
+
+**Order, if approved - each step gated:**
+
+1. Tier 1: suggestions from the person's own list, in both entry points. No key, no network, no schema
+   change. Can be built and shipped alone.
+2. The backend lookup route with its stub, cap and `source` migration (R32, R35, R36, R37). Needs the USDA
+   key from Robert (free, requested with an email at api.data.gov) before it can be run for real.
+3. The two UI entry points for the lookup (R33, R34).
+
+**Size, honestly.** Step 1 is about half a day: one matching function, two dialogs, tests. Steps 2 and 3
+are about a day and a half, most of it the stub and the tests rather than the call to USDA. Household
+units (cup, tablespoon) are the first thing the person will ask for after this and are a separate part,
+because they need a second USDA call per food and a decision about which portion to trust.
+
+**Staged inert.** No code, no schema change and no key is touched until Robert approves, amends or drops
+this.
+
 ## Open questions
 
 - **Q1 — Registration is deferred, not dropped.** `AGENTS.md` asks for registration with a telegram id
