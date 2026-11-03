@@ -8,7 +8,10 @@ and a FastAPI backend in one container, with the log stored in SQLite.
 - The database approach: [`docs/DATABASE.md`](docs/DATABASE.md)
 - The completion report: [`docs/COMPLETION-REPORT.md`](docs/COMPLETION-REPORT.md)
 - The app: [`frontend/`](frontend) - see [`frontend/AGENTS.md`](frontend/AGENTS.md) for how it works
-- Screenshots: [`docs/screenshots/`](docs/screenshots)
+- Screenshots: [`docs/screenshots/`](docs/screenshots) — of the running app, against its own seeded
+  sample data, refreshed by `frontend/scripts/capture-screenshots.mjs` rather than taken by hand
+- The deck: [`docs/deck/Nutrition-Tracker-Deck.pptx`](docs/deck/Nutrition-Tracker-Deck.pptx) (PDF
+  alongside it) — the app, the integrations and the engineering process, with the screenshots in it
 
 (`PLAN.md` in the project root is the superseded v2 plan, kept for its history. The live plan is the
 one in `docs/`.)

@@ -1,0 +1,534 @@
+{
+  "slide_size": "16:9",
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Nutrition Tracker",
+      "subtitle": "A food log I use every day.\n\nBuilt end to end with AI agents — and directed as an engineering project.\n\ngithub.com/rwragg/nutrition-tracker",
+      "notes": "Every screenshot in this deck is of the running app, captured by an automated script (frontend/scripts/capture-screenshots.mjs) so it can be refreshed rather than hand-taken. The captures are against the app's own seeded sample data, not a live log — the repository is public, and a food log is a health record."
+    },
+    {
+      "layout": "title_content",
+      "title": "What it is",
+      "bullets": [
+        {
+          "text": "A daily food and macro log: what I ate, what it came to, and what is left against my targets",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Next.js and TypeScript front end, Python (FastAPI) API, SQLite, Docker — my own project",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "A Telegram bot as a second client of the same API, so it works from a phone",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Multiple accounts, isolated from each other at the API and in the database",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "No model in the product: AI wrote most of the code, the app is deterministic code",
+          "level": 0,
+          "size": 20
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The last line is deliberate and worth saying out loud. The application contains no model calls at all — no inference, no prompts, no API key of that kind. AI built it; the product is ordinary deterministic code. That is what makes 282 backend tests and 28 end-to-end tests possible, and it is the answer to 'so is the AI in the product?'"
+    },
+    {
+      "layout": "title_only",
+      "title": "The day view",
+      "images": [
+        {
+          "path": "docs/screenshots/day.png",
+          "left": 2.65,
+          "top": 1.55,
+          "width": 8.0
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 6.62,
+          "width": 10.9,
+          "height": 0.62,
+          "fill": "F1F2EF",
+          "text": "Opens on the newest day: sections, entries, running totals, and macro bars against target.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The ring is calories against target; the three bars are protein, carbs and fat. Each section adds a single food or a whole saved meal. The tabs at the top are the previous days."
+    },
+    {
+      "layout": "title_only",
+      "title": "Adding a food you already know",
+      "images": [
+        {
+          "path": "docs/screenshots/new-food.png",
+          "left": 2.65,
+          "top": 1.55,
+          "width": 8.0
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 6.62,
+          "width": 10.9,
+          "height": 0.62,
+          "fill": "F1F2EF",
+          "text": "A near-duplicate already in the list is offered instead of silently created — the guard against phantom rows.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "Typing 'Gree' surfaces 'Greek yogurt, plain 0%' with an Edit this one button rather than letting a second, subtly different row be created. A duplicate row is the one mistake nothing downstream can detect: the total still looks plausible. Foods are priced per unit, and sub-units (2 scoops to a serving, and so on) are declared in their own table so '1 serving' and '2 scoops' cannot silently disagree."
+    },
+    {
+      "layout": "title_only",
+      "title": "Foods the catalogue does not have: USDA FoodData Central",
+      "images": [
+        {
+          "path": "docs/screenshots/usda-lookup.png",
+          "left": 2.65,
+          "top": 1.55,
+          "width": 8.0
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 6.62,
+          "width": 10.9,
+          "height": 0.62,
+          "fill": "F1F2EF",
+          "text": "A live USDA search: generic foods only, up to three candidates, each with per-100 g figures.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The key stays on the server — it is never in the bot, never in the browser, never in a URL. Per-account daily caps and a rate limiter bound what a lookup can spend. The candidates are re-ranked and labelled per 100 g, because that is how USDA publishes them; the conversion to a real portion happens on the next screen."
+    },
+    {
+      "layout": "title_only",
+      "title": "Nothing is written until you confirm",
+      "images": [
+        {
+          "path": "docs/screenshots/usda-add.png",
+          "left": 2.65,
+          "top": 1.55,
+          "width": 8.0
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 6.62,
+          "width": 10.9,
+          "height": 0.62,
+          "fill": "F1F2EF",
+          "text": "Per 100 g in, grams out: name and figures stay editable, and one button adds it to the catalogue and logs it.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "This is the design decision behind the feature: the database supplies the nutrition figures, never a model's estimate, and nothing is written until a person presses the button. The API validates every field first — a quantity that is not a finite number, or a figure the person did not supply, is a refusal rather than a guess."
+    },
+    {
+      "layout": "title_only",
+      "title": "Meals as shortcuts",
+      "images": [
+        {
+          "path": "docs/screenshots/meals.png",
+          "left": 2.65,
+          "top": 1.55,
+          "width": 8.0
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 6.62,
+          "width": 10.9,
+          "height": 0.62,
+          "fill": "F1F2EF",
+          "text": "A named meal logs all of its items in one step. A definition is a snapshot, so a shortcut cannot drift.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "Most days are two or three repeatable meals, so naming one and logging it in a single action is the difference between a log that gets kept and one that does not. The definition is a literal snapshot of the rows it was built from, which means a later correction to a food value cannot silently move what a shortcut logs."
+    },
+    {
+      "layout": "title_only",
+      "title": "The chat client — a second caller of the same API",
+      "images": [
+        {
+          "path": "docs/screenshots/pairing.png",
+          "left": 2.65,
+          "top": 1.55,
+          "width": 8.0
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 6.62,
+          "width": 10.9,
+          "height": 0.62,
+          "fill": "F1F2EF",
+          "text": "Linking a chat means minting a one-time code and sending it to the bot. Not one password, ever.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The bot long-polls Telegram, so there is no public endpoint to expose and nothing to route inbound. /bind links a chat; /today and /log read and add. The bot holds no records of its own — it is a client, and the API is still the only thing that decides anything."
+    },
+    {
+      "layout": "title_content",
+      "title": "No password ever goes into a chat",
+      "bullets": [
+        {
+          "text": "Minted by the app, redeemed in the chat, burned on use — retiring any other code that account held",
+          "level": 0,
+          "size": 18
+        },
+        {
+          "text": "The bot proves who it is with a shared secret compared in constant time",
+          "level": 0,
+          "size": 18
+        },
+        {
+          "text": "The account it acts for comes from the binding, not from the caller",
+          "level": 0,
+          "size": 18
+        },
+        {
+          "text": "One function decides who may ask, for person and machine alike",
+          "level": 0,
+          "size": 18
+        },
+        {
+          "text": "Per-account daily caps, per-chat attempt limits, codes that expire in fifteen minutes",
+          "level": 0,
+          "size": 18
+        },
+        {
+          "text": "Account isolation is proved by tests, not asserted",
+          "level": 0,
+          "size": 18
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The reason a code is stored rather than signed: only stored state can be made to stop working after one use. A signed token is stateless and therefore cannot be retired — that is the whole argument, and it is why 'works once' is enforceable rather than aspirational. The gate is one function for both callers so the two can never drift apart."
+    },
+    {
+      "layout": "title_only",
+      "title": "How it fits together",
+      "shapes": [
+        {
+          "type": "rounded_rectangle",
+          "left": 0.6,
+          "top": 1.7,
+          "width": 3.3,
+          "height": 1.0,
+          "fill": "E8F0D0",
+          "text": "Browser UI — Next.js + TypeScript",
+          "text_color": "33383D"
+        },
+        {
+          "type": "right_arrow",
+          "left": 3.95,
+          "top": 1.98,
+          "width": 0.9,
+          "height": 0.45,
+          "fill": "C6F24E"
+        },
+        {
+          "type": "rounded_rectangle",
+          "left": 4.9,
+          "top": 1.7,
+          "width": 3.5,
+          "height": 1.0,
+          "fill": "C6F24E",
+          "text": "The one gate — FastAPI: sessions, quotas, validation, ownership",
+          "text_color": "1A1D21"
+        },
+        {
+          "type": "right_arrow",
+          "left": 8.45,
+          "top": 1.98,
+          "width": 0.5,
+          "height": 0.45,
+          "fill": "C6F24E"
+        },
+        {
+          "type": "rounded_rectangle",
+          "left": 9.0,
+          "top": 1.7,
+          "width": 3.7,
+          "height": 1.0,
+          "fill": "E8F0D0",
+          "text": "SQLite — schema v6, migrations, delete guards",
+          "text_color": "33383D"
+        },
+        {
+          "type": "rounded_rectangle",
+          "left": 0.6,
+          "top": 3.5,
+          "width": 3.3,
+          "height": 1.0,
+          "fill": "E8F0D0",
+          "text": "Telegram bot — long polling, no public port",
+          "text_color": "33383D"
+        },
+        {
+          "type": "right_arrow",
+          "left": 3.95,
+          "top": 3.78,
+          "width": 0.9,
+          "height": 0.45,
+          "fill": "C6F24E"
+        },
+        {
+          "type": "rounded_rectangle",
+          "left": 4.9,
+          "top": 3.5,
+          "width": 3.5,
+          "height": 1.0,
+          "fill": "F1F2EF",
+          "text": "Second caller — same routes, same rules",
+          "text_color": "33383D"
+        },
+        {
+          "type": "rounded_rectangle",
+          "left": 9.0,
+          "top": 3.5,
+          "width": 3.7,
+          "height": 1.0,
+          "fill": "E8F0D0",
+          "text": "USDA FoodData Central — server-side key, per-account caps",
+          "text_color": "33383D"
+        },
+        {
+          "type": "rectangle",
+          "left": 0.6,
+          "top": 5.05,
+          "width": 12.1,
+          "height": 1.75,
+          "fill": "F7F8F5",
+          "text": "One API, two callers. The person and the bot authenticate to the same gate, so a route the person cannot reach is a route the bot cannot reach — and an unbound chat is refused everything. The nutrition figures come from USDA and the person's own list, never from a model: the model that built the app is not part of the app.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The claim on this slide is structural rather than aspirational: there is exactly one place that decides who is allowed to ask, and both the web session and the bot share it. That is why the machine can be given a narrower surface than the person without a second implementation to keep in step."
+    },
+    {
+      "layout": "title_content",
+      "title": "Data, and how it changes shape safely",
+      "bullets": [
+        {
+          "text": "SQLite at schema version 6, with a migration chain that refuses a schema it cannot carry forward",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Deletes are guarded in the database, so an entry cannot lose the food underneath it",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Entries carry literal figures: correcting a value never rewrites what a day was logged as",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Every account's rows are its own — enforced at the API, and proved by tests",
+          "level": 0,
+          "size": 20
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The migration chain has run cleanly through six schema versions, each step written to be safe against a database that already holds data. Refusing an unrecognised schema rather than guessing at it is the difference between a startup failure and silent corruption."
+    },
+    {
+      "layout": "title_content",
+      "title": "How it was built: the process, not a long chat",
+      "bullets": [
+        {
+          "text": "A written brief: 30 numbered requirements and 24 recorded decisions, each with its reasoning",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "A plan file stating every part's substeps, its tests and its success criteria",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "A review gate at every part — nothing starts before the previous part is verified",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "The state after each part written down for whoever picks it up next",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Every claim in the documentation is a command that prints it",
+          "level": 0,
+          "size": 20
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "This is the part worth keeping. When a model writes most of the code, the process is the differentiator — governance of AI delivery, evidenced rather than asserted. Nothing in the docs asks to be believed: the numbers on the next slide are ones anybody can regenerate."
+    },
+    {
+      "layout": "title_content",
+      "title": "How it was built: the agents",
+      "bullets": [
+        {
+          "text": "AI agents wrote most of the code; I set the requirements, the boundaries and the gates",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Separate agents on isolated profiles, each with only the tools its own job needs",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Private health and training data stays on a model I run myself",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Unknown values are refused rather than guessed; credentials carry the least access that works",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "The result is not a demo: it is the app I log my own meals in",
+          "level": 0,
+          "size": 20
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The multi-model split is a boundary question before it is a cost question: the data that matters most is the data you least want leaving the machine. A local model handles the private health and training work; hosted models handle everything else."
+    },
+    {
+      "layout": "title_only",
+      "title": "Evidence, and how to check it",
+      "tables": [
+        {
+          "left": 1.2,
+          "top": 1.7,
+          "width": 10.9,
+          "height": 2.6,
+          "rows": [
+            [
+              "Suite",
+              "Command",
+              "Result"
+            ],
+            [
+              "Backend (pytest)",
+              "uv run python -m pytest",
+              "282 passed"
+            ],
+            [
+              "Front-end unit (Vitest)",
+              "npm test",
+              "140 passed, 14 files"
+            ],
+            [
+              "End-to-end (Playwright)",
+              "npm run test:e2e",
+              "28 passed, real container"
+            ],
+            [
+              "Schema version",
+              "db.py SCHEMA_VERSION",
+              "6"
+            ]
+          ]
+        }
+      ],
+      "shapes": [
+        {
+          "type": "rectangle",
+          "left": 1.2,
+          "top": 4.55,
+          "width": 10.9,
+          "height": 1.5,
+          "fill": "F7F8F5",
+          "text": "Every figure here came from re-running the command, not from memory. The end-to-end suite starts its own container from a freshly seeded database, so it asserts against a known state rather than whatever happens to be on the machine.",
+          "text_color": "33383D"
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "The point of this slide is not the numbers, it is that the numbers are checkable in one command each. It is also the answer to 'how do you know the AI's code worked?' — because the suite fails loudly, and because a release tag points at a commit whose tests passed."
+    },
+    {
+      "layout": "title_content",
+      "title": "What it does not do yet",
+      "bullets": [
+        {
+          "text": "No voice input: the bot skips any update with no text field — left off until it exists",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "One person, one machine: there is no hosting story yet",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Household units are partial: grams, cups, each, tablespoons",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Rate limits live in memory and reset with the process",
+          "level": 0,
+          "size": 20
+        },
+        {
+          "text": "Next: a second account on real hardware, then hosting, then voice",
+          "level": 0,
+          "size": 20
+        }
+      ],
+      "footer": "github.com/rwragg/nutrition-tracker",
+      "slide_number": true,
+      "notes": "Naming the gaps is cheaper than being asked about them. Voice in particular: the bot ignores updates without text and the repository holds no audio code, so claiming it would be a claim an interviewer could disprove in thirty seconds."
+    }
+  ]
+}
