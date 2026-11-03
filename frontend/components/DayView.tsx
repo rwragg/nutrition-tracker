@@ -9,28 +9,36 @@ import {
   SECTIONS,
   type Day,
   type EntryDraft,
+  type FoodCandidate,
   type SaveResult,
   type Section,
   type Store,
 } from "@/lib/types";
 import AddFoodDialog from "./AddFoodDialog";
 import AddMealDialog from "./AddMealDialog";
+import LookUpFoodDialog from "./LookUpFoodDialog";
 import DaySummary from "./DaySummary";
 import SectionCard from "./SectionCard";
 
-type OpenDialog = { kind: "food" | "meal"; section: Section } | null;
+type OpenDialog =
+  | { kind: "food"; section: Section; foodId?: string }
+  | { kind: "meal"; section: Section }
+  | { kind: "lookup"; section: Section }
+  | null;
 
 export default function DayView({
   store,
   day,
   onSelectDay,
   onAddEntry,
+  onAddLookedUpFood,
   onRemoveEntry,
 }: {
   store: Store;
   day: Day;
   onSelectDay: (date: string) => void;
   onAddEntry: (section: Section, draft: EntryDraft) => Promise<SaveResult>;
+  onAddLookedUpFood: (section: Section, candidate: FoodCandidate, grams: number) => Promise<SaveResult>;
   onRemoveEntry: (section: Section, entryId: string) => Promise<SaveResult>;
 }) {
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null);
@@ -91,6 +99,8 @@ export default function DayView({
         <AddFoodDialog
           section={openDialog.section}
           store={store}
+          initialFoodId={openDialog.foodId}
+          onLookUp={() => setOpenDialog({ kind: "lookup", section: openDialog.section })}
           onClose={() => setOpenDialog(null)}
           onAdd={(foodId, quantity) => {
             const section = openDialog.section;
@@ -98,6 +108,16 @@ export default function DayView({
               setProblem(result.ok ? null : result.message);
             });
           }}
+        />
+      )}
+
+      {openDialog?.kind === "lookup" && (
+        <LookUpFoodDialog
+          section={openDialog.section}
+          store={store}
+          onAddExisting={(food) => setOpenDialog({ kind: "food", section: openDialog.section, foodId: food.id })}
+          onAdd={(candidate, grams) => onAddLookedUpFood(openDialog.section, candidate, grams)}
+          onClose={() => setOpenDialog(null)}
         />
       )}
 

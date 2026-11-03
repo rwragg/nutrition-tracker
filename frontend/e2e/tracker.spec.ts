@@ -731,3 +731,25 @@ test("looking a food up says so plainly when lookup is not set up", async ({ pag
   // the browser logs the 503 as a console error; it is the point of the test
   expectQuietApartFrom(consoleErrors, ["503"]);
 });
+
+test("adding a food to a day that is not in the list says plainly when lookup is not set up", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+
+  await page.getByRole("button", { name: "Add food to Lunch" }).click();
+  await page.getByTestId("open-lookup").click();
+  await expect(page.getByRole("dialog", { name: "Look up a food for Lunch" })).toBeVisible();
+  await expect(page.getByTestId("lookup-go")).toBeDisabled();
+
+  await page.getByTestId("lookup-name").fill("tempeh");
+  await page.getByTestId("lookup-go").click();
+
+  await expect(page.getByTestId("lookup-problem")).toHaveText("food lookup is not configured");
+  await expect(page.getByTestId("confirm-lookup-add")).toBeDisabled();
+
+  // nothing was written: the day and the list are as they were
+  await page.getByRole("button", { name: "Close" }).first().click();
+  const foods = await (await page.request.get("/api/foods")).json();
+  expect(foods.some((food: { name: string }) => food.name === "Tempeh")).toBe(false);
+
+  expectQuietApartFrom(consoleErrors, ["503"]);
+});

@@ -7,6 +7,7 @@ import { toIsoDate } from "./dates";
 import type {
   Day,
   EntryDraft,
+  FoodCandidate,
   FoodInput,
   MealInput,
   SaveResult,
@@ -34,6 +35,8 @@ export interface Tracker {
   saveMeal: (existingId: string | null, input: MealInput) => Promise<SaveResult>;
   deleteMeal: (id: string) => Promise<SaveResult>;
   addEntry: (section: Section, draft: EntryDraft) => Promise<SaveResult>;
+  /** Make a food from a USDA candidate and log it, in one step (R33). */
+  addLookedUpFood: (section: Section, candidate: FoodCandidate, grams: number) => Promise<SaveResult>;
   removeEntry: (section: Section, entryId: string) => Promise<SaveResult>;
 }
 
@@ -148,6 +151,57 @@ export function useTracker(): Tracker {
 
   const currentDate = day?.date;
 
+  /**
+   * A food USDA offered, made and logged in one act. Two writes, so two ways to half-succeed, and the
+   * second is told apart: if the food was made and the entry was not, the food is in the list now and
+   * the message says so, instead of reporting a failure that left something behind.
+   *
+   * A food already made from this same USDA id is reused rather than made again.
+   */
+  const addLookedUpFood = async (
+    section: Section,
+    candidate: FoodCandidate,
+    grams: number,
+  ): Promise<SaveResult> => {
+    const date = currentDate ?? toIsoDate(new Date());
+    let foodId = store?.foods.find((food) => food.sourceId === candidate.fdcId)?.id;
+
+    if (!foodId) {
+      try {
+        foodId = (
+          await api.createFood({
+            name: candidate.name,
+            unit: "g",
+            macros: candidate.macros,
+            source: "usda",
+            sourceId: candidate.fdcId,
+          })
+        ).id;
+      } catch (cause) {
+        return failure(cause);
+      }
+    }
+
+    try {
+      await api.addEntry(date, section, { kind: "food", foodId, quantity: grams });
+    } catch (cause) {
+      try {
+        apply(await load());
+      } catch {
+        // the refresh failing is not the news; the entry failing is
+      }
+      const why = cause instanceof ApiError ? cause.message : UNREACHABLE;
+      return { ok: false, message: `${candidate.name} is in your list now, but logging it failed: ${why}` };
+    }
+
+    try {
+      apply(await load());
+    } catch (cause) {
+      setError(messageOf(cause));
+    }
+    return { ok: true };
+  };
+
   return {
     store,
     day,
@@ -163,6 +217,7 @@ export function useTracker(): Tracker {
     deleteMeal: (id) => write(() => api.deleteMeal(id)),
     addEntry: (section: Section, draft: EntryDraft) =>
       write(() => api.addEntry(currentDate ?? toIsoDate(new Date()), section, draft)),
+    addLookedUpFood,
     removeEntry: (_section: Section, entryId: string) =>
       write(() => api.removeEntry(currentDate ?? toIsoDate(new Date()), entryId)),
   };

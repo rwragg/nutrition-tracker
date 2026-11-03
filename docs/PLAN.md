@@ -825,7 +825,7 @@ touching the log that was there.
   function) and the loop writes it, so no step can jump the queue again. Found by the 2 → 4 chain test,
   which is the reason that test runs the whole chain rather than one step.
 
-## Part 11 - suggest a food that is not in the list · **approved 2026-11-02; steps 1 and 2 built**
+## Part 11 - suggest a food that is not in the list · **approved 2026-11-02; all three steps built**
 
 Robert's ask, 2026-11-02: *"can the ui suggest a match for food not already in the list"*. This is the web
 app's half of D20; the chat's half (a model parser, confirm-before-write) is separate and waits behind it.
@@ -924,7 +924,19 @@ because they need a second USDA call per food and a decision about which portion
   11 unit tests, one e2e test (the suite's stack has no key on purpose), and a real lookup checked on the
   running app: *tempeh* offered *Tempeh, cooked* and *Tempeh*, and *Use* filled 1.92 kcal and 0.203 g
   protein per gram. Also fixed in passing: the hint under the figures read "logging g doubles them".
-- **Not started:** step 3b, the Add food to a day entry point. Same approval covers it.
+- **Step 3b built, 2026-11-02: the Add food to a day entry point.** *Not in your list? Look it up* in the
+  picker opens its own dialog: name it, look it up, *Choose* one of up to five, set the grams (100 by
+  default), and *Add to Lunch* makes the food and logs it in one step. What it will add is on screen first
+  (R33). The person's own foods are offered first with *Add this one*, which returns to the picker with
+  that food chosen (D23). A food already made from the same USDA id is reused, not made again. If the food
+  is made and the entry then fails, the message says the food is in the list now and why logging failed,
+  and the list is refreshed so that is true. The quantity is in grams because USDA's figures are per
+  gram (R34); household units are the next part. 14 unit tests, one e2e test, and the real flow checked on
+  the running app up to the final button, which was not pressed so as not to write to the real log.
+- **Part 11 is complete.** R31 to R37 are met, with R31 narrowed and R32 widened (five results) as
+  recorded above. Not done, and not part of this: household units (cup, tablespoon), which need a second
+  USDA call per food and a choice of which portion to trust; and the lookup from the Telegram bot, which
+  belongs with the model parser and confirm-before-write (D19).
 
 ## Open questions
 

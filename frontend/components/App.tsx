@@ -174,6 +174,7 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
             void tracker.selectDay(date);
           }}
           onAddEntry={tracker.addEntry}
+          onAddLookedUpFood={tracker.addLookedUpFood}
           onRemoveEntry={tracker.removeEntry}
         />
       )}

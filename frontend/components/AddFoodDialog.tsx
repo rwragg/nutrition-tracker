@@ -6,7 +6,7 @@ import { formatCalories, formatGrams, formatQuantity } from "@/lib/format";
 import { scaleMacros, ZERO } from "@/lib/nutrition";
 import { SECTION_LABELS, type Section, type Store } from "@/lib/types";
 import Dialog from "./Dialog";
-import { BTN_PRIMARY, BTN_NEUTRAL } from "./styles";
+import { BTN_GHOST, BTN_PRIMARY, BTN_NEUTRAL } from "./styles";
 
 const STEP = 0.25;
 const MIN_QUANTITY = 0.25;
@@ -16,15 +16,21 @@ const round = (value: number) => Math.round(value * 100) / 100;
 export default function AddFoodDialog({
   section,
   store,
+  initialFoodId,
   onAdd,
+  onLookUp,
   onClose,
 }: {
   section: Section;
   store: Store;
+  /** Open with this food chosen, instead of the first in the list. */
+  initialFoodId?: string;
   onAdd: (foodId: string, quantity: number) => void;
+  /** The food is not in the list: go and look it up (D20). */
+  onLookUp: () => void;
   onClose: () => void;
 }) {
-  const [selectedId, setSelectedId] = useState(store.foods[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(initialFoodId ?? store.foods[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
 
   const selected = store.foods.find((food) => food.id === selectedId) ?? store.foods[0];
@@ -66,7 +72,7 @@ export default function AddFoodDialog({
     >
       {store.foods.length === 0 ? (
         <p className="small text-muted-brand mb-0">
-          No foods yet. Add one from the Foods view first.
+          No foods yet. Look one up below, or add one from the Foods view.
         </p>
       ) : (
         <ul className="list-unstyled mb-0 overflow-y-auto dark-scroll d-flex flex-column gap-1" style={{ maxHeight: "18rem" }} role="listbox" aria-label="Foods">
@@ -89,6 +95,12 @@ export default function AddFoodDialog({
           ))}
         </ul>
       )}
+
+      <p className="small mt-3 mb-0">
+        <button type="button" className={`${BTN_GHOST} p-0`} onClick={onLookUp} data-testid="open-lookup">
+          Not in your list? Look it up
+        </button>
+      </p>
 
       <div className="d-flex flex-wrap align-items-center gap-3 border-top mt-4 pt-4">
         <span className="small fw-medium">Quantity</span>

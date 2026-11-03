@@ -40,7 +40,7 @@ and the `cacheComponents` machinery that enables it; neither is used here.
   starts on an empty log of its own - and `TitleBar.tsx` the header.
   `DayView`, `FoodsView` and `MealsView` are the three views. `DaySummary` renders the day's ring and
   figures, `MacroBar` a single nutrient bar, `SectionCard` a meal section, `EntryRow` a logged entry.
-  `Dialog` is the overlay every dialog is built on; `TelegramDialog` (link or unlink a chat: asks for a code on request, shows it with the `/bind` line, and polls until the bot redeems it), `AddFoodDialog`, `AddMealDialog`, `FoodFormDialog`
+  `Dialog` is the overlay every dialog is built on; `LookUpFoodDialog` (add a food to a day that is not in the list: look it up in USDA, choose, set grams, and it is made and logged in one step) and `CandidateList` (what USDA offered, one line each), `TelegramDialog` (link or unlink a chat: asks for a code on request, shows it with the `/bind` line, and polls until the bot redeems it), `AddFoodDialog`, `AddMealDialog`, `FoodFormDialog`
   and `MealFormDialog` are the add and edit flows, and `DeleteDialog` the delete flow. `styles.ts` holds
   the shared class-name constants and `use-is-client.ts` the hook that gates client rendering.
 - `lib/` — `types.ts` (`Unit`, `Macros`, `Food`, `Meal`, `LogEntry`, `Day`, `Store`, `View`, and the
@@ -94,8 +94,8 @@ cd frontend
 npm install
 npm run dev        # development server, for working on the UI
 npm run build      # static export to out/ - this is what the image serves
-npm test           # 124 unit and component tests (Vitest + Testing Library)
-npm run test:e2e   # 27 Playwright tests, against its own stack on :8100 (needs docker)
+npm test           # 136 unit and component tests (Vitest + Testing Library)
+npm run test:e2e   # 28 Playwright tests, against its own stack on :8100 (needs docker)
 npm run lint
 ```
 
