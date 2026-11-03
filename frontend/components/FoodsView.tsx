@@ -90,6 +90,8 @@ export default function FoodsView({
 
       {dialog?.kind === "new" && (
         <FoodFormDialog
+          foods={store.foods}
+          onUseExisting={(existing) => setDialog({ kind: "edit", food: existing })}
           onClose={() => setDialog(null)}
           onSubmit={(input: FoodInput) => onSaveFood(null, input)}
         />

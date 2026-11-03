@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { UNITS, type Food, type FoodInput, type Macros, type SaveResult, type Unit } from "@/lib/types";
-import { pluralUnit } from "@/lib/format";
+import { formatCalories, formatQuantity, pluralUnit } from "@/lib/format";
+import { matchFoods } from "@/lib/match";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_PRIMARY } from "./styles";
 
@@ -15,10 +16,16 @@ const FIELDS: { key: keyof Macros; label: string }[] = [
 
 export default function FoodFormDialog({
   food,
+  foods = [],
+  onUseExisting,
   onSubmit,
   onClose,
 }: {
   food?: Food;
+  /** The foods already in the list, so a new one that is really an old one can be caught. New foods only. */
+  foods?: Food[];
+  /** The person chose a food that is already there instead of creating another. */
+  onUseExisting?: (food: Food) => void;
   /** Saves through the API. A refusal is returned, so the dialog can stay open and say why. */
   onSubmit: (input: FoodInput) => Promise<SaveResult>;
   onClose: () => void;
@@ -32,6 +39,10 @@ export default function FoodFormDialog({
   const [saving, setSaving] = useState(false);
 
   const canSave = name.trim().length > 0;
+
+  // Only when creating: an edit is of a food that exists, and the other foods are none of its business.
+  const similar = food || !onUseExisting ? [] : matchFoods(name, foods);
+  const alreadyThere = similar.some((match) => match.exact);
 
   async function save() {
     if (!canSave || saving) return;
@@ -88,6 +99,38 @@ export default function FoodFormDialog({
             onChange={(event) => setName(event.target.value)}
             className="form-control"
           />
+
+          {similar.length > 0 && (
+            <div className="mt-2" data-testid="similar-foods">
+              <p className="small text-muted-brand mb-1" data-testid="similar-heading">
+                {alreadyThere ? "You already have this food." : "Already in your list:"}
+              </p>
+              <ul className="list-unstyled mb-0 d-flex flex-column gap-1">
+                {similar.map(({ food: existing }) => (
+                  <li
+                    key={existing.id}
+                    data-testid={`similar-${existing.id}`}
+                    className="d-flex align-items-center justify-content-between gap-3 small"
+                  >
+                    <span className="min-w-0">
+                      <span className="fw-medium">{existing.name}</span>{" "}
+                      <span className="tabular text-muted-brand">
+                        per {formatQuantity(1, existing.unit)} · {formatCalories(existing.macros.calories)} kcal
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary flex-shrink-0"
+                      aria-label={`Edit ${existing.name} instead`}
+                      onClick={() => onUseExisting?.(existing)}
+                    >
+                      Edit this one
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div>
@@ -110,7 +153,7 @@ export default function FoodFormDialog({
         </div>
 
         <fieldset>
-          <legend className="form-label fw-medium">Per one {unit}</legend>
+          <legend className="form-label fw-medium fs-6">Per one {unit}</legend>
           <div className="row g-3">
             {FIELDS.map((field) => (
               <div key={field.key} className="col-6">

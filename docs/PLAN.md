@@ -825,7 +825,7 @@ touching the log that was there.
   function) and the loop writes it, so no step can jump the queue again. Found by the 2 → 4 chain test,
   which is the reason that test runs the whole chain rather than one step.
 
-## Part 11 - suggest a food that is not in the list · **draft for approval, nothing built**
+## Part 11 - suggest a food that is not in the list · **approved 2026-11-02; step 1 built**
 
 Robert's ask, 2026-11-02: *"can the ui suggest a match for food not already in the list"*. This is the web
 app's half of D20; the chat's half (a model parser, confirm-before-write) is separate and waits behind it.
@@ -835,9 +835,12 @@ lookup in USDA FoodData Central.
 **Requirements (R31 onward, to be approved):**
 
 - **R31 - a name that is not in the list gets suggestions from the list first.** Typing "greek yogurt" when
-  the catalogue holds "Greek yogurt, plain 0%" offers that food before anything is created, and offers it
-  in the New food form as well as in Add food to a day. *Check:* a unit test per entry point, and an e2e
-  test that the duplicate is not created when the suggestion is taken.
+  the catalogue holds "Greek yogurt, plain 0%" offers that food before anything is created. *Check:* unit
+  tests of the matching and of the form, and an e2e test that the duplicate is not created when the
+  suggestion is taken. **Scoped to the New food form only, as built:** Add food to a day is a picker over
+  every food in the list and R12 bars a search box there, so there is no name field to suggest against.
+  Its entry point arrives with step 3, as "Not in your list? Look it up", which has a name field of its
+  own and offers the person's own foods first.
 - **R32 - when nothing in the list is close, the app can look the food up in USDA** and show up to three
   candidates with their calories, protein, carbs and fat. *Check:* the route is tested against a stub of
   USDA's responses, and one manual run against the real service is recorded with its output.
@@ -857,7 +860,7 @@ lookup in USDA FoodData Central.
 - **R37 - USDA being down or slow never blocks the app.** The lookup has a short timeout and a plain
   failure message, and every other route is unaffected. *Check:* a test with the stub timing out.
 
-**Decisions to take (the first two are the real content of this draft):**
+**Decisions - D22, D23 and D24 taken as proposed (Robert, 2026-11-02):**
 
 - **D22 - which USDA datasets.** Foundation and SR Legacy are generic foods with reliable figures; Branded
   is large, noisy and often a different product from the one meant. Proposed: generic only, with branded
@@ -881,8 +884,17 @@ are about a day and a half, most of it the stub and the tests rather than the ca
 units (cup, tablespoon) are the first thing the person will ask for after this and are a separate part,
 because they need a second USDA call per food and a decision about which portion to trust.
 
-**Staged inert.** No code, no schema change and no key is touched until Robert approves, amends or drops
-this.
+**Status.**
+
+- **Step 1 built, 2026-11-02.** `lib/match.ts` (plain matching: case, punctuation and filler ignored,
+  plurals folded, a three-letter prefix is enough, a food is offered when at least half of what was typed
+  is in its name, best cover first, at most three) and the New food form, which shows the matches under the
+  name with an *Edit this one* button that opens that food instead of creating another. The person can
+  still create it anyway, because two foods may share a name. 11 tests of the matching, 7 of the form, one
+  in the Foods view, and an e2e test against the real list. No key, no network, no schema change.
+- **Found while building it:** the *Per one cup* heading in the New food form rendered at heading size,
+  because Bootstrap sizes a bare `legend` as one. Fixed with `fs-6`.
+- **Not started:** steps 2 and 3, which need the USDA key. Robert is to request it (free, api.data.gov).
 
 ## Open questions
 

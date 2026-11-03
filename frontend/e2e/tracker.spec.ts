@@ -686,3 +686,28 @@ test("shows a pairing code for linking a Telegram chat", async ({ page, consoleE
 
   expectQuiet(consoleErrors);
 });
+
+test("a new food that is really an old one is caught before it is created", async ({ page, request, consoleErrors }) => {
+  // The seeded list has "Greek yogurt, plain 0%". Typing the short name must offer it rather than
+  // let a second copy be made - checked against the real server's list, and by counting what it holds.
+  const before = (await state(request)).store.foods.length;
+  await openTracker(page);
+
+  await page.getByRole("button", { name: "Foods", exact: true }).click();
+  await page.getByTestId("new-food").click();
+  await page.getByTestId("food-name").fill("greek yogurt");
+
+  await expect(page.getByTestId("similar-heading")).toHaveText("Already in your list:");
+  const offered = page.getByRole("button", { name: "Edit Greek yogurt, plain 0% instead" });
+  await expect(offered).toBeVisible();
+
+  await offered.click();
+
+  await expect(page.getByRole("dialog", { name: "Edit food" })).toBeVisible();
+  await expect(page.getByTestId("food-name")).toHaveValue("Greek yogurt, plain 0%");
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  expect((await state(request)).store.foods).toHaveLength(before);
+
+  expectQuiet(consoleErrors);
+});

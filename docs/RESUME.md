@@ -101,6 +101,9 @@ Part 10 step 2 is finished: the pairing screen is built (header button **Telegra
 10 unit tests and an e2e test that shows a real code) and the 4 → 5 migration is tested. Nothing below is
 started, and each item stops for Robert's approval:
 
+0. **Part 11 (suggest a food not in the list), approved.** Step 1 (matches from the person's own list in
+   the New food form) is built. Steps 2 and 3 (the USDA lookup route and its two UI entry points) wait for
+   a USDA key from Robert; see Part 11 in `docs/PLAN.md`.
 1. **Confirm before writing, a model parser, and USDA lookup for unknown foods** (D19-D21 in `docs/PLAN.md`).
    Confirmation comes first because everything after it depends on it: text that was parsed or transcribed
    is never written unconfirmed. It needs the bot to handle button presses (callback queries).
