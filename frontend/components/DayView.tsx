@@ -38,7 +38,12 @@ export default function DayView({
   day: Day;
   onSelectDay: (date: string) => void;
   onAddEntry: (section: Section, draft: EntryDraft) => Promise<SaveResult>;
-  onAddLookedUpFood: (section: Section, candidate: FoodCandidate, grams: number) => Promise<SaveResult>;
+  onAddLookedUpFood: (
+    section: Section,
+    candidate: FoodCandidate,
+    grams: number,
+    unchanged: boolean,
+  ) => Promise<SaveResult>;
   onRemoveEntry: (section: Section, entryId: string) => Promise<SaveResult>;
 }) {
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null);
@@ -116,7 +121,9 @@ export default function DayView({
           section={openDialog.section}
           store={store}
           onAddExisting={(food) => setOpenDialog({ kind: "food", section: openDialog.section, foodId: food.id })}
-          onAdd={(candidate, grams) => onAddLookedUpFood(openDialog.section, candidate, grams)}
+          onAdd={(candidate, grams, unchanged) =>
+            onAddLookedUpFood(openDialog.section, candidate, grams, unchanged)
+          }
           onClose={() => setOpenDialog(null)}
         />
       )}

@@ -31,7 +31,7 @@ and what was deliberately left.
 ./scripts/start.sh                       # build + start, app on :8000 (user / password)
 ./scripts/stop.sh
 cd backend && uv run pytest -q           # 282 tests
-cd frontend && npm test                  # 136 unit/component tests
+cd frontend && npm test                  # 140 unit/component tests
 cd frontend && npm run lint && npx tsc --noEmit
 cd frontend && npm run test:e2e          # 28 Playwright tests, own stack on :8100
 ./scripts/e2e-persistence.sh             # write, rebuild image, read back

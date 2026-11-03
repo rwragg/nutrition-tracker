@@ -27,7 +27,7 @@ anywhere, because it does not serve a static export.
 
 ```bash
 npm install
-npm test             # 136 unit and component tests (Vitest + Testing Library)
+npm test             # 140 unit and component tests (Vitest + Testing Library)
 npm run test:e2e     # 28 Playwright tests, against its own container on :8100 (needs docker)
 npm run lint
 npx tsc --noEmit

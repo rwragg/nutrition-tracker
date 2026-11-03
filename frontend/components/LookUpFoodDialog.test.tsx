@@ -227,4 +227,90 @@ describe("adding a food to a day that is not in the list", () => {
     await user.type(screen.getByTestId("lookup-grams"), "999999");
     await waitFor(() => expect(screen.getByTestId("lookup-grams")).toHaveValue(5000));
   });
+
+  describe("changing it once found", () => {
+    /** Found, chosen, and the food POSTs and entry POSTs recorded. */
+    async function chosenWithWrites() {
+      const writes: { path: string; body: Record<string, unknown> }[] = [];
+      stubFetch({
+        lookup: { results: [TEMPEH] },
+        intercept: ({ path, method, body }) => {
+          if (method === "POST") writes.push({ path, body: body as Record<string, unknown> });
+          return undefined;
+        },
+      });
+      const user = userEvent.setup();
+      await openLookup(user);
+      await lookUp(user, "tempeh");
+      await user.click(await screen.findByRole("button", { name: "Choose Tempeh" }));
+      return { user, writes };
+    }
+
+    it("starts with USDA's name, and saves the name the person chose instead", async () => {
+      const { user, writes } = await chosenWithWrites();
+      expect(screen.getByTestId("lookup-chosen-name")).toHaveValue("Tempeh");
+
+      await user.clear(screen.getByTestId("lookup-chosen-name"));
+      await user.type(screen.getByTestId("lookup-chosen-name"), "Tempeh, my brand");
+      await user.click(screen.getByTestId("confirm-lookup-add"));
+
+      await within(screen.getByTestId("section-lunch")).findByText("Tempeh, my brand");
+      expect(writes[0].body).toMatchObject({ name: "Tempeh, my brand", source: "usda", source_id: "174272" });
+    });
+
+    it("hides the figures until asked, then lets each one be changed per 100 g", async () => {
+      const { user, writes } = await chosenWithWrites();
+      expect(screen.queryByTestId("lookup-figures")).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId("lookup-adjust"));
+      expect(screen.getByTestId("lookup-fig-calories")).toHaveValue(192);
+
+      await user.clear(screen.getByTestId("lookup-fig-calories"));
+      await user.type(screen.getByTestId("lookup-fig-calories"), "200");
+      // the preview follows the change: 100 g of a 200 kcal food
+      expect(screen.getByTestId("lookup-preview")).toHaveTextContent("200 kcal");
+
+      await user.click(screen.getByTestId("confirm-lookup-add"));
+      await within(screen.getByTestId("section-lunch")).findByText("Tempeh");
+
+      // stored per gram, as always (D13): 200 per 100 g is 2 a gram; untouched figures stay USDA's
+      expect(writes[0].body).toMatchObject({ calories: 2, protein: 0.203, source: "usda" });
+    });
+
+    it("cannot be added with the name cleared", async () => {
+      const { user } = await chosenWithWrites();
+
+      await user.clear(screen.getByTestId("lookup-chosen-name"));
+
+      expect(screen.getByTestId("confirm-lookup-add")).toBeDisabled();
+    });
+
+    it("makes a new food when it was changed, rather than reusing the earlier one and losing the change", async () => {
+      const foodWrites: Record<string, unknown>[] = [];
+      stubFetch({
+        lookup: { results: [TEMPEH] },
+        intercept: ({ path, method, body }) => {
+          if (method === "POST" && path === "/api/foods") foodWrites.push(body as Record<string, unknown>);
+          return undefined;
+        },
+      });
+      const user = userEvent.setup();
+      await openLookup(user);
+      await lookUp(user, "tempeh");
+      await user.click(await screen.findByRole("button", { name: "Choose Tempeh" }));
+      await user.click(screen.getByTestId("confirm-lookup-add"));
+      await within(screen.getByTestId("section-lunch")).findByText("Tempeh");
+
+      await user.click(screen.getByRole("button", { name: "Add food to Dinner" }));
+      await user.click(await screen.findByTestId("open-lookup"));
+      await lookUp(user, "tempeh");
+      await user.click(await screen.findByRole("button", { name: "Choose Tempeh" }));
+      await user.clear(screen.getByTestId("lookup-chosen-name"));
+      await user.type(screen.getByTestId("lookup-chosen-name"), "Tempeh, smoked");
+      await user.click(screen.getByTestId("confirm-lookup-add"));
+
+      await within(screen.getByTestId("section-dinner")).findByText("Tempeh, smoked");
+      expect(foodWrites).toHaveLength(2);
+    });
+  });
 });

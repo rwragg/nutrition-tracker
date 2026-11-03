@@ -10,6 +10,7 @@ import {
   SECTION_LABELS,
   type Food,
   type FoodCandidate,
+  type Macros,
   type SaveResult,
   type Section,
   type Store,
@@ -20,6 +21,26 @@ import { BTN_GHOST, BTN_PRIMARY } from "./styles";
 
 const DEFAULT_GRAMS = 100;
 const MAX_GRAMS = 5000;
+
+const FIGURES: { key: keyof Macros; label: string }[] = [
+  { key: "calories", label: "Calories" },
+  { key: "protein", label: "Protein (g)" },
+  { key: "carbs", label: "Carbs (g)" },
+  { key: "fat", label: "Fat (g)" },
+];
+
+/** Per 100 g back to per gram, rounded the way the server rounds it, so "unchanged" compares fairly. */
+const perGram = (per100g: Macros): Macros => ({
+  calories: Math.round(per100g.calories) / 100,
+  protein: Math.round(per100g.protein * 100) / 10000,
+  carbs: Math.round(per100g.carbs * 100) / 10000,
+  fat: Math.round(per100g.fat * 100) / 10000,
+});
+
+/** Whether the figures are still exactly the ones USDA gave. */
+function unchangedFigures(candidate: FoodCandidate, figures: Macros): boolean {
+  return FIGURES.every(({ key }) => figures[key] === candidate.per100g[key]);
+}
 
 /**
  * Add a food to a day that is not in the list yet (D20).
@@ -43,8 +64,12 @@ export default function LookUpFoodDialog({
   store: Store;
   /** The person already has this food: go back to the picker with it chosen. */
   onAddExisting: (food: Food) => void;
-  /** Makes the food and logs it. A refusal is returned, so the dialog can stay open and say why. */
-  onAdd: (candidate: FoodCandidate, grams: number) => Promise<SaveResult>;
+  /**
+   * Makes the food and logs it. A refusal is returned, so the dialog can stay open and say why.
+   * `unchanged` is false when the person edited the name or the figures, so the caller does not reuse
+   * a food made earlier from the same USDA entry and lose what they changed.
+   */
+  onAdd: (candidate: FoodCandidate, grams: number, unchanged: boolean) => Promise<SaveResult>;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
@@ -52,13 +77,36 @@ export default function LookUpFoodDialog({
   const [looking, setLooking] = useState(false);
   const [lookupProblem, setLookupProblem] = useState<string | null>(null);
   const [chosen, setChosen] = useState<FoodCandidate | null>(null);
+  // What the person may change once they have chosen: the name, and the figures per 100 g.
+  const [chosenName, setChosenName] = useState("");
+  const [figures, setFigures] = useState<Macros | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
   const [grams, setGrams] = useState(DEFAULT_GRAMS);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const query = name.trim();
   const own = chosen ? [] : matchFoods(query, store.foods);
-  const macros = chosen ? scaleMacros(chosen.macros, grams) : null;
+  const finalName = chosenName.trim();
+  // What will be stored: USDA's candidate with the person's name and figures laid over it.
+  const final: FoodCandidate | null =
+    chosen && figures
+      ? {
+          ...chosen,
+          name: finalName,
+          per100g: figures,
+          macros: unchangedFigures(chosen, figures) ? chosen.macros : perGram(figures),
+        }
+      : null;
+  const unchanged = !!chosen && finalName === chosen.name && !!figures && unchangedFigures(chosen, figures);
+  const macros = final ? scaleMacros(final.macros, grams) : null;
+
+  function choose(candidate: FoodCandidate) {
+    setChosen(candidate);
+    setChosenName(candidate.name);
+    setFigures(candidate.per100g);
+    setAdjusting(false);
+  }
 
   async function lookUp(event?: React.FormEvent) {
     event?.preventDefault();
@@ -81,11 +129,11 @@ export default function LookUpFoodDialog({
   }
 
   async function add() {
-    if (!chosen || saving) return;
+    if (!final || !finalName || saving) return;
 
     setSaving(true);
     setProblem(null);
-    const result = await onAdd(chosen, grams);
+    const result = await onAdd(final, grams, unchanged);
     setSaving(false);
 
     if (!result.ok) {
@@ -110,7 +158,7 @@ export default function LookUpFoodDialog({
           <button
             type="button"
             onClick={add}
-            disabled={!chosen || saving || grams <= 0}
+            disabled={!chosen || !finalName || saving || grams <= 0}
             className={BTN_PRIMARY}
             data-testid="confirm-lookup-add"
           >
@@ -192,16 +240,59 @@ export default function LookUpFoodDialog({
         )}
 
         {!chosen && candidates && candidates.length > 0 && (
-          <CandidateList candidates={candidates} onPick={(candidate) => setChosen(candidate)} pickLabel="Choose" />
+          <CandidateList candidates={candidates} onPick={choose} pickLabel="Choose" />
         )}
 
-        {chosen && (
+        {chosen && figures && (
           <div data-testid="lookup-chosen">
-            <p className="fw-medium mb-0">{chosen.name}</p>
-            <p className="small tabular text-muted-brand">
-              per 100 g · {formatCalories(chosen.per100g.calories)} kcal · P {formatGrams(chosen.per100g.protein)} · C{" "}
-              {formatGrams(chosen.per100g.carbs)} · F {formatGrams(chosen.per100g.fat)}
+            <label className="form-label fw-medium" htmlFor="lookup-chosen-name">
+              Name
+            </label>
+            <input
+              id="lookup-chosen-name"
+              type="text"
+              value={chosenName}
+              data-testid="lookup-chosen-name"
+              onChange={(event) => setChosenName(event.target.value)}
+              className="form-control"
+            />
+            <p className="small tabular text-muted-brand mt-2 mb-1">
+              per 100 g · {formatCalories(figures.calories)} kcal · P {formatGrams(figures.protein)} · C{" "}
+              {formatGrams(figures.carbs)} · F {formatGrams(figures.fat)}
+              <button
+                type="button"
+                className={`${BTN_GHOST} p-0 ms-2 align-baseline`}
+                onClick={() => setAdjusting(!adjusting)}
+                aria-expanded={adjusting}
+                data-testid="lookup-adjust"
+              >
+                {adjusting ? "Done" : "Adjust figures"}
+              </button>
             </p>
+
+            {adjusting && (
+              <div className="row g-2 mb-3" data-testid="lookup-figures">
+                {FIGURES.map((field) => (
+                  <div key={field.key} className="col-6">
+                    <label className="form-label small text-muted-brand mb-1" htmlFor={`lookup-fig-${field.key}`}>
+                      {field.label} per 100 g
+                    </label>
+                    <input
+                      id={`lookup-fig-${field.key}`}
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={figures[field.key]}
+                      data-testid={`lookup-fig-${field.key}`}
+                      onChange={(event) =>
+                        setFigures({ ...figures, [field.key]: Math.max(0, Number(event.target.value) || 0) })
+                      }
+                      className="form-control form-control-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="d-flex flex-wrap align-items-center gap-3">
               <label className="small fw-medium" htmlFor="lookup-grams">
@@ -235,7 +326,7 @@ export default function LookUpFoodDialog({
               </button>
             </div>
             <p className="small text-muted-brand mt-2 mb-0">
-              This puts {chosen.name} in your food list as well, and logs {formatGrams(grams)} g of it.
+              This puts {finalName || "this food"} in your food list as well, and logs {formatGrams(grams)} g of it.
             </p>
           </div>
         )}

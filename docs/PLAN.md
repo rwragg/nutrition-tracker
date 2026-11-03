@@ -933,6 +933,12 @@ because they need a second USDA call per food and a decision about which portion
   and the list is refreshed so that is true. The quantity is in grams because USDA's figures are per
   gram (R34); household units are the next part. 14 unit tests, one e2e test, and the real flow checked on
   the running app up to the final button, which was not pressed so as not to write to the real log.
+- **Addendum, 2026-11-02: changing a found food.** Robert asked to be able to edit a food once it is
+  found. In New food that was already true (a pick fills the form, every field editable). In Add food to a
+  day the chosen panel now has the name as an editable field and an *Adjust figures* toggle for the four
+  figures per 100 g; the preview follows, and what is stored is the person's version, per gram. A change
+  also means the food is not reused from an earlier lookup of the same USDA entry, which would have thrown
+  the change away. Clearing the name disables the button. 4 more unit tests.
 - **Part 11 is complete.** R31 to R37 are met, with R31 narrowed and R32 widened (five results) as
   recorded above. Not done, and not part of this: household units (cup, tablespoon), which need a second
   USDA call per food and a choice of which portion to trust; and the lookup from the Telegram bot, which

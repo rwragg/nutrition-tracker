@@ -36,7 +36,13 @@ export interface Tracker {
   deleteMeal: (id: string) => Promise<SaveResult>;
   addEntry: (section: Section, draft: EntryDraft) => Promise<SaveResult>;
   /** Make a food from a USDA candidate and log it, in one step (R33). */
-  addLookedUpFood: (section: Section, candidate: FoodCandidate, grams: number) => Promise<SaveResult>;
+  addLookedUpFood: (
+    section: Section,
+    candidate: FoodCandidate,
+    grams: number,
+    /** True only when the person kept USDA's name and figures as they came. */
+    unchanged: boolean,
+  ) => Promise<SaveResult>;
   removeEntry: (section: Section, entryId: string) => Promise<SaveResult>;
 }
 
@@ -156,15 +162,18 @@ export function useTracker(): Tracker {
    * second is told apart: if the food was made and the entry was not, the food is in the list now and
    * the message says so, instead of reporting a failure that left something behind.
    *
-   * A food already made from this same USDA id is reused rather than made again.
+   * A food already made from this same USDA id is reused rather than made again - but only when the
+   * person kept USDA's name and figures. One they changed is theirs, and reusing the old food would
+   * quietly throw their changes away.
    */
   const addLookedUpFood = async (
     section: Section,
     candidate: FoodCandidate,
     grams: number,
+    unchanged: boolean,
   ): Promise<SaveResult> => {
     const date = currentDate ?? toIsoDate(new Date());
-    let foodId = store?.foods.find((food) => food.sourceId === candidate.fdcId)?.id;
+    let foodId = unchanged ? store?.foods.find((food) => food.sourceId === candidate.fdcId)?.id : undefined;
 
     if (!foodId) {
       try {
