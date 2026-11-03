@@ -74,4 +74,17 @@ REGISTRATIONS = Limiter(limit=20, window=60 * 60, what="registrations")
 # Failed attempts to redeem a pairing code, per chat.
 BIND_FAILURES = Limiter(limit=10, window=15 * 60, what="failed link attempts")
 
-ALL = (LOGIN_FAILURES_BY_USER, LOGIN_FAILURES_BY_ADDRESS, REGISTRATIONS, BIND_FAILURES)
+# Food lookups spend the owner's USDA key (D21), so each account has an allowance: a short window against
+# a stuck script, and a day against steady use. Per account, not per address, because the key is shared
+# by everyone and the account is who is spending it.
+LOOKUPS_PER_MINUTE = Limiter(limit=10, window=60, what="food lookups")
+LOOKUPS_PER_DAY = Limiter(limit=100, window=24 * 60 * 60, what="food lookups today")
+
+ALL = (
+    LOGIN_FAILURES_BY_USER,
+    LOGIN_FAILURES_BY_ADDRESS,
+    REGISTRATIONS,
+    BIND_FAILURES,
+    LOOKUPS_PER_MINUTE,
+    LOOKUPS_PER_DAY,
+)

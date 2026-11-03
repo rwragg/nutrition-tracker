@@ -5,7 +5,7 @@ four decisions at the end were approved as proposed. Four things have changed: *
 gone** — a day of the log is the date on an entry, not a row of its own — **`foods` gained the gram
 basis**, **`users` became a real account** with an email, a telegram id and a password hash, and
 **`telegram_codes`** arrived so a chat can be bound to an account. The reasoning for all four is below;
-the schema version went 1 → 2, 2 → 3, 3 → 4 and 4 → 5 with them.
+the schema version went 1 → 2, 2 → 3, 3 → 4 and 4 → 5 with them, and 5 → 6 since (below).
 
 The machine-readable form of this schema is [`schema.json`](schema.json), which carries the tables, the
 columns, the constraints and the exact `CREATE` statements they translate to. This document is the
@@ -144,6 +144,28 @@ is elegant — but it cannot be made to *stop* working once it has been used, an
 working is one somebody else can use. A row with a `used` flag buys single use, and single use is the
 whole property. The row also makes expiry a data question rather than a clock question: `expires` is a
 fixed-width UTC string, so it compares correctly as a string in SQL and in Python alike.
+
+## Where a food came from, and version 6
+
+**What changed.** `foods` gained `source` (`typed` or `usda`, NOT NULL, default `typed`) and `source_id`
+(USDA's own `fdcId`, nullable). A food looked up in USDA FoodData Central (D20) records that it was, and
+which USDA food it was, so a figure can be traced to where it came from rather than being one more number
+somebody once typed.
+
+**How the step works.** Two `ALTER TABLE ... ADD COLUMN`, nothing copied, no foreign keys switched off.
+`source` is NOT NULL with a default, so every food that exists reads as `typed`, which is true of all of
+them: nothing could be looked up before this. Verified on the live file, not only in tests: 31 foods, all
+`typed`, schema 6.
+
+**One trap, found in the migration chain.** The 2 → 3 step rebuilds `foods` from `foods_ddl()`, which now
+describes the *current* shape. Left alone, a version-2 file would arrive at 3 already carrying the source
+columns, and the 5 → 6 step would then fail on a duplicate column. `foods_ddl` takes `with_source=False`
+for that one call so each step produces the shape of the version it names - the same lesson as the version
+number recorded beside each step, applied to the table definition. A test compares a fresh file with a
+migrated one column for column.
+
+**What it does not do.** There is no table-level rule that `usda` goes with an id: SQLite cannot add one
+by `ALTER`, and a fresh file and a migrated one must be the same shape. The API enforces the pairing.
 
 ## Decisions worth stating
 

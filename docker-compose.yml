@@ -18,6 +18,9 @@ services:
       # so both services need it. Missing here means the bot is told "no secret configured" and
       # every chat is refused - which is what the bot's preflight catches at startup.
       TELEGRAM_BOT_SECRET: ${TELEGRAM_BOT_SECRET:-}
+      # The key for looking up foods that are not in the list (D20, D21). The app holds it, never the
+      # bot and never the browser. Unset is a normal state: lookup says it is not configured.
+      USDA_API_KEY: ${USDA_API_KEY:-}
     volumes:
       # The database lives here. Without the volume, `docker compose up --build` would
       # start from an empty file every time and the log would look like it was wiped.

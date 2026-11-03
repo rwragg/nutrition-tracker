@@ -94,7 +94,9 @@ def test_the_seeded_foods_come_back_with_their_macros(api: TestClient) -> None:
 
     assert len(foods) == 31
     assert [food["name"] for food in foods] == sorted(food["name"] for food in foods)
-    assert set(foods[0]) == {"id", "name", "unit", "macros"}
+    assert set(foods[0]) == {"id", "name", "unit", "macros", "source", "sourceId"}
+    assert {food["source"] for food in foods} == {"typed"}
+    assert {food["sourceId"] for food in foods} == {None}
     assert set(foods[0]["macros"]) == set(MACROS)
 
 
@@ -596,3 +598,46 @@ def test_a_name_is_stored_without_its_surrounding_space(api: TestClient) -> None
 def test_a_name_has_a_length_limit(api: TestClient) -> None:
     assert api.post("/api/foods", json=food_body(name="x" * 201)).status_code == 422
     assert api.post("/api/foods", json=food_body(name="x" * 200)).status_code == 201
+
+
+# --- where a food came from (D20, R36) --------------------------------------------------
+
+
+def test_a_food_is_typed_unless_it_says_otherwise(api: TestClient) -> None:
+    created = add_food(api)
+
+    assert created["source"] == "typed"
+    assert created["sourceId"] is None
+
+
+def test_a_looked_up_food_keeps_its_source_and_its_usda_id(api: TestClient) -> None:
+    created = add_food(api, name="Tempeh", unit="g", source="usda", source_id="174272")
+
+    assert (created["source"], created["sourceId"]) == ("usda", "174272")
+    listed = {food["id"]: food for food in api.get("/api/foods").json()}
+    assert listed[created["id"]]["sourceId"] == "174272"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"source": "usda"},                              # looked up, but nothing to trace it to
+        {"source_id": "174272"},                         # an id on a food that says it was typed
+        {"source": "usda", "source_id": "not-digits"},
+        {"source": "usda", "source_id": ""},
+        {"source": "guessed", "source_id": "1"},         # not a source this app knows
+    ],
+)
+def test_a_source_and_its_id_must_go_together(api: TestClient, extra: dict) -> None:
+    assert api.post("/api/foods", json=food_body(**extra)).status_code == 422
+
+
+def test_editing_a_food_does_not_change_where_it_came_from(api: TestClient) -> None:
+    """Provenance is of the origin: a food looked up and then adjusted is still a looked-up food, and an
+    edit that sent the default `typed` must not quietly erase that."""
+    created = add_food(api, name="Tempeh", unit="g", source="usda", source_id="174272")
+
+    updated = api.put(f"/api/foods/{created['id']}", json=food_body(name="Tempeh, my brand", unit="g"))
+
+    assert updated.status_code == 200
+    assert (updated.json()["source"], updated.json()["sourceId"]) == ("usda", "174272")

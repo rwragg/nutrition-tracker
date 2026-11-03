@@ -23,7 +23,7 @@ from app.passwords import hash_password
 
 # Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
 # different version is migrated where a migration exists, and refused where it does not.
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
 
@@ -39,6 +39,11 @@ SEED_PASSWORD = "password"  # noqa: S105 - the documented MVP credential, in one
 UNITS = ("cup", "tbsp", "tsp", "oz", "piece", "slice", "scoop", "g")
 UNIT_CHECK = ", ".join(f"'{unit}'" for unit in UNITS)
 
+# Where a food's figures came from: typed by the person, or looked up in USDA FoodData Central (D20).
+# A looked-up food also records USDA's own id, so a figure can be traced back to its origin.
+SOURCES = ("typed", "usda")
+SOURCE_CHECK = ", ".join(f"'{source}'" for source in SOURCES)
+
 META = """
     CREATE TABLE IF NOT EXISTS meta (
         key   TEXT PRIMARY KEY,
@@ -46,8 +51,19 @@ META = """
     )
     """
 
-def foods_ddl(table: str = "foods") -> str:
-    """The foods table, taking its unit list from UNITS so the two cannot drift apart."""
+def foods_ddl(table: str = "foods", *, with_source: bool = True) -> str:
+    """The foods table, taking its unit list from UNITS so the two cannot drift apart.
+
+    `with_source` is False only for the 2 -> 3 rebuild, which must produce the shape of version 3:
+    the source columns arrive in 5 -> 6, and a step that already had them would make that one fail.
+    """
+    source = (
+        f""",
+        source    TEXT NOT NULL DEFAULT 'typed' CHECK (source IN ({SOURCE_CHECK})),
+        source_id TEXT"""
+        if with_source
+        else ""
+    )
     return f"""
     CREATE TABLE IF NOT EXISTS {table} (
         id       TEXT PRIMARY KEY,
@@ -57,7 +73,7 @@ def foods_ddl(table: str = "foods") -> str:
         calories REAL NOT NULL CHECK (calories >= 0),
         protein  REAL NOT NULL CHECK (protein >= 0),
         carbs    REAL NOT NULL CHECK (carbs >= 0),
-        fat      REAL NOT NULL CHECK (fat >= 0)
+        fat      REAL NOT NULL CHECK (fat >= 0){source}
     )
     """
 
@@ -222,7 +238,7 @@ def _migrate_foods_g(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA foreign_keys = OFF")
     try:
         with connection:
-            connection.execute(foods_ddl("foods_v3"))
+            connection.execute(foods_ddl("foods_v3", with_source=False))
             connection.execute(
                 "INSERT INTO foods_v3 (id, user_id, name, unit, calories, protein, carbs, fat)"
                 " SELECT id, user_id, name, unit, calories, protein, carbs, fat FROM foods"
@@ -295,6 +311,21 @@ def _migrate_telegram_codes(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_food_source(connection: sqlite3.Connection) -> None:
+    """5 -> 6: where a food came from (D20, R36).
+
+    Two new columns and nothing copied, like 3 -> 4 and unlike 2 -> 3: `source` is NOT NULL with a
+    default, so every food that exists reads as `typed` - which is true of all of them, since nothing
+    could look a food up before this. `source_id` is nullable and only a looked-up food has one.
+    """
+    with connection:
+        connection.execute(
+            f"ALTER TABLE foods ADD COLUMN source TEXT NOT NULL DEFAULT 'typed'"
+            f" CHECK (source IN ({SOURCE_CHECK}))"
+        )
+        connection.execute("ALTER TABLE foods ADD COLUMN source_id TEXT")
+
+
 # Keyed by the version being migrated FROM, each with the version it produces and the step that
 # does it. The steps do not write the version themselves: the loop below does, from the target
 # recorded here. That is not tidiness — a step that wrote the *current* `SCHEMA_VERSION` instead
@@ -304,6 +335,7 @@ MIGRATIONS: dict[str, tuple[str, Callable[[sqlite3.Connection], None]]] = {
     "2": ("3", _migrate_foods_g),
     "3": ("4", _migrate_users_accounts),
     "4": ("5", _migrate_telegram_codes),
+    "5": ("6", _migrate_food_source),
 }
 
 

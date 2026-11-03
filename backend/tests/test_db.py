@@ -164,6 +164,10 @@ def rewind(path: Path, version: str) -> sqlite3.Connection:
     """
     connection = sqlite3.connect(path)
 
+    if version < "6":  # before food sources
+        connection.execute("ALTER TABLE foods DROP COLUMN source")
+        connection.execute("ALTER TABLE foods DROP COLUMN source_id")
+
     if version < "3":  # before the gram basis
         connection.execute("""
             CREATE TABLE foods_v2 (
@@ -327,7 +331,7 @@ def test_a_version_4_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
     try:
         assert migrated.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()[0] == db.SCHEMA_VERSION == "5"
+        ).fetchone()[0] == db.SCHEMA_VERSION  # carried on through every later step too
 
         assert migrated.execute("SELECT count(*) FROM foods").fetchone()[0] == foods_before
         assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
@@ -354,6 +358,71 @@ def test_a_version_4_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
                 "INSERT INTO telegram_codes (code, user_id, expires) VALUES ('NOUSER2', 'nobody', '2026-11-02T10:00:00Z')"
             )
     finally:
+        migrated.close()
+
+
+def test_a_version_5_file_is_migrated_rather_than_refused(tmp_path: Path) -> None:
+    """5 -> 6: a food remembers where it came from. Every food that exists reads as typed, because
+    nothing could be looked up before this, and nothing is copied or rewritten to get there."""
+    path = tmp_path / "v5.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+
+    legacy = rewind(path, "5")
+    assert {row[1] for row in legacy.execute("PRAGMA table_info(foods)")} == {
+        "id", "user_id", "name", "unit", "calories", "protein", "carbs", "fat",
+    }
+    before = legacy.execute(
+        "SELECT id, name, unit, calories, protein, carbs, fat FROM foods ORDER BY id"
+    ).fetchall()
+    entries_before = legacy.execute("SELECT count(*) FROM entries").fetchone()[0]
+    legacy.close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == db.SCHEMA_VERSION == "6"
+
+        # every row intact, none of its figures touched
+        after = migrated.execute(
+            "SELECT id, name, unit, calories, protein, carbs, fat FROM foods ORDER BY id"
+        ).fetchall()
+        assert [tuple(row) for row in after] == [tuple(row) for row in before]
+        assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
+
+        # all of them read as typed, with no USDA id
+        assert {tuple(row) for row in migrated.execute("SELECT DISTINCT source, source_id FROM foods")} == {
+            ("typed", None)
+        }
+
+        # and the columns do what they are for
+        migrated.execute(
+            "INSERT INTO foods (id, user_id, name, unit, calories, protein, carbs, fat, source, source_id)"
+            " VALUES ('looked-up', 'user', 'Tempeh', 'g', 1.92, 0.2, 0.08, 0.1, 'usda', '174272')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute(
+                "INSERT INTO foods (id, user_id, name, unit, calories, protein, carbs, fat, source)"
+                " VALUES ('odd', 'user', 'Odd', 'g', 1, 1, 1, 1, 'guessed')"
+            )
+    finally:
+        migrated.close()
+
+
+def test_a_fresh_file_and_a_migrated_one_have_the_same_foods_table(tmp_path: Path) -> None:
+    """The version number claims the two are the same shape; this is the check that it is true."""
+    fresh = db.initialise(tmp_path / "fresh.db", today=date(2026, 11, 1))
+    db.initialise(tmp_path / "old.db", today=date(2026, 11, 1)).close()
+    old = rewind(tmp_path / "old.db", "5")
+    old.close()
+    migrated = db.initialise(tmp_path / "old.db", today=date(2026, 11, 1))
+    try:
+        def shape(connection: sqlite3.Connection) -> list[tuple]:
+            return [tuple(row)[1:] for row in connection.execute("PRAGMA table_info(foods)")]
+
+        assert shape(migrated) == shape(fresh)
+    finally:
+        fresh.close()
         migrated.close()
 
 
@@ -460,7 +529,8 @@ def test_deleting_a_meal_a_day_logs_is_refused(seeded: sqlite3.Connection) -> No
 
 def test_deleting_an_unused_food_is_allowed(seeded: sqlite3.Connection) -> None:
     """The guard refuses, it does not forbid: a food nothing refers to can go."""
-    seeded.execute("INSERT INTO foods VALUES ('spare', 'user', 'Spare food', 'cup', 1, 1, 1, 1)")
+    seeded.execute("INSERT INTO foods (id, user_id, name, unit, calories, protein, carbs, fat)"
+        " VALUES ('spare', 'user', 'Spare food', 'cup', 1, 1, 1, 1)")
     seeded.commit()
 
     seeded.execute("DELETE FROM foods WHERE id = 'spare'")

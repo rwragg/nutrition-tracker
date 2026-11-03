@@ -2,7 +2,7 @@
   "name": "nutrition-tracker",
   "status": "approved by Robert 2026-11-01, and implemented. Four revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), accounts became real: email, telegram id and a stored password hash (3 -> 4), and pairing codes arrived so a chat can be bound to an account (4 -> 5).",
   "engine": "sqlite",
-  "schema_version": 5,
+  "schema_version": 6,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -54,7 +54,9 @@
         { "name": "calories", "type": "REAL", "nullable": false, "check": ">= 0", "notes": "Per one unit. REAL because quantities are fractional." },
         { "name": "protein", "type": "REAL", "nullable": false, "check": ">= 0" },
         { "name": "carbs", "type": "REAL", "nullable": false, "check": ">= 0" },
-        { "name": "fat", "type": "REAL", "nullable": false, "check": ">= 0" }
+        { "name": "fat", "type": "REAL", "nullable": false, "check": ">= 0" },
+        { "name": "source", "type": "TEXT", "nullable": false, "default": "typed", "check": "one of 'typed' or 'usda'", "notes": "Where the figures came from: typed by the person, or looked up in USDA FoodData Central (D20). Every food that existed before version 6 reads as typed, which is true of all of them." },
+        { "name": "source_id", "type": "TEXT", "nullable": true, "notes": "USDA's own id (fdcId) for a looked-up food, so a figure can be traced to its origin. Null for a typed food." }
       ],
       "primary_key": ["id"],
       "indexes": [{ "name": "foods_by_user", "columns": ["user_id"] }],
@@ -129,7 +131,7 @@
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
     "CREATE TABLE telegram_codes (\n    code    TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    expires TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', expires) IS expires),\n    used    INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))\n)",
     "CREATE INDEX telegram_codes_by_user ON telegram_codes (user_id)",
-    "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop', 'g')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0)\n)",
+    "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop', 'g')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0),\n    source    TEXT NOT NULL DEFAULT 'typed' CHECK (source IN ('typed', 'usda')),\n    source_id TEXT\n)",
     "CREATE INDEX foods_by_user ON foods (user_id)",
     "CREATE TABLE meals (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name    TEXT NOT NULL\n)",
     "CREATE INDEX meals_by_user ON meals (user_id)",

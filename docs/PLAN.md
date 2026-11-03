@@ -825,7 +825,7 @@ touching the log that was there.
   function) and the loop writes it, so no step can jump the queue again. Found by the 2 → 4 chain test,
   which is the reason that test runs the whole chain rather than one step.
 
-## Part 11 - suggest a food that is not in the list · **approved 2026-11-02; step 1 built**
+## Part 11 - suggest a food that is not in the list · **approved 2026-11-02; steps 1 and 2 built**
 
 Robert's ask, 2026-11-02: *"can the ui suggest a match for food not already in the list"*. This is the web
 app's half of D20; the chat's half (a model parser, confirm-before-write) is separate and waits behind it.
@@ -894,7 +894,27 @@ because they need a second USDA call per food and a decision about which portion
   in the Foods view, and an e2e test against the real list. No key, no network, no schema change.
 - **Found while building it:** the *Per one cup* heading in the New food form rendered at heading size,
   because Bootstrap sizes a bare `legend` as one. Fixed with `fs-6`.
-- **Not started:** steps 2 and 3, which need the USDA key. Robert is to request it (free, api.data.gov).
+- **Step 2 built, 2026-11-02, with Robert's key.** `GET /api/lookup/foods?q=` (`app/lookup.py`,
+  `app/usda.py`), the per-account allowance, the `source` and `source_id` columns and the 5 → 6 migration.
+  R32, R34, R35, R36 and R37 are met; R33 is the frontend's, which is step 3.
+  - **Verified against the real service, as R32 asks.** On the running app, signed in: `brown rice` gives
+    *Rice, brown, long-grain, raw* (367 kcal per 100 g), the medium-grain one, then *long-grain, cooked*
+    (123 kcal); `tempeh` gives *Tempeh, cooked* (195) and *Tempeh* (192, P20.3 C7.64 F10.8); `greek
+    yogurt` gives *Yogurt, Greek, plain, nonfat* (61) first. Signed out it answers 401. The live
+    database migrated 5 → 6 in place: 31 foods, all `typed`.
+  - **Five results, not three.** USDA's ranking is poor (rice flour, rice cakes and baby food come
+    before rice), so results are fetched wide and ranked again; even then the right food is sometimes
+    fourth. Five short lines are readable and three were not enough. A change to what R32 said.
+  - **Found in the real data, and fixed in the code:** Foundation foods often carry their energy under
+    nutrient 957 or 958 instead of 208, so reading only 208 would have dropped the best-measured foods;
+    branded products are written in capitals (`CHOBANI`) and are dropped; the key goes in an
+    `X-Api-Key` header, so it cannot reach a log line or an error message.
+  - **A trap in the migration chain,** recorded in `docs/DATABASE.md`: the 2 → 3 rebuild must produce
+    version 3's shape, not the current one.
+  - **Limits, as built:** the allowance and the cache are in memory, so they reset when the container
+    restarts - fine for one container, and a hosting question (R30) for more. USDA's own limit for the key
+    is 3,600 requests an hour.
+- **Not started:** step 3, the two UI entry points (R33). Waits for Robert's approval.
 
 ## Open questions
 

@@ -28,6 +28,17 @@ Part 7.
   A code is six characters from an alphabet without I/L/O/0/1, lives fifteen minutes, and is single use -
   which is why it is a row rather than a signature.
 - `app/api.py` - the nutrition routes. Twelve of them: foods and meals CRUD, and the dates and entries.
+  A food carries `source` (`typed` or `usda`) and `sourceId`; the pair must go together, and an edit never
+  changes them (provenance is of the origin).
+- `app/lookup.py` and `app/usda.py` - looking up a food that is not in the person's list (D20):
+  `GET /api/lookup/foods?q=` asks USDA FoodData Central and returns up to five candidates with their
+  figures per 100 g and on the gram basis (D13). It writes nothing; adding a pick is a separate act. The
+  key is `USDA_API_KEY` in the app's environment only, sent in a header and never in a URL, a log line or
+  a response. No key answers 503 "not configured" without spending the allowance. Each account is capped
+  (10 a minute, 100 a day), USDA failing is a 502 with a plain sentence, and the timeout is five seconds,
+  so USDA being down is never the app being down. Generic datasets only (Foundation and SR Legacy, D22).
+  USDA's own ranking is poor, so results are ranked again here; read the module's docstring before
+  changing it. Answers are remembered for an hour per query.
 - `app/db.py` - the schema, the connection settings and the first-run seed. Read `docs/DATABASE.md` for
   the reasoning; `docs/schema.json` is the approved proposal, and a test asserts the two still describe
   the same tables, so the document cannot drift from what runs.

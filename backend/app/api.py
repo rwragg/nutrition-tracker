@@ -49,6 +49,9 @@ def tidy_name(value: str) -> str:
     return value
 
 
+Source = Literal["typed", "usda"]
+
+
 class FoodIn(BaseModel):
     name: str = Field(**NAME)
     unit: Unit
@@ -57,10 +60,20 @@ class FoodIn(BaseModel):
     carbs: float = Field(ge=0, **Finite)
     fat: float = Field(ge=0, **Finite)
 
+    # Where the figures came from (D20, R36). A typed food has no id; a looked-up one must have USDA's.
+    source: Source = "typed"
+    source_id: str | None = Field(default=None, max_length=20, pattern=r"^[0-9]+$")
+
     @field_validator("name")
     @classmethod
     def name_is_not_blank(cls, value: str) -> str:
         return tidy_name(value)
+
+    @model_validator(mode="after")
+    def source_and_id_go_together(self) -> "FoodIn":
+        if (self.source == "usda") != (self.source_id is not None):
+            raise ValueError("a looked-up food carries USDA's id, and a typed food carries none")
+        return self
 
 
 class IngredientIn(BaseModel):
@@ -152,6 +165,8 @@ def food_payload(row: sqlite3.Row) -> dict:
         "name": row["name"],
         "unit": row["unit"],
         "macros": {macro: row[macro] for macro in MACROS},
+        "source": row["source"],
+        "sourceId": row["source_id"],
     }
 
 
@@ -182,7 +197,8 @@ def totals(rows: list[sqlite3.Row]) -> dict[str, float]:
 
 def owned_food(connection: sqlite3.Connection, user: str, food_id: str) -> sqlite3.Row:
     row = connection.execute(
-        "SELECT id, name, unit, calories, protein, carbs, fat FROM foods WHERE id = ? AND user_id = ?",
+        "SELECT id, name, unit, calories, protein, carbs, fat, source, source_id FROM foods"
+        " WHERE id = ? AND user_id = ?",
         (food_id, user),
     ).fetchone()
 
@@ -309,7 +325,8 @@ def write_ingredients(
 @router.get("/foods")
 def list_foods(connection: Connection, user: User) -> list[dict]:
     rows = connection.execute(
-        "SELECT id, name, unit, calories, protein, carbs, fat FROM foods WHERE user_id = ? ORDER BY name",
+        "SELECT id, name, unit, calories, protein, carbs, fat, source, source_id FROM foods"
+        " WHERE user_id = ? ORDER BY name",
         (user,),
     ).fetchall()
 
@@ -321,9 +338,12 @@ def create_food(food: FoodIn, connection: Connection, user: User) -> dict:
     food_id = new_id("food")
 
     connection.execute(
-        "INSERT INTO foods (id, user_id, name, unit, calories, protein, carbs, fat)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (food_id, user, food.name, food.unit, food.calories, food.protein, food.carbs, food.fat),
+        "INSERT INTO foods (id, user_id, name, unit, calories, protein, carbs, fat, source, source_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            food_id, user, food.name, food.unit, food.calories, food.protein, food.carbs, food.fat,
+            food.source, food.source_id,
+        ),
     )
     connection.commit()
 
