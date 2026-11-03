@@ -11,7 +11,10 @@ and a FastAPI backend in one container, with the log stored in SQLite.
 - Screenshots: [`docs/screenshots/`](docs/screenshots) — of the running app, against its own seeded
   sample data, refreshed by `frontend/scripts/capture-screenshots.mjs` rather than taken by hand
 - The deck: [`docs/deck/Nutrition-Tracker-Deck.pptx`](docs/deck/Nutrition-Tracker-Deck.pptx) (PDF
-  alongside it) — the app, the integrations and the engineering process, with the screenshots in it
+  alongside it) — the app, the integrations and the engineering process, with the screenshots in it.
+  Built by `docs/deck/build_deck.py`, which reads its colours from the app's own tokens in
+  `frontend/app/globals.css` and places every page on the same 16:9 grid, so the deck cannot drift
+  from the app's palette or from the page geometry
 
 (`PLAN.md` in the project root is the superseded v2 plan, kept for its history. The live plan is the
 one in `docs/`.)
