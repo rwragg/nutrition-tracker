@@ -711,3 +711,23 @@ test("a new food that is really an old one is caught before it is created", asyn
 
   expectQuiet(consoleErrors);
 });
+
+test("looking a food up says so plainly when lookup is not set up", async ({ page, consoleErrors }) => {
+  // The suite's stack has no USDA key on purpose, so this is the deterministic half: the button is
+  // there, it asks the real server, and the person is told the truth rather than shown a dead end.
+  await openTracker(page);
+
+  await page.getByRole("button", { name: "Foods", exact: true }).click();
+  await page.getByTestId("new-food").click();
+  await expect(page.getByTestId("lookup-food")).toBeDisabled();
+
+  await page.getByTestId("food-name").fill("tempeh");
+  await page.getByTestId("lookup-food").click();
+
+  await expect(page.getByTestId("lookup-problem")).toHaveText("food lookup is not configured");
+  // and the form is still a working form
+  await expect(page.getByTestId("save-food")).toBeEnabled();
+
+  // the browser logs the 503 as a console error; it is the point of the test
+  expectQuietApartFrom(consoleErrors, ["503"]);
+});

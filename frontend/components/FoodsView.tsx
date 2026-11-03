@@ -64,6 +64,11 @@ export default function FoodsView({
                     per {formatQuantity(1, food.unit)} · {formatCalories(food.macros.calories)} kcal · P{" "}
                     {formatGrams(food.macros.protein)} · C {formatGrams(food.macros.carbs)} · F{" "}
                     {formatGrams(food.macros.fat)}
+                    {food.source === "usda" && (
+                      <span className="ms-2" data-testid={`source-${food.id}`}>
+                        · USDA
+                      </span>
+                    )}
                   </p>
                 </div>
                 <button

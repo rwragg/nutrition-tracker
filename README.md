@@ -80,8 +80,8 @@ gets a hint, not a guess), no editing of foods or meals, no voice, no photo meal
 ```bash
 cd backend && uv run pytest          # 282 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 113 unit and component tests
-npm run test:e2e                     # 26 Playwright tests, against its own container on :8100
+npm test                             # 124 unit and component tests
+npm run test:e2e                     # 27 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```

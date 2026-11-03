@@ -1,5 +1,6 @@
 import type {
   Day,
+  FoodCandidate,
   DaySummary,
   EntryDraft,
   Food,
@@ -80,8 +81,34 @@ function macrosOf(wire: { macros: Record<string, number> }) {
   };
 }
 
-function toFood(wire: Wire & { id: string; name: string; unit: Food["unit"] }): Food {
-  return { id: wire.id, name: wire.name, unit: wire.unit, macros: macrosOf(wire) };
+function toFood(
+  wire: Wire & {
+    id: string;
+    name: string;
+    unit: Food["unit"];
+    source?: Food["source"];
+    sourceId?: string | null;
+  },
+): Food {
+  return {
+    id: wire.id,
+    name: wire.name,
+    unit: wire.unit,
+    macros: macrosOf(wire),
+    source: wire.source,
+    sourceId: wire.sourceId,
+  };
+}
+
+/** What the server takes for a food: the macros flattened, and the source named the way it names it. */
+function foodBody(input: FoodInput): string {
+  return JSON.stringify({
+    name: input.name,
+    unit: input.unit,
+    ...input.macros,
+    source: input.source ?? "typed",
+    source_id: input.source === "usda" ? input.sourceId : undefined,
+  });
 }
 
 function toMeal(wire: { id: string; name: string; ingredients: Meal["ingredients"] }): Meal {
@@ -146,6 +173,16 @@ export async function registerAccount(input: {
   });
 }
 
+// --- foods that are not in the list (D20) ----------------------------------------------------
+
+/** What USDA offers for a name. Nothing is written: picking one is the caller's separate step. */
+export async function lookupFoods(query: string): Promise<FoodCandidate[]> {
+  const found = await request<{ results: FoodCandidate[] }>(
+    `/api/lookup/foods?q=${encodeURIComponent(query)}`,
+  );
+  return found.results;
+}
+
 // --- linking a Telegram chat (R26, D18) ----------------------------------------------------
 
 /** A pairing code, and when it stops working (an ISO 8601 UTC time). */
@@ -169,25 +206,27 @@ export async function unlinkTelegram(): Promise<void> {
 // --- foods and meals (R5, R7, R8) ---------------------------------------------------------
 
 export async function listFoods(): Promise<Food[]> {
-  const foods = await request<(Wire & { id: string; name: string; unit: Food["unit"] })[]>("/api/foods");
+  const foods = await request<
+    (Wire & {
+      id: string;
+      name: string;
+      unit: Food["unit"];
+      source?: Food["source"];
+      sourceId?: string | null;
+    })[]
+  >("/api/foods");
   return foods.map(toFood);
 }
 
 export async function createFood(input: FoodInput): Promise<Food> {
   return toFood(
-    await request("/api/foods", {
-      method: "POST",
-      body: JSON.stringify({ ...input, ...input.macros }),
-    }),
+    await request("/api/foods", { method: "POST", body: foodBody(input) }),
   );
 }
 
 export async function updateFood(id: string, input: FoodInput): Promise<Food> {
   return toFood(
-    await request(`/api/foods/${encodeURIComponent(id)}`, {
-      method: "PUT",
-      body: JSON.stringify({ ...input, ...input.macros }),
-    }),
+    await request(`/api/foods/${encodeURIComponent(id)}`, { method: "PUT", body: foodBody(input) }),
   );
 }
 

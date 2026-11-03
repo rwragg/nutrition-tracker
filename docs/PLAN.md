@@ -914,7 +914,17 @@ because they need a second USDA call per food and a decision about which portion
   - **Limits, as built:** the allowance and the cache are in memory, so they reset when the container
     restarts - fine for one container, and a hosting question (R30) for more. USDA's own limit for the key
     is 3,600 requests an hour.
-- **Not started:** step 3, the two UI entry points (R33). Waits for Robert's approval.
+- **Step 3a built, 2026-11-02: the New food entry point.** A *Look it up* button under the name, which
+  asks `/api/lookup/foods` for what was typed (own-list matches still come first, D23) and lists up to
+  five USDA foods with their per-100 g figures. *Use* fills the form (name, unit `g`, per-gram figures)
+  and writes nothing; the person reads it, corrects it if they like, and presses Create (R33). A food made
+  this way is saved as `usda` with USDA's id, shows *USDA* in the Foods list, and drops the label if the
+  unit is changed, because the figures are then no longer USDA's per-gram ones. USDA having nothing, lookup
+  not being configured, and USDA failing each say so in words, and the form still works without it.
+  11 unit tests, one e2e test (the suite's stack has no key on purpose), and a real lookup checked on the
+  running app: *tempeh* offered *Tempeh, cooked* and *Tempeh*, and *Use* filled 1.92 kcal and 0.203 g
+  protein per gram. Also fixed in passing: the hint under the figures read "logging g doubles them".
+- **Not started:** step 3b, the Add food to a day entry point. Same approval covers it.
 
 ## Open questions
 

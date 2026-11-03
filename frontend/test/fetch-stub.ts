@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Day, Food, LogEntry, Meal, Section } from "@/lib/types";
+import type { Day, Food, FoodCandidate, LogEntry, Meal, Section } from "@/lib/types";
 import { DATES, EMPTY_SECTIONS, FOODS, MEALS, SECTIONS_BY_DATE, macrosOf } from "./fixture";
 
 type SessionAnswer = { ok: boolean; body?: unknown; status?: number };
@@ -64,6 +64,11 @@ export function stubFetch(
      * The returned `chat` object is live: set `chat.id` to simulate the chat redeeming the code.
      */
     telegram?: { linked?: string | null; code?: string; expiresInMs?: number };
+    /**
+     * What a food lookup finds. `results` answers every query; `refuse` answers with that status and
+     * sentence instead. `asked` collects the queries, so a test can see what the app sent.
+     */
+    lookup?: { results?: FoodCandidate[]; refuse?: { status: number; detail: string }; asked?: string[] };
     /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
     intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
     /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */
@@ -117,6 +122,14 @@ export function stubFetch(
 
     if (path === "/api/logout") return answer({ status: "signed out" });
 
+    // --- looking a food up -------------------------------------------------------------
+    if (path === "/api/lookup/foods" && method === "GET") {
+      handlers.lookup?.asked?.push(url.searchParams.get("q") ?? "");
+      const refuse = handlers.lookup?.refuse;
+      if (refuse) return answer({ detail: refuse.detail }, refuse.status);
+      return answer({ query: url.searchParams.get("q"), results: handlers.lookup?.results ?? [] });
+    }
+
     // --- the Telegram link ------------------------------------------------------------
     if (path === "/api/telegram/link" && method === "GET") return answer({ telegram_id: chat.id });
 
@@ -143,6 +156,8 @@ export function stubFetch(
         name: body.name,
         unit: body.unit,
         macros: { calories: body.calories, protein: body.protein, carbs: body.carbs, fat: body.fat },
+        source: body.source ?? "typed",
+        sourceId: body.source_id,
       };
       data.foods.push(created);
       return answer(created, 201);

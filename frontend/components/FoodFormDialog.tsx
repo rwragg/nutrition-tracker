@@ -1,9 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { UNITS, type Food, type FoodInput, type Macros, type SaveResult, type Unit } from "@/lib/types";
+import { ApiError, lookupFoods } from "@/lib/api";
+import {
+  UNITS,
+  type Food,
+  type FoodCandidate,
+  type FoodInput,
+  type Macros,
+  type SaveResult,
+  type Unit,
+} from "@/lib/types";
 import { formatCalories, formatQuantity, pluralUnit } from "@/lib/format";
 import { matchFoods } from "@/lib/match";
+import CandidateList from "./CandidateList";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_PRIMARY } from "./styles";
 
@@ -38,7 +48,42 @@ export default function FoodFormDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Looking a food up (D20). `candidates` is null until a lookup has been asked for, and an empty list
+  // means USDA was asked and had nothing, which is a different thing to say.
+  const [candidates, setCandidates] = useState<FoodCandidate[] | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [lookupProblem, setLookupProblem] = useState<string | null>(null);
+  // Set once a candidate is picked, and dropped again if the figures stop being USDA's per-gram ones.
+  const [usda, setUsda] = useState<{ sourceId: string } | null>(null);
+
   const canSave = name.trim().length > 0;
+  const canLookUp = !food && name.trim().length >= 2 && !looking;
+
+  async function lookUp() {
+    setLooking(true);
+    setLookupProblem(null);
+    setCandidates(null);
+    try {
+      setCandidates(await lookupFoods(name.trim()));
+    } catch (cause) {
+      setLookupProblem(
+        cause instanceof ApiError
+          ? cause.message
+          : "Could not reach the server. Check your connection and try again.",
+      );
+    } finally {
+      setLooking(false);
+    }
+  }
+
+  /** A pick fills the form and nothing else: the person reads it, changes it if they like, and saves (R33). */
+  function use(candidate: FoodCandidate) {
+    setName(candidate.name);
+    setUnit(candidate.unit);
+    setMacros(candidate.macros);
+    setUsda({ sourceId: candidate.fdcId });
+    setCandidates(null);
+  }
 
   // Only when creating: an edit is of a food that exists, and the other foods are none of its business.
   const similar = food || !onUseExisting ? [] : matchFoods(name, foods);
@@ -48,7 +93,12 @@ export default function FoodFormDialog({
     if (!canSave || saving) return;
 
     setSaving(true);
-    const result = await onSubmit({ name: name.trim(), unit, macros });
+    const result = await onSubmit({
+      name: name.trim(),
+      unit,
+      macros,
+      ...(usda && unit === "g" ? { source: "usda" as const, sourceId: usda.sourceId } : {}),
+    });
     setSaving(false);
 
     if (!result.ok) {
@@ -96,7 +146,10 @@ export default function FoodFormDialog({
             value={name}
             data-testid="food-name"
             placeholder="Cup of rice"
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              setCandidates(null);
+            }}
             className="form-control"
           />
 
@@ -131,6 +184,48 @@ export default function FoodFormDialog({
               </ul>
             </div>
           )}
+
+          {!food && (
+            <div className="mt-2">
+              <button
+                type="button"
+                className={BTN_GHOST}
+                onClick={lookUp}
+                disabled={!canLookUp}
+                data-testid="lookup-food"
+              >
+                {looking ? "Looking it up..." : "Look it up"}
+              </button>
+              <span className="small text-muted-brand ms-2">in USDA FoodData Central</span>
+            </div>
+          )}
+
+          {lookupProblem && (
+            <p className="small text-ember mt-2 mb-0" role="alert" data-testid="lookup-problem">
+              {lookupProblem}
+            </p>
+          )}
+
+          {candidates && candidates.length === 0 && (
+            <p className="small text-muted-brand mt-2 mb-0" data-testid="lookup-empty">
+              USDA has nothing under that name. Try a simpler word, or enter the figures yourself.
+            </p>
+          )}
+
+          {candidates && candidates.length > 0 && (
+            <div className="mt-2">
+              <p className="small text-muted-brand mb-2">
+                From USDA, generic foods. Picking one fills the form; nothing is saved until you do.
+              </p>
+              <CandidateList candidates={candidates} onPick={use} pickLabel="Use" />
+            </div>
+          )}
+
+          {usda && unit === "g" && (
+            <p className="small text-muted-brand mt-2 mb-0" data-testid="usda-note">
+              Figures are USDA&apos;s, per gram. Check them, then create the food.
+            </p>
+          )}
         </div>
 
         <div>
@@ -141,7 +236,11 @@ export default function FoodFormDialog({
             id="food-unit"
             value={unit}
             data-testid="food-unit"
-            onChange={(event) => setUnit(event.target.value as Unit)}
+            onChange={(event) => {
+              setUnit(event.target.value as Unit);
+              // The figures were USDA's per gram; in any other unit they are the person's own numbers.
+              setUsda(null);
+            }}
             className="form-select"
           >
             {UNITS.map((option) => (
@@ -178,7 +277,9 @@ export default function FoodFormDialog({
         </fieldset>
 
         <p className="small text-muted-brand mb-0">
-          Values are for one {unit}, so logging {pluralUnit(unit)} doubles them.
+          {unit === "g"
+            ? "Values are per gram, so logging 100 g is 100 times these."
+            : `Values are for one ${unit}, so logging ${pluralUnit(unit)} doubles them.`}
         </p>
       </div>
     </Dialog>

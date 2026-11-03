@@ -35,7 +35,10 @@ export default defineConfig({
     // `npm run test:e2e` takes this stack down before and after the run. It has to be the script's
     // job rather than this command's: Playwright checks the URL *before* it runs the command, so a
     // stack left behind by an earlier run would fail the run before anything could clean it up.
-    command: `cd .. && NUTRITION_PORT=${PORT} docker compose -p nutrition-e2e up --build --wait`,
+    // USDA_API_KEY is blanked: the compose file reads the project's .env, and the suite must never spend
+    // the real key or depend on what USDA says today. With no key, lookup answers "not configured",
+    // which is the deterministic thing to assert; the lookup flow itself is covered by the unit tests.
+    command: `cd .. && USDA_API_KEY= NUTRITION_PORT=${PORT} docker compose -p nutrition-e2e up --build --wait`,
     url: `${BASE_URL}/api/health`,
     // Never reuse: this stack exists to be thrown away and rebuilt, which is what makes the seeded
     // starting state the suite asserts against true on every run.

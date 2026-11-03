@@ -10,12 +10,19 @@ export interface Macros {
   fat: number;
 }
 
+/** Where a food's figures came from: typed by the person, or looked up in USDA FoodData Central (D20). */
+export type FoodSource = "typed" | "usda";
+
 /** A food record: the macros it contributes per one unit. */
 export interface Food {
   id: string;
   name: string;
   unit: Unit;
   macros: Macros;
+  /** Absent in tests that build a food by hand; the server always sends it. */
+  source?: FoodSource;
+  /** USDA's id for a looked-up food. */
+  sourceId?: string | null;
 }
 
 /** A food inside a meal, with how much of it the meal uses. */
@@ -74,6 +81,22 @@ export interface Day {
 export interface FoodInput {
   name: string;
   unit: Unit;
+  macros: Macros;
+  /** A looked-up food says so, and carries USDA's id; a typed one says neither. */
+  source?: FoodSource;
+  sourceId?: string;
+}
+
+/**
+ * A food USDA offers for a name that is not in the list. `macros` are per gram (D13) and are what a
+ * food made from it stores; `per100g` is how a label reads, for showing the person.
+ */
+export interface FoodCandidate {
+  fdcId: string;
+  name: string;
+  dataType: string;
+  unit: "g";
+  per100g: Macros;
   macros: Macros;
 }
 
