@@ -1,54 +1,129 @@
 # Picking this up again
 
-Everything needed to resume without re-reading a long conversation. Written 2026-11-01, when Parts 1–7
-were complete and Part 8 had not started; updated the same day when Part 8 was closed out; **updated
-2026-11-02 three times — for Part 9 (the Telegram skeleton, the gram basis, the first migration), for
-Part 10 step 1 (real accounts) and for Part 10 step 2 (linking a chat to an account).** This revision
-is the handover: the work is being picked up by a different model, so it leans on what to do next.
+Everything needed to resume without re-reading a long conversation. **Rewritten 2026-11-02 at a model
+switch.** It leads with where things stand, how to prove it, and what is left; the sections after it are
+the history of each part and the rules and traps that cost time. If a sentence below disagrees with the
+code, the code is right: say so and fix the sentence.
 
 ## Where it stands
 
-**All nine parts of `docs/PLAN.md` are done**, and **Part 10 is drafted with its first two steps built**.
-Parts 1–8 are the finished MVP and `docs/COMPLETION-REPORT.md` carries every criterion from P1.1 to P8.4
-with its evidence. Part 9 is the Telegram front end plus the gram basis and the first migration. Part 10
-is "other people":
+A nutrition tracker: a Next.js 16 frontend (a static export) served by a FastAPI backend in one container,
+the log in SQLite at **schema version 6**, real accounts, three views (Day, Foods, Meals), and an optional
+Telegram bot that is a second client of the same API. Everything below is built, tested and running.
 
-- **Step 1 — accounts (R24, R25): done.** Registration with a username and an email (no telegram id: see the code review), passwords stored
-  as hashes, and the isolation between two accounts proved.
-- **Step 2 — linking a chat to an account (R26): done at the API and the bot, *not* in the UI.** The app
-  can mint a pairing code and the bot can redeem it; **nothing in the frontend shows a code yet**, so
-  linking currently needs the API by hand. This is the first task for the next session: see "What is
-  left" below. `docs/PLAN.md` states the same thing where the step is recorded.
-- **Steps 3 (voice) and 4 (leaving, hosting): not started.** D16 (what transcribes a voice note), D17
-  (what the email is for) and the "how many other people" question are still open. **D18 is taken:** the
-  code comes from the app, never a password typed into Telegram.
+- **Parts 1-9** are the MVP, the Telegram skeleton and the gram basis (`docs/PLAN.md`,
+  `docs/COMPLETION-REPORT.md` for P1.1 to P8.4).
+- **Part 10, steps 1 and 2: done.** Accounts with isolation between them (R24, R25), and a chat linked to
+  an account by a code the app shows (R26, D18). The **Telegram** button in the header opens the pairing
+  dialog; the bot redeems the code with `/bind`. **Steps 3 (voice) and 4 (leaving, hosting) are not
+  started.**
+- **Part 11: done.** Suggest a food that is not in the list: matches from the person's own foods in New
+  food, then a USDA FoodData Central lookup (`GET /api/lookup/foods`) with two entry points, *Look it up* in
+  New food and *Not in your list? Look it up* in Add food to a day. A found food can be renamed and its
+  figures adjusted before it is added. Looked-up foods are stored per gram, marked `usda`, with USDA's id.
+- **The code review (`docs/CODE-REVIEW-2026-11-02.md`) is closed**, with a Resolution table of what was
+  fixed and what was left on purpose.
 
-The app is a Next.js 16 frontend served by a FastAPI backend in one container, the log in SQLite at
-schema version 5, sign-in gated with real accounts, all three views reading and writing the API, tested
-at three levels. The bot is a second client of the same API — it speaks **for a chat**, which the app
-resolves to an account — behind a compose profile, with tests of its own.
+The bot is opt-in behind a compose profile. The USDA key and the bot secret and token live in `.env`
+(gitignored); see `.env.example`.
 
 ## Verify the state before doing anything
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 235 passed, plus 5 container tests (240 in all)
-cd ../frontend && npm test              # 84 passed
+cd backend && uv run pytest -q          # 282 passed (277 plus 5 container tests)
+cd ../frontend && npm test              # 140 passed
 npm run lint && npx tsc --noEmit        # clean
-npm run test:e2e                        # 24 passed, builds its own stack on :8100
+npm run test:e2e                        # 28 passed, builds its own stack on :8100 with no USDA key
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
+docker compose --profile bot ps         # backend healthy on 127.0.0.1:8000, bot up
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
 ```
 
-Current commits, read back rather than assumed: tag `linked-chats-2026-11-02` marks **the code state** —
-nutrition `5ca385f`, hermes-notes `6dd2338`, hermes-home `64da0d7`, hermes-skills `f81a1e6`, pm `ae223d6`.
-**Everything committed after that tag in this repository is documentation only** — including the two
-commits that corrected these hashes and the stale sentences a grep turned up — so the tag, not `HEAD`, is
-the state to check out. The earlier tags are `skeleton-2026-11-02-grams-and-bot` (the skeleton and the
-gram basis) and `snapshot-2026-11-02-pre-telegram` (before the Telegram work), and
-`~/backups/nutrition/2026-11-02-linked-chats/` holds a database copy with a `SNAPSHOT.md` beside it.
-`spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with 403 — the token has no write
-on that repo (see Open items).
+Tag `handover-2026-11-02` marks this state in all four repositories (`rwragg/nutrition-tracker`,
+`hermes-notes`, `hermes-home`, `hermes-skills`); read a tag's commit with `git rev-parse --short
+'<tag>^{commit}'`. A database copy and a `SNAPSHOT.md` are in `~/backups/nutrition/2026-11-02-handover/`,
+and the image is kept as `nutrition-tracker:handover`. Earlier snapshots form a ladder beside it:
+`2026-11-02-pre-telegram`, `post-skeleton`, `linked-chats`, `usda-lookup`.
+
+`spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with 403: the token has no write on
+that repo (see Open items).
+
+## What is left - start here
+
+Nothing is half done and nothing is in flight. Everything below is **unstarted**, and each part of the plan
+stops for Robert's approval before the next begins. Robert's note when handing over: *"log what's left."*
+
+### 1. Planned, decisions taken, no plan part written yet
+
+- **Confirm before writing, a model parser, and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`).**
+  The first job is to write the plan for it (a Part 12) and get it approved. Order within it:
+  1. *Confirm before writing.* Anything parsed or transcribed is shown as "Log 2 eggs and 1 banana to
+     breakfast? [Yes] [No]" and written only on Yes. The bot currently writes immediately, which is fine for
+     a typed command and unacceptable for a transcript. Needs the bot to handle Telegram callback queries
+     (inline buttons), which it does not today; it is stdlib long-polling.
+  2. *A model parser* (D19): turns free text into items (food, quantity, unit, section). The app validates
+     every field against the person's own foods and the known units; the model never writes and never
+     supplies nutrition figures. The key is Robert's and lives in the app's environment, never the bot's or
+     the image (D21), with a per-account daily cap and a spend cap set at the provider. Messages go to a
+     third party, which must be said to anyone invited.
+  3. *Lookup from the bot*: when a name is not found, offer USDA candidates as buttons, using the route that
+     already exists (`/api/lookup/foods`; the bot must go through the app, D14).
+- **Voice (Part 10 step 3).** A voice note is transcribed and then goes through the same path as typed
+  text, including confirmation. **D16 is open:** local whisper.cpp in the image (no key, bigger image, CPU
+  per note; Robert already runs `medium.en` locally) or a cloud speech-to-text (a key, per-use cost, audio
+  leaves the machine). With a key held centrally the cloud option is now possible. Needs the parser above,
+  because speech does not fit `/log food qty unit`. Today a voice note is silently ignored.
+- **Leaving and hosting (Part 10 step 4).** R29: a person can delete their account, which forces a decision
+  about the foods and entries they leave (R11's `RESTRICT` makes "delete my account" a design question, not
+  a line of code). R30: run it on another host over TLS with secrets in the environment. **D17 (what the
+  email is for) and "how many people is this for" are open** and decide how much of this is needed. Hosting
+  also settles the items under "Left on purpose" below.
+
+### 2. Small follow-ups from Part 11
+
+- **Household units (cup, tablespoon) for looked-up foods.** USDA's search gives per-100 g only; portions
+  need a second call per food and a decision about which portion to trust. Today a looked-up food is in
+  grams and says so.
+- **USDA's long names** ("Cereals ready-to-eat, MALT-O-MEAL, Frosted Flakes") sort under their category
+  word. Left alone because the prefix is sometimes the only thing separating two foods; a person can
+  rename a food. Robert declined the per-100 g display change for gram foods (the list shows "per 1 g",
+  rounded, so protein can read 0); the stored figures and totals are right.
+- **Branded foods are excluded (D22).** Kellogg's Frosted Flakes is not in the generic datasets; only a
+  Malt-O-Meal equivalent is. Including branded data is a decision, and a noisy one.
+
+### 3. Left on purpose after the code review
+
+- The seeded account's password is still `password`: R1 and a test pin it, and it is Robert's live login.
+  Reachable on loopback only now.
+- The container runs as root: the live volume's files belong to root, so switching user would break the
+  database. Do it with a volume migration when hosting.
+- Editing a food's **unit** silently reinterprets old entries (2 cups becomes 2 g). A design decision.
+- The session cookie is not `Secure` and the session secret is generated per process, so **every container
+  restart signs everyone out** (expect it after a rebuild). Rate limits and the lookup cache are in memory
+  and per process. All three are hosting questions (R30).
+- Meal totals aggregate every user's ingredients on each read (correct, since the outer join restricts it,
+  but it scales with all users). Irrelevant now.
+
+### 4. Open items, not started
+
+- **The pairing flow has never been run with the real bot.** The dialog, the route and the bot are each
+  tested, and the e2e test gets a real code, but nobody has pressed Unlink, Get a code, and sent `/bind` in
+  Telegram on the live stack. Robert's chat is bound already (set by hand earlier).
+- The bot's own coverage is 74% (the polling loop and the HTTP client are not in the unit suite); the
+  frontend's remaining gaps are empty-state branches.
+- A rare Playwright `net::ERR_NETWORK_CHANGED` console error: a rerun clears it, and the narrow fix (count
+  `net::` failures out by status) changes what the suite asserts, so it is Robert's call.
+- `docs/COMPLETION-REPORT.md` is the Part 8 snapshot and still quotes 80 / 74 / 22 tests; the root
+  `PLAN.md` is the superseded v2 plan, with a banner pointing here, and could be archived.
+- Outside this repository: `spring-llm-agent` cannot be pushed (above); chapters 1-3 of the vault's
+  *Breaking the Habit of Being Yourself* notes are reconstructions, not built from the book's text.
+
+### The one thing to know first
+
+The **USDA key is in `.env`** and the e2e suite deliberately blanks it (`USDA_API_KEY=` in
+`playwright.config.ts`), so the suite never spends it or depends on what USDA says that day. Do not remove
+that. Never print, log or commit the key; it has been checked absent from git history.
 
 ## What Part 9 did
 
@@ -69,7 +144,7 @@ interpreted).
 
 Closed out 2026-11-02. **R26** — a chat is bound to exactly one account, and an unbound chat is refused
 with how to bind — is built at the API and the bot, verified in tests and against the running stack. The
-screen that shows the code is not built; that is the first task below.
+screen that shows the code was built later the same day (the **Telegram** button in the header).
 
 - **D18 taken.** The app shows a code, the chat redeems it with `/bind`. A password is never typed into
   Telegram: that was the whole reason for choosing this shape.
@@ -85,8 +160,8 @@ screen that shows the code is not built; that is the first task below.
 - **The bot carries the chat id on every request** and no longer signs in. `app/bot.py` lost its
   `ACCOUNT` constant and gained `/bind`, a preflight, and the translation of the app's 403 into the
   instruction to link.
-- **Robert's own chat is bound** (`users.telegram_id = 8685521777`, set by hand because the screen does
-  not exist yet), so his bot kept working across the change.
+- **Robert's own chat is bound** (`users.telegram_id = 8685521777`, set by hand before the screen existed),
+  so his bot kept working across the change.
 
 ## Code review, 2026-11-02
 
@@ -118,12 +193,12 @@ started, and each item stops for Robert's approval:
 
 Closed out 2026-11-02, the same day as Part 9. Robert approved the Part 10 draft and said go, so step 1
 — accounts and registration (R24) with the isolation tests (R25) written as the thing that proves it —
-is built and verified. Nothing else in Part 10 is started.
+is built and verified.
 
 - **Schema version 4.** `users` gained `email`, `telegram_id` and `password_hash`, with unique indexes
   on the first two. The 3 → 4 migration is `ALTER TABLE ... ADD COLUMN`, which is deliberately nothing
   like the 2 → 3 rebuild: new nullable columns need no copy and no foreign-key juggling.
-- **`app/passwords.py`.** pbkdf2-sha256, 200,000 iterations, a salt per password, constant-time
+- **`app/passwords.py`.** pbkdf2-sha256 (200,000 iterations then; **600,000 now**, with older hashes upgraded at sign-in), a salt per password, constant-time
   comparison, and a malformed or missing value fails closed. Standard library only — no new dependency.
 - **`POST /api/register`** in `auth.py`, which now also owns the connection dependency both routers
   take (`api.py` imports `Connection` from it). Sign-in looks the account up instead of reading the
@@ -269,51 +344,40 @@ Frontend: 96.1% statements, 82.5% branches.
 - **Assertions must be derived, never recalled.** Four separate wrong guesses here (which food a form
   defaults to, "1 foods" vs "1 food", `0.3 cups` vs `0.3 cup`, which day the app opens on).
 
-## Open items, honestly
+- **Bootstrap defines its modal variables only on `.modal`.** The overlay is not one, so `--bs-modal-bg`
+  (once) and `--bs-modal-padding` (later) were undefined: a transparent dialog, then zero padding on every
+  dialog. No test noticed the second; a screenshot did. Declare them on `.brand-overlay`; an e2e assertion
+  pins the padding.
+- **FastAPI's default 422 echoes the rejected value as `input`.** For `Infinity` that crashed the response
+  itself (not JSON) and turned a refusal into a 500; for a too-short password it returned the password. A
+  handler in `main.py` drops `input` and `ctx`.
+- **`foods_ddl()` describes the current shape, but an old migration step must produce an old one.** The
+  2 to 3 rebuild passes `with_source=False`, or a version-2 file would arrive at 3 already holding the 5 to 6
+  columns and fail on a duplicate. A test compares a fresh file with a migrated one column for column.
+- **USDA's own search ranking is poor and its energy is not always nutrient 208.** Fetch wide and rank
+  again; read 208, then 957, then 958. Branded names are written in capitals. Read `app/usda.py`'s
+  docstring before changing the ranking.
+- **The e2e stack reads the project's `.env`**, so without `USDA_API_KEY=` blanked it would call the real
+  service and spend the key.
+- **A container restart signs the browser out** (the session secret is per process): sign in again before a
+  scripted browser check, or it finds no button and fails.
+- **A long command can outlive the tool's timeout.** Run the suites separately, with `timeout`.
 
-- **The bot's boundary is the bot's boundary.** It logs and reads; it does not edit a food or a meal,
-  does not understand a sentence, and has no voice. Each of those is a decision with a cost attached, and
-  the next one worth taking is voice — Robert dictates lifts already, so the same habit would meet a bot
-  that could take `/log` by ear.
-- **Registration has no confirmation and no way back.** An account is created in one step with no email
-  verification, and there is no route to change a password, change an email or leave (R29). That is
-  step 1's boundary, not an oversight — but it is the list to work through before a stranger uses it.
-- **`spring-llm-agent` cannot be pushed from here.** `Permission to rwragg/spring-llm-agent.git denied to
-  rwragg` (403). The fine-grained token has no write on that repo. Either add it on GitHub (Contents:
-  read+write) or push it from a shell with Robert's own credentials. One commit is waiting: `b9aa8e6`.
-- **The frontend's remaining coverage gaps** are the dialogs' empty-state branches (`AddFoodDialog`'s "no
-  foods yet" panel is most of its 57% branch figure) and a couple of defensive fallbacks in
-  `use-tracker`. The failure paths — the ones that mattered — are now all covered. Offered, not done.
-- **The bot's own coverage** is 74%: the long-polling loop and the `Api` client are not in the unit
-  suite. Both were exercised against the live app and the container by hand, and a test that needs a
-  Telegram server is a test that needs a token — which is why they are not.
-- **The root `PLAN.md`** is the superseded v2 plan. It carries a banner pointing at `docs/PLAN.md`, which
-  is a stopgap: Robert may prefer it archived or deleted.
-- **Vault book notes:** chapters 1–3 of *Breaking the Habit of Being Yourself* are reconstructions, not
-  built from the book's text, and are flagged as such. Chapters 4–10 are source-verified. Offered to
-  rebuild 1–3 properly.
-- **A "granola" knock-on** was noted in an earlier session and never chased.
-- **The browser suite still has one rare transport failure, which is not the app.** Across 29 runs on
-  2026-11-01, 3 failed a test with `Failed to load resource: net::ERR_NETWORK_CHANGED` in the console —
-  a different test each time. `expectQuiet` asserts an empty console, so an unfetchable resource fails
-  the run; a rerun clears it. The narrow fix, if Robert wants it, is to count `net::` failures out by the
-  same rule the 401 and the 409 are counted out by — deliberately not done, because it changes what the
-  suite asserts.
-- **One browser test was unsound and has been fixed** (the fourth failure in those 29 runs). *logs a meal
-  and expands it into its foods* added "Light dinner" to a Dinner that already held it, then asserted on
-  the *section* — so it passed by asserting against the seeded row before the app's re-read rendered the
-  new one, and failed with a strict-mode violation when the re-read won. Its cleanup also deleted the
-  seed's own dinner, leaving later tests reading a day the seed never wrote (1,583.5 kcal where the seed
-  says 2,207.5). It now picks a meal the day does not hold, asserts inside `entry-<the POST's id>`, and
-  deletes only what it wrote. Six consecutive full runs green afterwards. The lesson generalises: a test
-  that writes must assert on *its* row, not on a section that may already contain one like it.
+## Open items
+
+The live list is under "What is left" at the top. This section only keeps the history of one thing worth
+remembering: **one browser test was unsound and was fixed.** *logs a meal and expands it into its foods*
+added "Light dinner" to a Dinner that already held it, then asserted on the *section*, so it passed by
+asserting against the seeded row before the app's re-read, and failed with a strict-mode violation when the
+re-read won. Its cleanup also deleted the seed's own dinner, leaving later tests reading a day the seed
+never wrote. The lesson generalises: a test that writes must assert on *its* row, not on a section that may
+already contain one like it.
 
 ## On resume
 
-The plan is closed through Part 9, the code review's fixes are in, and Part 10 steps 1 and 2 are finished.
-Nothing is half done. The open items further
-up are optional, and each is offered rather than pending: ask before starting any of them, and do not
-reopen a finished part without a reason.
+Verify with the block at the top, read "What is left", and ask Robert before starting any of it. Do not
+reopen a finished part without a reason. Claude Code may work on this repository (Robert, 2026-11-02);
+`CLAUDE.md` is its entry point and must stay in step with this file.
 
 For older detail, the previous conversations are searchable:
 `session_search(query='<keywords>', session_id='20261102_123650_9ea56ce6')` (this build) and

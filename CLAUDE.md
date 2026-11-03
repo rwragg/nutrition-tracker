@@ -7,19 +7,21 @@ The root `PLAN.md` is superseded; ignore it.
 
 ## State
 
-Parts 1-9 of `docs/PLAN.md` are done. Part 10 ("other people") has steps 1 (accounts) and 2 (linking a
-chat to an account) built at the API and bot level. Schema version 5.
+Parts 1-9, Part 10 steps 1-2 (accounts; a chat linked by a pairing code) and Part 11 (suggest a food that
+is not in the list, from the person's own foods and from USDA) are done. Schema version 6. Nothing is in
+flight.
 
-**Part 10 step 2 is complete**, including the pairing screen (`components/TelegramDialog.tsx`) and the
-4 -> 5 migration test. **Next, nothing is started:** confirm-before-write, a model parser, USDA lookup for
-unknown foods (D19-D21 in `docs/PLAN.md`), then voice (D16 still open) and hosting (D17 and the numbers
-question). Each stops for Robert's approval. See `docs/CODE-REVIEW-2026-11-02.md` for what was fixed
-and what was deliberately left.
+**Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write, a model
+parser and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`); then voice (D16 still open); then
+leaving and hosting (D17 and "how many people" still open). The full list, with what was left on purpose,
+is "What is left" at the top of `docs/RESUME.md`. What the code review found and fixed is in
+`docs/CODE-REVIEW-2026-11-02.md`.
 
 ## Layout
 
 - `backend/app/` - `main.py` (wiring), `auth.py` (accounts, session, `current_user`), `passwords.py`,
-  `telegram.py` (pairing codes), `api.py` (nutrition routes), `db.py` (schema, migrations, seed), `bot.py`
+  `telegram.py` (pairing codes), `api.py` (nutrition routes), `lookup.py` + `usda.py` (USDA food lookup),
+  `ratelimit.py`, `db.py` (schema, migrations, seed), `bot.py`
 - `backend/tests/` - pytest; `test_container.py` builds the real image
 - `frontend/` - `app/`, `components/`, `lib/` (`api.ts` is the only network code), `test/`, `e2e/`
 - `scripts/` - `start.sh`/`stop.sh` (+ `.bat`), `e2e-persistence.sh`
@@ -52,6 +54,8 @@ Verify before starting: clean `git status`, and the suites above green.
 - Next.js here is a newer major than you know: read `node_modules/next/dist/docs/` before writing
   frontend code. `next dev` re-adds a generated block at the top of `frontend/AGENTS.md`; commit it as-is.
 - A day is a column, not a table (D11): entries carry `date` and `user_id`. Do not add a `days` table.
+- The USDA key (`USDA_API_KEY`) is in `.env` only: never print, log, commit or put it in a URL (it goes in a
+  header). The e2e suite blanks it on purpose; keep it that way, so tests never spend it.
 - The browser holds a copy, never the truth (D12). Only `lib/api.ts` touches the network; writes return
   their refusal rather than predicting the rule.
 - Nothing cascades: `ON DELETE RESTRICT` everywhere; the API checks first so the refusal names what is in
