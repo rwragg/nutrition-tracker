@@ -26,7 +26,8 @@ Telegram bot that is a second client of the same API. Everything below is built,
   backend (`app/targets.py`, Mifflin-St Jeor, D25-D31), with the working shown on screen. Schema version 7;
   `/api/profile`, browser session only (R53); the Profile dialog and the Day view on the profile's targets.
   **Rebuilding the live stack migrates the database 6 to 7** - snapshot first (one is at
-  `~/backups/nutrition/2026-11-04-pre-profile`, with images `pre-profile` and `pre-profile-bot`). `docs/PLAN.md`
+  `~/backups/nutrition/2026-11-04-pre-r54-deploy`, with images `pre-r54` and `pre-r54-bot`). **The old build refuses to
+  start on a schema 7 database** (tested), so rolling back after the deploy means restoring that snapshot's database too. `docs/PLAN.md`
   Part 12 has the requirements, the decisions and the status.
 - **The code review (`docs/CODE-REVIEW-2026-11-02.md`) is closed**, with a Resolution table of what was
   fixed and what was left on purpose.

@@ -13,7 +13,8 @@ protein targets worked out from it) is built and tested:** schema version 7, the
 the Profile dialog and Day view on the screen, **and R54: an account with no profile cannot add an entry, a food or a
 meal** (it can still read, look a food up, edit and delete). **As of 2026-11-04 it is checked in but not deployed:** the
 live containers are still the schema 6 build, and rebuilding migrates the database 6 to 7 (snapshot and
-rollback images: `~/backups/nutrition/2026-11-04-pre-profile`). `docs/PLAN.md` Part 12 has the status.
+rollback images: `~/backups/nutrition/2026-11-04-pre-r54-deploy`; **the schema 6 build refuses to start on a schema 7
+database**, so a rollback after the deploy restores that snapshot's `nutrition.db` too, and loses anything logged since). `docs/PLAN.md` Part 12 has the status.
 
 **Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write (a Part 13), a model
 parser and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`); then voice (D16 still open); then
