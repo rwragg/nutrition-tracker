@@ -11,14 +11,14 @@ Parts 1-9, Part 10 steps 1-2 (accounts; a chat linked by a pairing code) and Par
 is not in the list, from the person's own foods and from USDA) are done. **Part 12 (a profile, and calorie and
 protein targets worked out from it) is built and tested:** schema version 7, the `/api/profile` routes, and
 the Profile dialog and Day view on the screen, **and R54: an account with no profile cannot add an entry, a food or a
-meal** (it can still read, look a food up, edit and delete). **As of 2026-11-04 it is checked in but not deployed:** the
-live containers are still the schema 6 build, and rebuilding migrates the database 6 to 7 (snapshot and
-rollback images: `~/backups/nutrition/2026-11-04-pre-r54-deploy`; **the schema 6 build refuses to start on a schema 7
-database**, so a rollback after the deploy restores that snapshot's `nutrition.db` too, and loses anything logged since). `docs/PLAN.md` Part 12 has the status.
+meal** (it can still read, look a food up, edit and delete). **Deployed 2026-11-04 (evening):** the live stack is schema 7, migrated from 6 with nothing lost
+(33 foods, 5 meals, 3 days). Rollback points: `~/backups/nutrition/2026-11-04-handover` and `-pre-r54-deploy`, images
+`pre-r54` and `pre-r54-bot`; **the schema 6 build refuses to start on a schema 7 database**, so a rollback restores a
+snapshot's `nutrition.db` too, and loses anything logged since. **The live account has no profile yet, so it cannot add
+anything until it saves one.** `docs/PLAN.md` Part 12 has the status.
 
-**In flight (4 Nov): a throwaway test copy runs on `:8200` (compose project `nutrition-shots`; taking it down with
-`down -v` needs Robert's approval) and the live deploy waits on his go. Read `docs/RESUME.md` section 0 before
-touching either.**
+**In flight (4 Nov, after the deploy):** the live account has not saved a profile yet, and a throwaway test copy may still
+be running on `:8200` (an older build; `down -v` needs Robert's approval). Read `docs/RESUME.md` section 0 first.
 
 **Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write (a Part 13), a model
 parser and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`); then voice (D16 still open); then

@@ -944,7 +944,7 @@ because they need a second USDA call per food and a decision about which portion
   USDA call per food and a choice of which portion to trust; and the lookup from the Telegram bot, which
   belongs with the model parser and confirm-before-write (D19).
 
-## Part 12 - a profile, and targets worked out from it · **approved 2026-11-04; both steps built; checked in, not deployed**
+## Part 12 - a profile, and targets worked out from it · **approved 2026-11-04; both steps built; deployed 2026-11-04**
 
 Robert's ask, 2026-11-04: *"add in a plan for a user profile ... would need name, etc. and then based on the
 profile we would calculate kcal and protein needs."* No model is involved and nothing leaves the machine: a
@@ -1090,7 +1090,7 @@ depends on the other. Robert's call on order.
 schema and the migration); the calculation in its own pure module (`app/targets.py`); `GET`, `PUT` and
 `DELETE /api/profile` (`app/profile.py`); `docs/schema.json` and `docs/DATABASE.md` brought to version 7.
 Not deployed: the live container still runs the image built before this, at schema 6, and its database
-migrates when the image is rebuilt (snapshot first, as before).
+migrates when the image is rebuilt (snapshot first, as before). *(It was rebuilt later that day; see the R54 status.)*
 
 **Verified, by running it.** Backend 360 passed (was 282; 78 new: 25 on the arithmetic, 50 on the routes,
 3 on the migration), including the image-building tests. Frontend 140 unit tests and the 28 browser tests
@@ -1175,7 +1175,7 @@ after. The pictures were looked at, not only generated.
 
 **Not done, on purpose.** The deck is not rebuilt with the new pictures (`docs/screenshots/need-profile.png`,
 `profile.png`, `profile-working.png`; `day.png` now shows a profile); it was not asked for, and the deck's slides are a separate
-artefact to approve. **Not deployed:** the live containers are still the schema 6 build.
+artefact to approve. (Deployed later that day; see the R54 status below.)
 
 **Part 12 is complete** against R38 to R54, with R39 and R47 to R51 met on screen. R54 is described below.
 
@@ -1207,8 +1207,9 @@ refused on adding with the 409 sentence, and still gets a 401 on `/api/profile` 
   starts from a stack with no profile. It now saves the invented profile before them; `day-profile.png`, which
   `day.png` now duplicates, is removed.
 
-**Not done.** The deck is not rebuilt. The live stack is not rebuilt: **until it is, none of this is in effect on the
-running app, and when it is, the live account cannot add anything until its profile is saved (D34).**
+**Deployed, 4 Nov evening.** The live stack is schema 7. The migration kept everything (33 foods, 5 meals, 3 days), a test
+create was refused live with its sentence and wrote nothing, and the bot came up listening. **The live account has no profile
+yet, so it cannot add anything until Robert saves one (D34).** **Not done:** the deck is not rebuilt.
 
 ## Open questions
 

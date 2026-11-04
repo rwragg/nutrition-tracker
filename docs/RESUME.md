@@ -10,8 +10,8 @@ code, the code is right: say so and fix the sentence.
 
 A nutrition tracker: a Next.js 16 frontend (a static export) served by a FastAPI backend in one container,
 the log in SQLite at **schema version 7**, real accounts, three views (Day, Foods, Meals), and an optional
-Telegram bot that is a second client of the same API. Everything below is built and tested. **Part 12 is not yet
-deployed to the live stack** (see "In flight" under "What is left").
+Telegram bot that is a second client of the same API. Everything below is built and tested. **Part 12 was deployed to the live
+stack on 4 Nov** (see "In flight" under "What is left").
 
 - **Parts 1-9** are the MVP, the Telegram skeleton and the gram basis (`docs/PLAN.md`,
   `docs/COMPLETION-REPORT.md` for P1.1 to P8.4).
@@ -23,7 +23,7 @@ deployed to the live stack** (see "In flight" under "What is left").
   food, then a USDA FoodData Central lookup (`GET /api/lookup/foods`) with two entry points, *Look it up* in
   New food and *Not in your list? Look it up* in Add food to a day. A found food can be renamed and its
   figures adjusted before it is added. Looked-up foods are stored per gram, marked `usda`, with USDA's id.
-- **Part 12: built, checked in, not deployed.** A profile per account (name, sex, date of birth, height, weight,
+- **Part 12: built, tested and deployed (4 Nov).** A profile per account (name, sex, date of birth, height, weight,
   activity, goal, units, and optional own targets) and calorie and protein targets worked out from it by the
   backend (`app/targets.py`, Mifflin-St Jeor, D25-D31), with the working shown on screen. Schema version 7;
   `/api/profile`, browser session only (R53); the Profile dialog and the Day view on the profile's targets.
@@ -69,7 +69,7 @@ that repo (see Open items).
 
 ## What is left - start here
 
-Part 12 is built but **not deployed**, and a test copy is running (section 0). Everything after section 0 is
+Part 12 is **deployed** (4 Nov evening); a test copy may still be running (section 0). Everything after section 0 is
 **unstarted**, and each part of the plan stops for Robert's approval before the next begins.
 
 ### 0. In flight right now (4 Nov 2026) - read this before touching anything
@@ -80,24 +80,19 @@ Part 12 is built but **not deployed**, and a test copy is running (section 0). E
   him; if the prompt times out, do **not** retry, rephrase or route around it. Say it is still running and ask. Nothing
   in it matters: the data is the seed, and the live stack is untouched. **It was built before the quantity-box fix**
   (typing in the Add food quantity box still misbehaves there; the fix is in the code, the tests and the next build).
-- **Part 12 and R54 are not on the live stack.** The running containers are the schema 6 build (`pre-profile-2026-11-04`).
-  Waiting for Robert's go after his test. To deploy, in this order:
-  1. Re-take the snapshot if anything was logged since (the 4 Nov one holds 33 foods, 5 meals, 18 entries, 3 days, 2
-     `usda` foods; compare before trusting it). Method: `references/deploy-snapshot-and-test-stack.md` in the
-     `nutrition-app-ops` skill. Pin images by name first: a build moves the `local` tag and Docker can lose the running
-     image's content (it already has once).
-  2. (The build includes the 4 Nov fix to the Add food quantity box: typing 183 used to give 0.26.)
-     `cd ~/hermes_workspace/nutrition && docker compose --profile bot up -d --build` (recreates both containers, keeps
-     the volume, migrates the database 6 to 7). **Everyone is signed out afterwards** (the session secret regenerates).
-  3. Check: `/api/health` 200; schema 7 (`docker compose exec -T backend python -c "from app import db; print(db.SCHEMA_VERSION)"`);
-     sign in, then 33 foods and 3 days; the bot's log shows it listening.
-  4. **Tell Robert first, and again after:** from this moment the live account has no profile, so **it cannot add
-     anything, from the browser or from Telegram, until he saves one in the Profile dialog** (D34). A message to the bot
-     before then should come back as "set up your profile before adding anything. Nothing was logged." That is the
-     first real check of the bot path.
-  5. **Rollback is not just the old image.** The schema 6 build refuses to start on a schema 7 database (tested, 4 Nov).
-     Going back means the old image *and* the snapshot's `nutrition.db`, and loses anything logged since, so if the
-     deploy is wrong, say so **before** logging anything. Steps are in the snapshot's own `SNAPSHOT.md`.
+- **Deployed 4 Nov, evening.** `docker compose --profile bot up -d --build` from tag `snapshot-2026-11-04` (`29dcf17`).
+  Snapshot first (`~/backups/nutrition/2026-11-04-handover/`, same sha256 as the live file at that moment, checked
+  twice). Verified after: health 200; `SCHEMA_VERSION` 7 in the running backend; the new screen is in the running
+  container; your data intact (33 foods, 2 `usda`, 5 meals, 3 days); a test create was **refused live** with
+  "set up your profile before adding anything" and the food count stayed 33; the bot says it accepted the secret
+  and is listening. Everyone was signed out by the restart, as expected.
+  - **The live account has no profile, so it cannot add anything from the browser or Telegram until Robert saves
+    one** (D34). That is the rule working, not a fault. The first real check of the bot path is still open: send
+    the bot a meal before the profile exists and expect "set up your profile before adding anything. Nothing was
+    logged."; then save the profile and send it again.
+  - **Rollback is not just the old image.** The schema 6 build refuses to start on a schema 7 database (tested). Going
+    back means `nutrition-tracker:pre-r54` *and* a snapshot's `nutrition.db`, and loses anything logged since, so if
+    something is wrong, say so **before** logging anything. Steps: that snapshot's own `SNAPSHOT.md`.
 - **Pushed:** everything up to the `snapshot-2026-11-04` tag is on GitHub, in all four repositories (Robert said "push
   everything" on 4 Nov). Anything committed after that tag is not; check `git rev-list --count origin/main..HEAD`.
 - **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were
