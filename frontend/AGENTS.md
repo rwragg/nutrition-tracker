@@ -45,7 +45,8 @@ and the `cacheComponents` machinery that enables it; neither is used here.
   the shared class-name constants and `use-is-client.ts` the hook that gates client rendering.
 - `lib/` — `types.ts` (`Unit`, `Macros`, `Food`, `Meal`, `LogEntry`, `Day`, `Store`, `View`, and the
   input shapes), `api.ts`, `use-tracker.ts`, `nutrition.ts` (all macro maths, pure), `dates.ts`,
-  `format.ts`, `targets.ts` (the four targets, in one place), `usage.ts` (putting the server's refusal
+  `format.ts`, `targets.ts` (the standard four, for an account with no profile, and the choice between them and a
+  profile's), `units.ts` (pounds, feet and inches for the form; display only), `use-profile.ts`, `usage.ts` (putting the server's refusal
   into the app's own words).
 - `test/fixture.ts` — a small world for the tests, written out rather than derived from the seed, which
   lives in the backend now.
@@ -74,8 +75,12 @@ and the `cacheComponents` machinery that enables it; neither is used here.
 - **Loading and error states.** The tracker shows a loading panel until the first read answers, a failure
   panel if it cannot read at all, and a dismissible line if a later refresh fails. A dialog reports its
   own failure inline and stays open.
-- **Targets.** `lib/targets.ts` is the only place the targets live: 2,200 kcal / 140 g protein /
-  250 g carbs / 70 g fat. They are not stored — the API returns sums, and the app compares.
+- **Targets.** An account with no profile sees the standard four, held in `lib/targets.ts`: 2,200 kcal /
+  140 g protein / 250 g carbs / 70 g fat. An account with a profile sees calories and protein that the
+  **server** worked out from it (D25), and no carbs or fat target (D30). `targets.ts` only chooses between
+  them; it does no arithmetic, so there is one calculation and it is tested in the backend. The Profile
+  dialog shows the server's own working, and a refusal is shown as it came, naming the field. The true height
+  and weight are held in metric and the boxes only display them, so switching units can never change a figure.
 
 ## Conventions
 

@@ -753,3 +753,160 @@ test("adding a food to a day that is not in the list says plainly when lookup is
 
   expectQuietApartFrom(consoleErrors, ["503"]);
 });
+
+// --- a profile, and the targets worked out from it (Part 12) ------------------------------------
+//
+// These run against the real backend, so the arithmetic on screen is the server's own. The person is
+// invented and the date of birth is worked out from today so that they are 40 for the next six months,
+// which keeps example A's figures (2,150 kcal, 130 g) true on any day the suite runs. Each test removes
+// what it saved, because the database is shared.
+
+/** A date that makes someone 40 now and for about the next half year. */
+function bornForty(): string {
+  const born = new Date();
+  born.setFullYear(born.getFullYear() - 40);
+  born.setMonth(born.getMonth() - 6);
+  return born.toISOString().slice(0, 10);
+}
+
+async function fillProfile(page: Page) {
+  await page.getByTestId("profile-name").fill("Ana Example");
+  await page.getByTestId("profile-sex").selectOption("male");
+  await page.getByTestId("profile-birth").fill(bornForty());
+  await page.getByTestId("profile-height-cm").fill("178");
+  await page.getByTestId("profile-weight").fill("82");
+  await page.getByTestId("profile-activity").selectOption("moderate");
+  await page.getByTestId("profile-goal").selectOption("lose");
+}
+
+test("an account with no profile sees the standard targets and an offer to set one up", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+
+  await expect(page.getByTestId("day-target-calories")).toHaveText("2,200");
+  await expect(page.getByTestId("macro-protein-target")).toHaveText("140");
+  await expect(page.getByTestId("macro-carbs-target")).toHaveText("250");
+  await expect(page.getByTestId("profile-prompt")).toContainText("standard targets");
+
+  expectQuiet(consoleErrors);
+});
+
+test("sets up a profile, and the Day view takes the server's own figures", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+
+  await page.getByTestId("open-profile").click();
+  await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
+  await expect(page.getByTestId("profile-estimate-note")).toContainText("estimates");
+
+  await fillProfile(page);
+  await page.getByTestId("save-profile").click();
+
+  // example A in docs/PLAN.md, worked out by the real backend
+  await expect(page.getByTestId("profile-in-force")).toHaveText(/2,150 kcal and 130 g protein/);
+  await expect(page.getByTestId("working-resting")).toContainText("age 40: 1,737.5 kcal");
+  await expect(page.getByTestId("working-need")).toContainText("Times 1.55");
+  await expect(page.getByTestId("working-goal")).toContainText("Minus 20% to lose fat: 2,154.5 kcal");
+
+  await page.getByTestId("close-dialog").click();
+  await expect(page.getByTestId("day-target-calories")).toHaveText("2,150");
+  await expect(page.getByTestId("macro-protein-target")).toHaveText("130");
+  await expect(page.getByTestId("macro-carbs-target")).toHaveCount(0);
+  await expect(page.getByTestId("day-basis")).toContainText("From your profile (82 kg, set");
+
+  // it is the server's, so it is still there after a reload
+  await page.reload();
+  await expect(page.getByTestId("day-target-calories")).toHaveText("2,150");
+
+  // put the account back as it was found
+  await page.request.delete("/api/profile");
+  expectQuiet(consoleErrors);
+});
+
+test("a figure typed in pounds is stored in kilograms and shown back in pounds", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+  await page.getByTestId("open-profile").click();
+
+  await page.getByTestId("profile-units").selectOption("imperial");
+  await page.getByTestId("profile-name").fill("Ana Example");
+  await page.getByTestId("profile-birth").fill(bornForty());
+  await page.getByTestId("profile-height-ft").fill("5");
+  await page.getByTestId("profile-height-in").fill("9");
+  await page.getByTestId("profile-weight").fill("165");
+  await page.getByTestId("save-profile").click();
+  await expect(page.getByTestId("profile-saved")).toBeVisible();
+
+  // what the server holds is metric, whatever the form showed
+  const stored = await (await page.request.get("/api/profile")).json();
+  expect(stored.profile.units).toBe("imperial");
+  expect(stored.profile.weight_kg).toBeCloseTo(74.84, 2);
+  expect(stored.profile.height_cm).toBeCloseTo(175.26, 2);
+
+  // and the Day view says it in the units chosen
+  await page.getByTestId("close-dialog").click();
+  await expect(page.getByTestId("day-basis")).toContainText("165 lb");
+
+  // opening it and saving again without touching the weight is not a new weigh-in
+  const before = stored.profile.weight_on;
+  await page.getByTestId("open-profile").click();
+  await expect(page.getByTestId("profile-weight")).toHaveValue("165");
+  await page.getByTestId("save-profile").click();
+  await expect(page.getByTestId("profile-saved")).toBeVisible();
+  const after = await (await page.request.get("/api/profile")).json();
+  expect(after.profile.weight_kg).toBe(stored.profile.weight_kg);
+  expect(after.profile.weight_on).toBe(before);
+
+  await page.request.delete("/api/profile");
+  expectQuiet(consoleErrors);
+});
+
+test("a refused profile says which field, and nothing is saved", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+  await page.getByTestId("open-profile").click();
+  await fillProfile(page);
+  await page.getByTestId("profile-height-cm").fill("5");
+
+  await page.getByTestId("save-profile").click();
+
+  await expect(page.getByTestId("profile-problem")).toContainText("Height (cm):");
+  await expect(page.getByTestId("profile-saved")).toHaveCount(0);
+  const answer = await (await page.request.get("/api/profile")).json();
+  expect(answer).toEqual({ profile: null, targets: null });
+  await expect(page.getByTestId("day-target-calories")).toHaveText("2,200");
+
+  // the browser logs the 422 as a console error; it is the point of the test
+  expectQuietApartFrom(consoleErrors, ["422"]);
+});
+
+test("the person's own calorie target wins, and the dialog says what the calculation gave", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+  await page.getByTestId("open-profile").click();
+  await fillProfile(page);
+  await page.getByTestId("profile-kcal-own").fill("2300");
+
+  await page.getByTestId("save-profile").click();
+
+  await expect(page.getByTestId("working-calories-own")).toContainText("your own calorie target of 2,300 kcal; the calculation gave 2,150");
+  await page.getByTestId("close-dialog").click();
+  await expect(page.getByTestId("day-target-calories")).toHaveText("2,300");
+  await expect(page.getByTestId("day-basis")).toContainText("Calories: your own");
+
+  await page.request.delete("/api/profile");
+  expectQuiet(consoleErrors);
+});
+
+test("removing the profile puts the standard targets back", async ({ page, consoleErrors }) => {
+  await openTracker(page);
+  await page.getByTestId("open-profile").click();
+  await fillProfile(page);
+  await page.getByTestId("save-profile").click();
+  await expect(page.getByTestId("profile-saved")).toBeVisible();
+
+  await page.getByTestId("profile-remove").click();
+  await page.getByTestId("profile-remove-yes").click();
+
+  await expect(page.getByTestId("profile-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("day-target-calories")).toHaveText("2,200");
+  await expect(page.getByTestId("profile-prompt")).toBeVisible();
+  expect(await (await page.request.get("/api/profile")).json()).toEqual({ profile: null, targets: null });
+
+  expectQuiet(consoleErrors);
+});

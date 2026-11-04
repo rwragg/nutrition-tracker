@@ -69,6 +69,20 @@ export function stubFetch(
      * sentence instead. `asked` collects the queries, so a test can see what the app sent.
      */
     lookup?: { results?: FoodCandidate[]; refuse?: { status: number; detail: string }; asked?: string[] };
+    /**
+     * The profile. `existing` is what the account starts with (none by default). Saving stores what was
+     * sent and answers with canned targets - 2,150 kcal and 130 g, or the person's own figures where they
+     * set them - because the arithmetic is the backend's and is tested there; a second copy here would be
+     * one more thing to drift. `sent` collects every body saved, so a test can see exactly what went out.
+     * `today` dates a changed weight, as the server does. `refuse` answers a save with a 422 naming a field.
+     */
+    profile?: {
+      existing?: Record<string, unknown>;
+      sent?: Record<string, unknown>[];
+      today?: string;
+      floored?: boolean;
+      refuse?: { field: string; msg: string };
+    };
     /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
     intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
     /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */
@@ -77,6 +91,40 @@ export function stubFetch(
 ) {
   const data = world();
   const chat = { id: handlers.telegram?.linked ?? (null as string | null), minted: 0 };
+  let profile: Record<string, unknown> | null = handlers.profile?.existing ?? null;
+
+  /** The shape the backend answers with: the profile, and targets worked out from it. Canned, see above. */
+  const profileAnswer = () => {
+    if (!profile) return { profile: null, targets: null };
+
+    const kcalOwn = profile.kcal_override as number | null;
+    const proteinOwn = profile.protein_override as number | null;
+    const floored = handlers.profile?.floored ?? false;
+    const computed = { calories: floored ? 1200 : 2150, protein: 130 };
+
+    return {
+      profile,
+      targets: {
+        calories: kcalOwn ?? computed.calories,
+        protein: proteinOwn ?? computed.protein,
+        calories_from: kcalOwn !== null && kcalOwn !== undefined ? "own" : "profile",
+        protein_from: proteinOwn !== null && proteinOwn !== undefined ? "own" : "profile",
+        computed,
+        working: {
+          age: 40,
+          resting: 1737.5,
+          activity_factor: 1.55,
+          daily_need: 2693.1,
+          goal_factor: 0.8,
+          after_goal: 2154.5,
+          floor: 1500,
+          floored,
+          protein_per_kg: 1.6,
+          protein_before_rounding: 131.2,
+        },
+      },
+    };
+  };
 
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
@@ -128,6 +176,30 @@ export function stubFetch(
       const refuse = handlers.lookup?.refuse;
       if (refuse) return answer({ detail: refuse.detail }, refuse.status);
       return answer({ query: url.searchParams.get("q"), results: handlers.lookup?.results ?? [] });
+    }
+
+    // --- the profile (Part 12) -----------------------------------------------------------
+    if (path === "/api/profile" && method === "GET") return answer(profileAnswer());
+
+    if (path === "/api/profile" && method === "PUT") {
+      const refuse = handlers.profile?.refuse;
+      if (refuse) {
+        return answer({ detail: [{ type: "value_error", loc: ["body", refuse.field], msg: refuse.msg }] }, 422);
+      }
+
+      handlers.profile?.sent?.push(body);
+
+      // The server dates a weight by whether it moved by 0.05 kg or more.
+      const today = handlers.profile?.today ?? "2026-11-04";
+      const kept =
+        profile && Math.abs((profile.weight_kg as number) - body.weight_kg) < 0.05 ? (profile.weight_on as string) : today;
+      profile = { ...body, weight_on: kept };
+      return answer(profileAnswer());
+    }
+
+    if (path === "/api/profile" && method === "DELETE") {
+      profile = null;
+      return answer(null, 204);
     }
 
     // --- the Telegram link ------------------------------------------------------------

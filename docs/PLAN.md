@@ -944,7 +944,7 @@ because they need a second USDA call per food and a decision about which portion
   USDA call per food and a choice of which portion to trust; and the lookup from the Telegram bot, which
   belongs with the model parser and confirm-before-write (D19).
 
-## Part 12 - a profile, and targets worked out from it · **approved 2026-11-04; step 1 (backend) built, step 2 not started**
+## Part 12 - a profile, and targets worked out from it · **approved 2026-11-04; both steps built; checked in, not deployed**
 
 Robert's ask, 2026-11-04: *"add in a plan for a user profile ... would need name, etc. and then based on the
 profile we would calculate kcal and protein needs."* No model is involved and nothing leaves the machine: a
@@ -976,8 +976,8 @@ depends on the other. Robert's call on order.
 - **R39 - what a profile holds.** Display name, sex (the calorie equation has one constant for each of two
   values and needs it), date of birth, height, weight and the date the weight was set, activity level,
   goal, and a units setting (metric or imperial). Stored in metric; the units setting only changes what the
-  form shows. *Check:* a test that 190 lb is stored as 86.18 kg and read back as 190.0 lb, and that 5 ft
-  7 in is stored as 170.2 cm.
+  form shows. *Check:* a test that 165 lb is stored as 74.84 kg and read back as 165.0 lb, and that 5 ft
+  9 in is stored as 175.3 cm.
 - **R40 - the form refuses what the equation was not made for.** Age 18 to 100, worked out from the date of
   birth; height 120 to 230 cm; weight 30 to 300 kg; a name of 1 to 40 characters that is not blank; sex,
   activity and goal from closed lists. A refusal names the field and the rule, and nothing is written.
@@ -1057,7 +1057,8 @@ depends on the other. Robert's call on order.
   (Frankenfield et al., *J Am Diet Assoc* 2005;105:775-89) found it predicted resting energy within 10% of
   measured in more people than Harris-Benedict, Owen or WHO/FAO/UNU, with the narrowest error range, and
   also found that errors for an individual can be large and that **older adults were under-represented in
-  the validation work.** Robert is 61 and that sentence applies to him; it is the reason for D28.
+  the validation work.** That is part of the reason for D28: the people the equation was tested least on are
+  the ones most likely to need to correct it.
 - **D27 - protein at 1.6 g/kg of total body weight, for every goal.** The basis: the RDA of 0.8 g/kg is the
   amount that prevents deficiency, not a target for someone who trains; a meta-regression of 49 trials
   (Morton et al., *Br J Sports Med* 2018;52:376-84) put the point beyond which extra protein stopped adding
@@ -1070,8 +1071,8 @@ depends on the other. Robert's call on order.
   rises on a "lose" goal, or a yes/no "do you lift weights" that sets it. One constant is the simplest
   thing that tests cleanly; the alternatives add an input and a rule.
 - **D28 - let the person override.** Two optional numbers. An estimate with no way to correct it is a trap,
-  most of all when D26 says the equation is least validated for older adults. Robert already coaches from a
-  protein range that is not the equation's. *If declined:* drop R46 and the two nullable columns.
+  most of all when D26 says the equation is least validated for older adults. A person may also already work
+  from a figure of their own that is not the equation's, and the app should let them use it. *If declined:* drop R46 and the two nullable columns.
 - **D29 - one fixed adjustment per goal, not a pace choice.** A percentage scales with the person, and the
   floor protects the small end. The "7,700 kcal per kg" rule is too crude to promise a rate of loss, so the
   screen promises none. *Alternative:* a pace the person picks.
@@ -1113,8 +1114,8 @@ checked here (as `R`-style requirements say when they cannot be enforced).
 
 - **R53 was added** (above): the bot's credentials would otherwise have reached the profile.
 - **Conversion between pounds/inches and kg/cm is not in the backend.** The API takes and stores metric,
-  and the units setting is a display preference. That makes R39's check ("190 lb is stored as 86.18 kg and
-  read back as 190.0 lb, 5 ft 7 in as 170.2 cm") a step 2 test, in the one place the conversion will live
+  and the units setting is a display preference. That makes R39's check ("165 lb is stored as 74.84 kg and
+  read back as 165.0 lb, 5 ft 9 in as 175.3 cm") a step 2 test, in the one place the conversion will live
   (`frontend/lib/units.ts`). Step 1 tests that metric is stored as sent and the preference is kept.
 - **The server dates the weight.** `weight_on` is set by the server and kept when a save does not move the
   weight by 0.05 kg or more, because a converted pounds figure never round-trips to the stored value
@@ -1132,6 +1133,62 @@ for "what is served". Worth knowing before the next test of that kind.
 
 **Not touched yet, on purpose.** The rule in `CLAUDE.md` that targets live only in `frontend/lib/targets.ts`
 stays true until step 2 makes the Day view read the profile; D25 revises it then, in the same change.
+
+### Status - step 2 built, 2026-11-04
+
+**Built.** The Profile dialog (`components/ProfileDialog.tsx`), opened from a Profile button in the header or from
+a prompt on the Day view; `lib/use-profile.ts`; `lib/units.ts` (pounds, feet and inches, display only); the
+Day view and its macro bars taking the targets in force and saying what they rest on; the profile routes in
+`lib/api.ts`; the screenshot script's guard and its profile pictures; and the documents - `CLAUDE.md`
+(D25's revision of the targets rule, written as a move and not a deletion), `frontend/AGENTS.md`,
+`docs/RESUME.md`, and a README "Screenshots" section, which the script and its error message had been
+pointing at without it existing.
+
+**Verified, by running it.** Frontend 178 unit and component tests (was 140; 38 new), the browser suite 34
+(was 28; 6 new, against the real backend, so the arithmetic on screen is the server's own), backend 360,
+lint and `tsc` clean. R39's check is met three ways: `units.test.ts` (165 lb is 74.84 kg and back, 5 ft 9 in
+is 175.3 cm), the dialog tests, and an e2e test that stores pounds and reads kilograms off the server.
+R51's guard was run: the script refuses `BASE=http://127.0.0.1:8000` and a bare address, and the throwaway
+stack on 8200 was brought up, photographed and torn down, with the live stack checked healthy before and
+after. The pictures were looked at, not only generated.
+
+**Found by running it and by looking at it - four defects no first test caught.**
+
+- **The working said "Times 1.6" for a multiplier of 1.55.** The number formatter rounded to one decimal, so
+  1.375 would have read 1.4 too. On the one screen whose job is to show the arithmetic honestly, that is a
+  wrong number that looks right. Multipliers now keep three decimals, with a test.
+- **Switching units drifted a stored figure.** Metric to imperial and back rebuilt the boxes from the
+  *rounded text*, so 178 cm returned as 178.1 and 82 kg as 82.01 - and saving would then have sent a changed
+  weight, which the server dates as a new weigh-in. The dialog now holds the true metric figures and the
+  boxes only display them; a test switches units three times and saves, and the figure and its date do not move.
+- **The date of birth was clipped to "05/04/1", two dropdowns lost the end of their sentence, and the result
+  of a save sat below the fold** of a scrolling dialog, so Save appeared to do nothing. Each control now has
+  the room its text needs, the options are short, and a save scrolls the working into view.
+- **A change I made for the profile's refusals widened a rule for every route.** Listing a field by name in a
+  422 would have started showing FastAPI's raw text for foods and meals as well; an existing test caught it.
+  Field-named refusals are now scoped to the profile's own fields, and everything else keeps the generic sentence.
+
+**Where the build differs from the draft, and why.**
+
+- **R47: the dialog stays open after a save** and shows the working under the form, rather than closing. The
+  alternative was a preview before saving, which would have needed the arithmetic in the browser (D25).
+- **R48: the Day view waits for the profile as well as the log** before it draws, so it never shows the
+  standard targets and then jumps. If the profile cannot be read, the standard targets show with a line
+  saying why, and the log still works.
+- **D30 as written: carbs and fat show their totals and no bar.** Looked at in the picture, the row stays
+  balanced with only protein carrying a bar.
+- **Removing a profile asks once** ("Your targets go back to the standard ones"), because losing eight fields is
+  not nothing, and closes the dialog.
+- **The units default is metric**, not guessed from the locale. A person in the US switches once; sniffing a
+  locale adds behaviour nobody asked for.
+- **The root `AGENTS.md` still says the targets are "held in one place".** That file is Robert's brief, so it is
+  left as written; the live statement of the rule is in `CLAUDE.md`.
+
+**Not done, on purpose.** The deck is not rebuilt with the new pictures (`docs/screenshots/day-profile.png`,
+`profile.png`, `profile-working.png`); it was not asked for, and the deck's slides are a separate
+artefact to approve. **Not deployed:** the live containers are still the schema 6 build.
+
+**Part 12 is complete** against R38 to R53, with R39 and R47 to R51 now met on screen.
 
 ## Open questions
 

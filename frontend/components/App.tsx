@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Send } from "lucide-react";
+import { Send, User } from "lucide-react";
 import { getSession, signOut as endSession } from "@/lib/api";
 import type { View } from "@/lib/types";
+import { basisLine, dayTargets } from "@/lib/targets";
+import { useProfile } from "@/lib/use-profile";
 import { useTracker } from "@/lib/use-tracker";
 import DayView from "./DayView";
 import FoodsView from "./FoodsView";
 import MealsView from "./MealsView";
+import ProfileDialog from "./ProfileDialog";
 import SignIn from "./SignIn";
 import TelegramDialog from "./TelegramDialog";
 import TitleBar from "./TitleBar";
@@ -70,9 +73,11 @@ function Shell({ children }: { children?: React.ReactNode }) {
 
 function Tracker({ username, onSignOut }: { username: string; onSignOut: () => void }) {
   const tracker = useTracker();
+  const profile = useProfile();
   const [view, setView] = useState<View>("day");
   const [signOutFailed, setSignOutFailed] = useState(false);
   const [telegramOpen, setTelegramOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   async function signOut() {
     setSignOutFailed(false);
@@ -109,6 +114,16 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
       <button
         type="button"
         className={`${BTN_GHOST} d-inline-flex align-items-center gap-2`}
+        onClick={() => setProfileOpen(true)}
+        data-testid="open-profile"
+      >
+        <User size={14} aria-hidden="true" />
+        Profile
+      </button>
+
+      <button
+        type="button"
+        className={`${BTN_GHOST} d-inline-flex align-items-center gap-2`}
         onClick={() => setTelegramOpen(true)}
         data-testid="open-telegram"
       >
@@ -122,7 +137,9 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
     </div>
   );
 
-  if (tracker.loading) {
+  // The profile is waited for as well, so the Day view never shows the standard targets for a moment and
+  // then jumps to the person's own.
+  if (tracker.loading || profile.loading) {
     return (
       <Shell>
         <p className="text-center text-muted-brand mb-0" data-testid="loading">
@@ -148,16 +165,17 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
     <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
       <TitleBar>{header}</TitleBar>
 
-      {(tracker.error || signOutFailed) && (
+      {(tracker.error || profile.error || signOutFailed) && (
         <div className="d-flex align-items-start justify-content-between gap-3" data-testid="page-problem">
           <p className="small text-ember mb-0">
-            {tracker.error ?? "Could not log out. Check your connection and try again."}
+            {tracker.error ?? profile.error ?? "Could not log out. Check your connection and try again."}
           </p>
           <button
             type="button"
             className={BTN_GHOST}
             onClick={() => {
               tracker.dismissError();
+              profile.dismissError();
               setSignOutFailed(false);
             }}
           >
@@ -176,6 +194,9 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
           onAddEntry={tracker.addEntry}
           onAddLookedUpFood={tracker.addLookedUpFood}
           onRemoveEntry={tracker.removeEntry}
+          targets={dayTargets(profile.state)}
+          basis={basisLine(profile.state)}
+          onOpenProfile={() => setProfileOpen(true)}
         />
       )}
 
@@ -194,6 +215,15 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
       )}
 
       {telegramOpen && <TelegramDialog onClose={() => setTelegramOpen(false)} />}
+
+      {profileOpen && (
+        <ProfileDialog
+          state={profile.state}
+          onSave={profile.save}
+          onRemove={profile.remove}
+          onClose={() => setProfileOpen(false)}
+        />
+      )}
     </main>
   );
 }

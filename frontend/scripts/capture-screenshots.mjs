@@ -22,12 +22,44 @@
 
 import { chromium } from "@playwright/test";
 import { mkdir, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:8200";
 const OUT = resolve(process.env.OUT ?? "../docs/screenshots");
 const SEED_USER = "user";
 const SEED_PASSWORD = "password";
+
+/**
+ * This script writes a profile, and it photographs whatever profile is there. The live stack holds a
+ * real person's real figures, so it is refused outright rather than trusted to be avoided (Part 12,
+ * R51): the repository is public, and a screenshot of the live Day view would publish them.
+ */
+const LIVE_PORT = "8000";
+const target = new URL(BASE);
+if (target.port === LIVE_PORT || target.port === "") {
+  throw new Error(
+    `refusing to run against ${BASE}: port ${LIVE_PORT} is the live stack and holds real figures. ` +
+      `Start the throwaway one (see "Screenshots" in the README) and pass BASE=http://127.0.0.1:8200.`,
+  );
+}
+
+/** An invented person, never anyone real. Example A in docs/PLAN.md, Part 12. */
+const INVENTED_PROFILE = {
+  display_name: "Ana Example",
+  sex: "male",
+  birth_date: (() => {
+    // Forty now and for about the next six months, so the figures in the picture are true whenever it is run.
+    const born = new Date();
+    born.setFullYear(born.getFullYear() - 40);
+    born.setMonth(born.getMonth() - 6);
+    return born.toISOString().slice(0, 10);
+  })(),
+  height_cm: 178,
+  weight_kg: 82,
+  activity: "moderate",
+  goal: "lose",
+  units: "metric",
+};
 
 /** A desktop-shaped shot with two device pixels per CSS pixel, so text is legible when scaled. */
 const VIEWPORT = { width: 1600, height: 1000 };
@@ -117,6 +149,36 @@ try {
   await shot("pairing", "Linking a Telegram chat: a one-time code the app mints, redeemed in the chat");
 
   await page.getByTestId("close-dialog").click();
+
+  // ---- A profile: the targets worked out from a person, and the working shown ----
+  // Last, so the pictures above are unchanged. Refuses to proceed if the stack already holds a profile
+  // that is not the invented one: it could be somebody's real figures, and the shot would publish them.
+  const existing = await (await page.request.get(`${BASE}/api/profile`)).json();
+  if (existing.profile && existing.profile.display_name !== INVENTED_PROFILE.display_name) {
+    throw new Error("refusing to photograph a profile that is not the invented one: this stack holds someone's real figures.");
+  }
+  const saved = await page.request.put(`${BASE}/api/profile`, { data: INVENTED_PROFILE });
+  if (!saved.ok()) throw new Error(`could not save the invented profile: HTTP ${saved.status()}`);
+
+  await page.goto(`${BASE}/`);
+  await page.getByTestId("day-basis").waitFor();
+  await settle();
+  await shot("day-profile", "The day view on a profile's own targets, with what they rest on");
+
+  await page.getByTestId("open-profile").click();
+  await page.getByTestId("profile-working").waitFor();
+  await settle();
+  await shot("profile", "The profile form: what the targets are worked out from");
+
+  // The working sits below the form in a dialog that scrolls, so it is photographed scrolled to.
+  await page.getByTestId("profile-working").scrollIntoViewIfNeeded();
+  await page.getByTestId("profile-working").evaluate((el) => el.scrollIntoView({ block: "end" }));
+  await settle();
+  await shot("profile-working", "How the targets were worked out, step by step, from the server's own figures");
+
+  await page.getByTestId("close-dialog").click();
+  // put the stack back as it was found
+  await page.request.delete(`${BASE}/api/profile`);
 
   // ---- The gate ----
   await page.getByTestId("sign-out").click();

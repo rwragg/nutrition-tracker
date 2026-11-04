@@ -17,10 +17,11 @@ export default function MacroBar({
 }: {
   macro: MacroKey;
   value: number;
-  target: number;
+  /** Null shows the total alone: a person with a profile has calorie and protein targets and no others (D30). */
+  target: number | null;
   tone?: "light" | "dark";
 }) {
-  const percent = percentOfTarget(value, target);
+  const percent = target === null ? 0 : percentOfTarget(value, target);
   const dark = tone === "dark";
 
   return (
@@ -33,22 +34,30 @@ export default function MacroBar({
           <span className={`fw-semibold tabular ${dark ? "text-white" : ""}`} data-testid={`macro-${macro}`}>
             {formatGrams(value)}
           </span>{" "}
-          / {formatGrams(target)} g
+          {target === null ? (
+            "g"
+          ) : (
+            <>
+              / <span data-testid={`macro-${macro}-target`}>{formatGrams(target)}</span> g
+            </>
+          )}
         </span>
       </div>
-      <div
-        className={`macro-track mt-2 ${dark ? "macro-track-dark" : ""}`}
-        role="progressbar"
-        aria-label={`${MACROS[macro]} progress`}
-        aria-valuenow={Math.min(percent, 100)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
+      {target !== null && (
         <div
-          className={`macro-fill macro-${macro}`}
-          style={{ width: `${Math.min(percent, 100)}%` }}
-        />
-      </div>
+          className={`macro-track mt-2 ${dark ? "macro-track-dark" : ""}`}
+          role="progressbar"
+          aria-label={`${MACROS[macro]} progress`}
+          aria-valuenow={Math.min(percent, 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className={`macro-fill macro-${macro}`}
+            style={{ width: `${Math.min(percent, 100)}%` }}
+          />
+        </div>
+      )}
     </div>
   );
 }

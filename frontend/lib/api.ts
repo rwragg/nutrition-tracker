@@ -8,6 +8,10 @@ import type {
   LogEntry,
   Meal,
   MealInput,
+  Profile,
+  ProfileInput,
+  ProfileState,
+  ProfileTargets,
   Refusal,
   Section,
 } from "./types";
@@ -29,11 +33,48 @@ export class ApiError extends Error {
   }
 }
 
-/** The server's detail is sometimes a sentence, sometimes `{message, usedBy}`. */
+/**
+ * What a refused field is called to a person. Height and weight say their unit, because the server
+ * counts in metric whatever the form was showing: "Weight (kg): must be at least 30" is a sentence a
+ * person typing pounds can act on, and "must be at least 30" alone is not.
+ */
+const FIELD_NAMES: Record<string, string> = {
+  display_name: "Name",
+  sex: "Sex",
+  birth_date: "Date of birth",
+  height_cm: "Height (cm)",
+  weight_kg: "Weight (kg)",
+  activity: "Activity",
+  goal: "Goal",
+  units: "Units",
+  kcal_override: "Your own calorie target",
+  protein_override: "Your own protein target",
+};
+
+/** FastAPI's 422 is a list of `{loc, msg}`. The first one is what is said; the others follow once it is fixed. */
+function readFieldRefusal(detail: unknown[]): string | null {
+  const first = detail[0] as { loc?: unknown[]; msg?: string } | undefined;
+  if (!first || typeof first.msg !== "string") return null;
+
+  const field = String(first.loc?.[first.loc.length - 1] ?? "");
+
+  // Only the fields named above. Any other validation list keeps the generic sentence it always had,
+  // because a raw "field required" is not a message worth showing for a route nobody asked to change.
+  if (!FIELD_NAMES[field]) return null;
+
+  return `${FIELD_NAMES[field]}: ${first.msg.replace(/^Value error, /, "")}`;
+}
+
+/** The server's detail is sometimes a sentence, sometimes `{message, usedBy}`, sometimes a list of fields. */
 function readDetail(body: unknown): { message: string; refusal?: Refusal } {
   const detail = (body as { detail?: unknown } | null)?.detail;
 
   if (typeof detail === "string") return { message: detail };
+
+  if (Array.isArray(detail)) {
+    const message = readFieldRefusal(detail);
+    if (message) return { message };
+  }
 
   if (detail && typeof detail === "object") {
     const { message, usedBy } = detail as { message?: string; usedBy?: Refusal["usedBy"] };
@@ -201,6 +242,122 @@ export async function mintTelegramCode(): Promise<PairingCode> {
 
 export async function unlinkTelegram(): Promise<void> {
   await request<void>("/api/telegram/link", { method: "DELETE" });
+}
+
+// --- a profile, and the targets worked out from it (Part 12) ---------------------------------
+
+type ProfileWire = {
+  display_name: string;
+  sex: Profile["sex"];
+  birth_date: string;
+  height_cm: number;
+  weight_kg: number;
+  weight_on: string;
+  activity: Profile["activity"];
+  goal: Profile["goal"];
+  units: Profile["units"];
+  kcal_override: number | null;
+  protein_override: number | null;
+};
+
+type TargetsWire = {
+  calories: number;
+  protein: number;
+  calories_from: ProfileTargets["caloriesFrom"];
+  protein_from: ProfileTargets["proteinFrom"];
+  computed: { calories: number; protein: number };
+  working: {
+    age: number;
+    resting: number;
+    activity_factor: number;
+    daily_need: number;
+    goal_factor: number;
+    after_goal: number;
+    floor: number;
+    floored: boolean;
+    protein_per_kg: number;
+    protein_before_rounding: number;
+  };
+};
+
+type ProfileAnswer = { profile: ProfileWire | null; targets: TargetsWire | null };
+
+/** The server names things in snake_case and the app does not; the reading happens here and only here. */
+function toProfileState(answer: ProfileAnswer): ProfileState | null {
+  if (!answer.profile || !answer.targets) return null;
+
+  const { profile, targets } = answer;
+  return {
+    profile: {
+      displayName: profile.display_name,
+      sex: profile.sex,
+      birthDate: profile.birth_date,
+      heightCm: profile.height_cm,
+      weightKg: profile.weight_kg,
+      weightOn: profile.weight_on,
+      activity: profile.activity,
+      goal: profile.goal,
+      units: profile.units,
+      kcalOverride: profile.kcal_override,
+      proteinOverride: profile.protein_override,
+    },
+    targets: {
+      calories: targets.calories,
+      protein: targets.protein,
+      caloriesFrom: targets.calories_from,
+      proteinFrom: targets.protein_from,
+      computed: targets.computed,
+      working: {
+        age: targets.working.age,
+        resting: targets.working.resting,
+        activityFactor: targets.working.activity_factor,
+        dailyNeed: targets.working.daily_need,
+        goalFactor: targets.working.goal_factor,
+        afterGoal: targets.working.after_goal,
+        floor: targets.working.floor,
+        floored: targets.working.floored,
+        proteinPerKg: targets.working.protein_per_kg,
+        proteinBeforeRounding: targets.working.protein_before_rounding,
+      },
+    },
+  };
+}
+
+/** The account's profile and targets, or null when it has none (an ordinary state, R38). */
+export async function getProfile(): Promise<ProfileState | null> {
+  return toProfileState(await request<ProfileAnswer>("/api/profile"));
+}
+
+/**
+ * Create or replace it. The whole profile is sent, and the server answers with the targets it worked
+ * out, so there is nothing for the app to calculate (D25).
+ */
+export async function saveProfile(input: ProfileInput): Promise<ProfileState> {
+  const saved = toProfileState(
+    await request<ProfileAnswer>("/api/profile", {
+      method: "PUT",
+      body: JSON.stringify({
+        display_name: input.displayName,
+        sex: input.sex,
+        birth_date: input.birthDate,
+        height_cm: input.heightCm,
+        weight_kg: input.weightKg,
+        activity: input.activity,
+        goal: input.goal,
+        units: input.units,
+        kcal_override: input.kcalOverride,
+        protein_override: input.proteinOverride,
+      }),
+    }),
+  );
+
+  if (!saved) throw new ApiError(500, "The server saved the profile but did not send it back.");
+  return saved;
+}
+
+/** Remove it, which puts the account back on the fixed targets. */
+export async function deleteProfile(): Promise<void> {
+  await request<void>("/api/profile", { method: "DELETE" });
 }
 
 // --- foods and meals (R5, R7, R8) ---------------------------------------------------------

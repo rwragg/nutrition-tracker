@@ -26,7 +26,8 @@ one in `docs/`.)
 - Log a day from individual foods with a quantity, or from a whole meal
 - Create, edit and delete foods and meals; a meal is composed from foods
 - Move between days and open any one of them to dig into its log
-- Total each day against calorie and macronutrient targets
+- Total each day against calorie and macronutrient targets, or - once you set up a **profile** - against calorie
+  and protein targets worked out for you, with the arithmetic shown. You can enter your own figure instead
 - Deleting a record that a meal or a day still refers to is refused, with the reason
 
 **The log is kept in the database**, so it is there when you come back, from another browser, and after
@@ -81,13 +82,29 @@ message. The same dialog unlinks the chat.
 What it deliberately does not do, in this cut: no natural-language parsing (text that is not a command
 gets a hint, not a guess), no editing of foods or meals, no voice, no photo meals.
 
+## Screenshots
+
+The pictures in `docs/screenshots/` come from a **throwaway stack**, never the live one: the repository is
+public and the live log is somebody's health record. The stack has its own compose project, volume and port,
+so the live data is never touched, and the script refuses port 8000 and any stack that already holds a profile
+that is not its own invented one.
+
+```bash
+NUTRITION_PORT=8200 docker compose -p nutrition-shots up --build --wait
+cd frontend && BASE=http://127.0.0.1:8200 node scripts/capture-screenshots.mjs
+cd .. && docker compose -p nutrition-shots down -v      # throws the stack and its volume away
+```
+
+The stack reads the project's `.env`, so the USDA lookup pictures spend a few calls of the real key. The
+profile pictures use an invented person ("Ana Example", Part 12 example A), never anyone real.
+
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 282 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
+cd backend && uv run pytest          # 360 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 140 unit and component tests
-npm run test:e2e                     # 28 Playwright tests, against its own container on :8100
+npm test                             # 178 unit and component tests
+npm run test:e2e                     # 34 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```

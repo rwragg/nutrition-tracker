@@ -9,11 +9,12 @@ The root `PLAN.md` is superseded; ignore it.
 
 Parts 1-9, Part 10 steps 1-2 (accounts; a chat linked by a pairing code) and Part 11 (suggest a food that
 is not in the list, from the person's own foods and from USDA) are done. **Part 12 (a profile, and calorie and
-protein targets worked out from it) is approved and half built:** step 1, the backend, is done at schema
-version 7; step 2, the screen, is not started, and `docs/PLAN.md` Part 12 says what it holds. Until step 2
-lands, the Day view still reads the fixed targets in `frontend/lib/targets.ts`.
+protein targets worked out from it) is built and tested:** schema version 7, the `/api/profile` routes, and
+the Profile dialog and Day view on the screen. **As of 2026-11-04 it is checked in but not deployed:** the
+live containers are still the schema 6 build, and rebuilding migrates the database 6 to 7 (snapshot and
+rollback images: `~/backups/nutrition/2026-11-04-pre-profile`). `docs/PLAN.md` Part 12 has the status.
 
-**Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write, a model
+**Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write (a Part 13), a model
 parser and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`); then voice (D16 still open); then
 leaving and hosting (D17 and "how many people" still open). The full list, with what was left on purpose,
 is "What is left" at the top of `docs/RESUME.md`. What the code review found and fixed is in
@@ -35,9 +36,9 @@ is "What is left" at the top of `docs/RESUME.md`. What the code review found and
 ./scripts/start.sh                       # build + start, app on :8000 (user / password)
 ./scripts/stop.sh
 cd backend && uv run pytest -q           # 360 tests
-cd frontend && npm test                  # 140 unit/component tests
+cd frontend && npm test                  # 178 unit/component tests
 cd frontend && npm run lint && npx tsc --noEmit
-cd frontend && npm run test:e2e          # 28 Playwright tests, own stack on :8100
+cd frontend && npm run test:e2e          # 34 Playwright tests, own stack on :8100
 ./scripts/e2e-persistence.sh             # write, rebuild image, read back
 docker compose --profile bot up -d --build   # optional Telegram bot
 ```
@@ -62,7 +63,13 @@ Verify before starting: clean `git status`, and the suites above green.
   their refusal rather than predicting the rule.
 - Nothing cascades: `ON DELETE RESTRICT` everywhere; the API checks first so the refusal names what is in
   the way. Every connection sets `PRAGMA foreign_keys = ON` (set it outside any transaction).
-- `g` is a per-gram basis (D13). Targets live only in `frontend/lib/targets.ts`; the API returns sums.
+- `g` is a per-gram basis (D13). **Targets are worked out in one place, the backend (`app/targets.py`), from the
+  account's profile (D25).** The browser never calculates one: `frontend/lib/targets.ts` holds only the standard
+  four for an account with no profile, and chooses between them. The log's API still returns sums. *(Until Part 12
+  this read "targets live only in `targets.ts`"; D25 moved the rule, it did not remove it.)*
+- A profile is body measurements: reachable from a signed-in browser only, never by the bot (R53), never in a
+  log or an error message (R50), and only invented people in tests, fixtures, screenshots and the deck (R51).
+  The screenshot script refuses port 8000 and any stack holding a profile that is not its own.
 - The bot is a client, not a second implementation (D14): it holds no records and computes nothing. It
   speaks for a chat, which the app resolves to an account (R26). `TELEGRAM_BOT_SECRET` must be set on both
   the app and the bot.

@@ -21,6 +21,13 @@ Telegram bot that is a second client of the same API. Everything below is built,
   food, then a USDA FoodData Central lookup (`GET /api/lookup/foods`) with two entry points, *Look it up* in
   New food and *Not in your list? Look it up* in Add food to a day. A found food can be renamed and its
   figures adjusted before it is added. Looked-up foods are stored per gram, marked `usda`, with USDA's id.
+- **Part 12: built, checked in, not deployed.** A profile per account (name, sex, date of birth, height, weight,
+  activity, goal, units, and optional own targets) and calorie and protein targets worked out from it by the
+  backend (`app/targets.py`, Mifflin-St Jeor, D25-D31), with the working shown on screen. Schema version 7;
+  `/api/profile`, browser session only (R53); the Profile dialog and the Day view on the profile's targets.
+  **Rebuilding the live stack migrates the database 6 to 7** - snapshot first (one is at
+  `~/backups/nutrition/2026-11-04-pre-profile`, with images `pre-profile` and `pre-profile-bot`). `docs/PLAN.md`
+  Part 12 has the requirements, the decisions and the status.
 - **The code review (`docs/CODE-REVIEW-2026-11-02.md`) is closed**, with a Resolution table of what was
   fixed and what was left on purpose.
 
@@ -32,9 +39,9 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
 cd backend && uv run pytest -q          # 360 passed (355 plus 5 container tests)
-cd ../frontend && npm test              # 140 passed
+cd ../frontend && npm test              # 178 passed
 npm run lint && npx tsc --noEmit        # clean
-npm run test:e2e                        # 28 passed, builds its own stack on :8100 with no USDA key
+npm run test:e2e                        # 34 passed, builds its own stack on :8100 with no USDA key
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
 docker compose --profile bot ps         # backend healthy on 127.0.0.1:8000, bot up
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
@@ -270,7 +277,9 @@ Frontend: 96.1% statements, 82.5% branches.
   applies no targets; it asks the API and formats the answer. Anything it "knows" that the app does not
   would be a second source of truth.
 - **The targets live in one place** (R10) — `frontend/lib/targets.ts` — and the API returns sums, not
-  judgements. The bot reports sums for the same reason.
+  judgements. The bot reports sums for the same reason. *(Superseded by Part 12, D25: an account with a
+  profile has its targets worked out by the backend; `targets.ts` keeps only the standard four for an
+  account without one. See `CLAUDE.md`.)*
 - **A user is an id, and a password is a hash.** The session carries a generated id (`user-<12 hex>`),
   never a username, because a username is a thing a person may want to change. A password is never
   stored, compared as a string, logged or returned by a route, and a missing or malformed hash fails

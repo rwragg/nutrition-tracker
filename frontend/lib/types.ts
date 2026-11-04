@@ -134,3 +134,69 @@ export interface Store {
 }
 
 export type View = "day" | "foods" | "meals";
+
+// --- a profile, and the targets worked out from it (Part 12) -------------------------------
+
+export const SEXES = ["female", "male"] as const;
+export type Sex = (typeof SEXES)[number];
+
+export const ACTIVITY_LEVELS = ["sedentary", "light", "moderate", "active", "very_active"] as const;
+export type Activity = (typeof ACTIVITY_LEVELS)[number];
+
+export const GOALS = ["lose", "maintain", "gain"] as const;
+export type Goal = (typeof GOALS)[number];
+
+export type UnitSystem = "metric" | "imperial";
+
+/**
+ * What the targets are worked out from. Always metric: `units` only says how the form shows it
+ * (R39). A person's own targets are optional, and null means "use the calculated one" (R46).
+ */
+export interface Profile {
+  displayName: string;
+  sex: Sex;
+  /** An ISO date. */
+  birthDate: string;
+  heightCm: number;
+  weightKg: number;
+  /** An ISO date. Set by the server, and kept when a save does not change the weight. */
+  weightOn: string;
+  activity: Activity;
+  goal: Goal;
+  units: UnitSystem;
+  kcalOverride: number | null;
+  proteinOverride: number | null;
+}
+
+/** A profile as it is sent: the server dates the weight, so the client does not. */
+export type ProfileInput = Omit<Profile, "weightOn">;
+
+/** Every step of the arithmetic, so the screen can show its working (R47). */
+export interface Working {
+  age: number;
+  resting: number;
+  activityFactor: number;
+  dailyNeed: number;
+  goalFactor: number;
+  afterGoal: number;
+  floor: number;
+  floored: boolean;
+  proteinPerKg: number;
+  proteinBeforeRounding: number;
+}
+
+/** The figures in force, where each came from, and what the equation said regardless. */
+export interface ProfileTargets {
+  calories: number;
+  protein: number;
+  caloriesFrom: "profile" | "own";
+  proteinFrom: "profile" | "own";
+  computed: { calories: number; protein: number };
+  working: Working;
+}
+
+/** A profile and its targets, which always arrive together: the app never works a target out itself (D25). */
+export interface ProfileState {
+  profile: Profile;
+  targets: ProfileTargets;
+}

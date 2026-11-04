@@ -133,10 +133,10 @@ def test_a_name_has_its_surrounding_space_removed(seeded: TestClient) -> None:
 def test_the_route_stores_metric_and_keeps_the_units_preference(seeded: TestClient) -> None:
     """The units setting is what the form shows. The API takes and stores metric and nothing else,
     so the arithmetic has one set of units and the conversion lives in one place, the browser (D25)."""
-    seeded.put("/api/profile", json={**ANA, "units": "imperial", "weight_kg": 86.18, "height_cm": 170.2})
+    seeded.put("/api/profile", json={**ANA, "units": "imperial", "weight_kg": 74.84, "height_cm": 175.3})
 
     stored = rows()[0]
-    assert (stored["weight_kg"], stored["height_cm"], stored["units"]) == (86.18, 170.2, "imperial")
+    assert (stored["weight_kg"], stored["height_cm"], stored["units"]) == (74.84, 175.3, "imperial")
 
 
 # --- the weight is dated, by the server -----------------------------------------------------
@@ -158,11 +158,11 @@ def test_the_date_stays_when_the_weight_does(seeded: TestClient, monkeypatch: py
 
 
 def test_a_converted_weight_is_not_a_new_weigh_in(seeded: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """190 lb round-tripped through kilograms never lands on the exact stored figure."""
-    seeded.put("/api/profile", json={**ANA, "weight_kg": 86.18319})
+    """165 lb round-tripped through kilograms never lands on the exact stored figure."""
+    seeded.put("/api/profile", json={**ANA, "weight_kg": 74.84274})
     monkeypatch.setattr(profile, "today", lambda: date(2026, 12, 20))
 
-    body = seeded.put("/api/profile", json={**ANA, "weight_kg": 86.2}).json()
+    body = seeded.put("/api/profile", json={**ANA, "weight_kg": 74.8}).json()
 
     assert body["profile"]["weight_on"] == "2026-11-04"
 

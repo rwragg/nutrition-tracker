@@ -1,12 +1,22 @@
 import { formatCalories } from "@/lib/format";
 import { percentOfTarget } from "@/lib/nutrition";
+import type { DayTargets } from "@/lib/targets";
 import type { Macros } from "@/lib/types";
 import MacroBar from "./MacroBar";
 
 const RADIUS = 54;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-export default function DaySummary({ macros, targets }: { macros: Macros; targets: Macros }) {
+export default function DaySummary({
+  macros,
+  targets,
+  basis = null,
+}: {
+  macros: Macros;
+  targets: DayTargets;
+  /** What the targets rest on, when they are a person's own (R48). */
+  basis?: string | null;
+}) {
   const percent = percentOfTarget(macros.calories, targets.calories);
   const arc = (Math.min(percent, 100) / 100) * CIRCUMFERENCE;
   const remaining = Math.round(targets.calories - macros.calories);
@@ -64,6 +74,12 @@ export default function DaySummary({ macros, targets }: { macros: Macros; target
               </span>
             </p>
           </div>
+
+          {basis && (
+            <p className="small text-white opacity-50 mb-0 mt-1" data-testid="day-basis">
+              {basis}
+            </p>
+          )}
 
           <div className="row g-3 mt-3">
             <div className="col-12 col-sm-4">

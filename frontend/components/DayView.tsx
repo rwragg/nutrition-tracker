@@ -4,7 +4,7 @@ import { useState } from "react";
 import { dayLabel, toIsoDate } from "@/lib/dates";
 import { formatCalories } from "@/lib/format";
 import { dayMacros } from "@/lib/nutrition";
-import { DAILY_TARGETS } from "@/lib/targets";
+import type { DayTargets } from "@/lib/targets";
 import {
   SECTIONS,
   type Day,
@@ -33,6 +33,9 @@ export default function DayView({
   onAddEntry,
   onAddLookedUpFood,
   onRemoveEntry,
+  targets,
+  basis,
+  onOpenProfile,
 }: {
   store: Store;
   day: Day;
@@ -45,6 +48,11 @@ export default function DayView({
     unchanged: boolean,
   ) => Promise<SaveResult>;
   onRemoveEntry: (section: Section, entryId: string) => Promise<SaveResult>;
+  /** The targets in force: a profile's, or the standard ones. */
+  targets: DayTargets;
+  /** What a profile's targets rest on, or null when these are the standard ones. */
+  basis: string | null;
+  onOpenProfile: () => void;
 }) {
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -79,7 +87,22 @@ export default function DayView({
         ))}
       </section>
 
-      <DaySummary macros={dayMacros(day, store)} targets={DAILY_TARGETS} />
+      <DaySummary macros={dayMacros(day, store)} targets={targets} basis={basis} />
+
+      {basis === null && (
+        <p className="small text-muted-brand mb-0" data-testid="profile-prompt">
+          These are the standard targets.{" "}
+          <button
+            type="button"
+            className="btn btn-link p-0 align-baseline small"
+            onClick={onOpenProfile}
+            data-testid="set-up-profile"
+          >
+            Set up your profile
+          </button>{" "}
+          to get calorie and protein targets worked out for you.
+        </p>
+      )}
 
       <div className="row g-4">
         {SECTIONS.map((section) => (
