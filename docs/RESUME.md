@@ -1,7 +1,8 @@
 # Picking this up again
 
 Everything needed to resume without re-reading a long conversation. **Rewritten 2026-11-02 at a model
-switch.** It leads with where things stand, how to prove it, and what is left; the sections after it are
+switch, and revised 2026-11-04 at the next one** (Parts 11 and 12 were built on `anthropic/claude-sonnet-5.5`; the
+default profile now runs `deepseek/deepseek-v4.1-flash`, see "On resume"). It leads with where things stand, how to prove it, and what is left; the sections after it are
 the history of each part and the rules and traps that cost time. If a sentence below disagrees with the
 code, the code is right: say so and fix the sentence.
 
@@ -9,7 +10,8 @@ code, the code is right: say so and fix the sentence.
 
 A nutrition tracker: a Next.js 16 frontend (a static export) served by a FastAPI backend in one container,
 the log in SQLite at **schema version 7**, real accounts, three views (Day, Foods, Meals), and an optional
-Telegram bot that is a second client of the same API. Everything below is built, tested and running.
+Telegram bot that is a second client of the same API. Everything below is built and tested. **Part 12 is not yet
+deployed to the live stack** (see "In flight" under "What is left").
 
 - **Parts 1-9** are the MVP, the Telegram skeleton and the gram basis (`docs/PLAN.md`,
   `docs/COMPLETION-REPORT.md` for P1.1 to P8.4).
@@ -25,6 +27,9 @@ Telegram bot that is a second client of the same API. Everything below is built,
   activity, goal, units, and optional own targets) and calorie and protein targets worked out from it by the
   backend (`app/targets.py`, Mifflin-St Jeor, D25-D31), with the working shown on screen. Schema version 7;
   `/api/profile`, browser session only (R53); the Profile dialog and the Day view on the profile's targets.
+  **R54 (accepted 4 Nov): an account with no profile cannot add an entry, a food or a meal.** The API answers 409
+  ("set up your profile before adding anything"); the creating dialogs still open, so a USDA lookup works, with a
+  notice and a disabled button. Reading, editing, deleting and removing an entry are not gated.
   **Rebuilding the live stack migrates the database 6 to 7** - snapshot first (one is at
   `~/backups/nutrition/2026-11-04-pre-r54-deploy`, with images `pre-r54` and `pre-r54-bot`). **The old build refuses to
   start on a schema 7 database** (tested), so rolling back after the deploy means restoring that snapshot's database too. `docs/PLAN.md`
@@ -39,7 +44,7 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 360 passed (355 plus 5 container tests)
+cd backend && uv run pytest -q          # 368 passed (includes 5 container tests that build the real image)
 cd ../frontend && npm test              # 189 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 35 passed, builds its own stack on :8100 with no USDA key
@@ -48,19 +53,68 @@ docker compose --profile bot ps         # backend healthy on 127.0.0.1:8000, bot
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
 ```
 
-Tag `handover-2026-11-02` marks this state in all four repositories (`rwragg/nutrition-tracker`,
+Tag `handover-2026-11-02` marks the state of the MVP-and-Telegram work in all four repositories (`rwragg/nutrition-tracker`,
 `hermes-notes`, `hermes-home`, `hermes-skills`); read a tag's commit with `git rev-parse --short
 '<tag>^{commit}'`. A database copy and a `SNAPSHOT.md` are in `~/backups/nutrition/2026-11-02-handover/`,
 and the image is kept as `nutrition-tracker:handover`. Earlier snapshots form a ladder beside it:
 `2026-11-02-pre-telegram`, `post-skeleton`, `linked-chats`, `usda-lookup`.
+
+Part 12 is tagged in this repository only: `pre-profile-2026-11-04` (the code the live app still runs),
+`profile-step1-2026-11-04` (backend), `profile-r54-2026-11-04` (everything, on GitHub), and `handover-2026-11-04` (this
+file, written at the model switch). The rollback ladder's newest rung is `~/backups/nutrition/2026-11-04-pre-r54-deploy/`
+(database copy, `SNAPSHOT.md`, and the images `nutrition-tracker:pre-r54` and `pre-r54-bot`).
 
 `spring-llm-agent` has one local commit (`b9aa8e6`) that GitHub refuses with 403: the token has no write on
 that repo (see Open items).
 
 ## What is left - start here
 
-Nothing is half done and nothing is in flight. Everything below is **unstarted**, and each part of the plan
-stops for Robert's approval before the next begins. Robert's note when handing over: *"log what's left."*
+Part 12 is built but **not deployed**, and a test copy is running (section 0). Everything after section 0 is
+**unstarted**, and each part of the plan stops for Robert's approval before the next begins.
+
+### 0. In flight right now (4 Nov 2026) - read this before touching anything
+
+- **A throwaway test copy of the new build is running** on `http://127.0.0.1:8200` (compose project
+  `nutrition-shots`, its own volume, seeded login `user` / `password`, no bot, loopback only). Robert is testing it by
+  hand. **Taking it down is approval-gated:** `docker compose -p nutrition-shots down -v` deletes a volume, so it asks
+  him; if the prompt times out, do **not** retry, rephrase or route around it. Say it is still running and ask. Nothing
+  in it matters: the data is the seed, and the live stack is untouched.
+- **Part 12 and R54 are not on the live stack.** The running containers are the schema 6 build (`pre-profile-2026-11-04`).
+  Waiting for Robert's go after his test. To deploy, in this order:
+  1. Re-take the snapshot if anything was logged since (the 4 Nov one holds 33 foods, 5 meals, 18 entries, 3 days, 2
+     `usda` foods; compare before trusting it). Method: `references/deploy-snapshot-and-test-stack.md` in the
+     `nutrition-app-ops` skill. Pin images by name first: a build moves the `local` tag and Docker can lose the running
+     image's content (it already has once).
+  2. `cd ~/hermes_workspace/nutrition && docker compose --profile bot up -d --build` (recreates both containers, keeps
+     the volume, migrates the database 6 to 7). **Everyone is signed out afterwards** (the session secret regenerates).
+  3. Check: `/api/health` 200; schema 7 (`docker compose exec -T backend python -c "from app import db; print(db.SCHEMA_VERSION)"`);
+     sign in, then 33 foods and 3 days; the bot's log shows it listening.
+  4. **Tell Robert first, and again after:** from this moment the live account has no profile, so **it cannot add
+     anything, from the browser or from Telegram, until he saves one in the Profile dialog** (D34). A message to the bot
+     before then should come back as "set up your profile before adding anything. Nothing was logged." That is the
+     first real check of the bot path.
+  5. **Rollback is not just the old image.** The schema 6 build refuses to start on a schema 7 database (tested, 4 Nov).
+     Going back means the old image *and* the snapshot's `nutrition.db`, and loses anything logged since, so if the
+     deploy is wrong, say so **before** logging anything. Steps are in the snapshot's own `SNAPSHOT.md`.
+- **Unpushed to GitHub (public repo):** the commits after `profile-r54-2026-11-04`, and the `handover-2026-11-04`
+  tag. Push only with Robert's say-so; the earlier push was explicitly approved.
+- **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were
+  in `06c4cd2` and `d5fd646` (removed again in `a08aa97`; `git show` them there, do not copy them into a document). Robert said "no worries" on 4 Nov rather
+  than have 3 commits rewritten. They were an accident (his real figures used as examples). **From here on, scan the
+  staged diff for his real figures before every commit and do not filter the scan's own patterns out.**
+- **Unanswered:** he offered "a new key" (4 Nov) but never said **which** (USDA, Telegram bot token, or bot secret; the
+  last two also need a bot restart). Method when he answers: he puts it in `.env` himself with `read -rsp`; you verify
+  by length, a hash prefix and a live call; it is never pasted in chat.
+- **Reported, not diagnosed:** typing `183` into the quantity field of a gram-based food showed `0.26`. That is all
+  that was recorded: the cause, the food and the screen are unknown. Reproduce it in the browser first; there is no
+  test for it yet.
+- **Not rebuilt:** the deck (`docs/deck/`) does not use the new pictures (`need-profile`, `profile`,
+  `profile-working`; `day.png` now shows a profile). It was not asked for.
+- **`command_allowlist` in the default profile's `config.yaml` gained `SQL DELETE without WHERE`** at 13:27 on 4 Nov.
+  That is a standing allow for a command that destroys data. Nothing records who added it; the likeliest cause is an
+  "always allow" answered at an approval prompt, but that is an inference, and it was not a deliberate edit by this work.
+  Left as found and committed as found; worth telling Robert so he can keep or remove it.
+
 
 ### 1. Planned, decisions taken, no plan part written yet
 
@@ -389,6 +443,14 @@ Verify with the block at the top, read "What is left", and ask Robert before sta
 reopen a finished part without a reason. Claude Code may work on this repository (Robert, 2026-11-02);
 `CLAUDE.md` is its entry point and must stay in step with this file.
 
+**On the model.** Parts 11 and 12 were built on `anthropic/claude-sonnet-5.5`, and what made them safe was care, not
+cleverness: every claim checked by running it, every new screen looked at rendered, every new test broken on purpose
+once to prove it can fail, every rollback claim tested before it was written (one was wrong). The default profile has
+been on `deepseek/deepseek-v4.1-flash` since 2 Nov (about 1/44 of Sonnet's input price, 1/20 of its output), and a new
+session starts on it. Keep the same habits. If a build turn goes oddly, say so and let Robert switch that stretch back
+with `/model anthropic/claude-sonnet-5.5`.
+
 For older detail, the previous conversations are searchable:
-`session_search(query='<keywords>', session_id='20261102_123650_9ea56ce6')` (this build) and
+`session_search(query='<keywords>', session_id='20261102_161230_0aef4f7a')` (Parts 11 and 12, R54, the 4 Nov work),
+`session_search(query='<keywords>', session_id='20261102_123650_9ea56ce6')` (the 2 Nov build) and
 `session_search(query='<keywords>', session_id='20261101_132202_4a9b1aef')` (the MVP).

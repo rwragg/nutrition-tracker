@@ -16,6 +16,10 @@ live containers are still the schema 6 build, and rebuilding migrates the databa
 rollback images: `~/backups/nutrition/2026-11-04-pre-r54-deploy`; **the schema 6 build refuses to start on a schema 7
 database**, so a rollback after the deploy restores that snapshot's `nutrition.db` too, and loses anything logged since). `docs/PLAN.md` Part 12 has the status.
 
+**In flight (4 Nov): a throwaway test copy runs on `:8200` (compose project `nutrition-shots`; taking it down with
+`down -v` needs Robert's approval) and the live deploy waits on his go. Read `docs/RESUME.md` section 0 before
+touching either.**
+
 **Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write (a Part 13), a model
 parser and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`); then voice (D16 still open); then
 leaving and hosting (D17 and "how many people" still open). The full list, with what was left on purpose,
