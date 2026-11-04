@@ -973,6 +973,8 @@ depends on the other. Robert's call on order.
 - **R38 - an account may have one profile, and an account without one behaves exactly as it does today.**
   It sees the four constants above and no new screen blocks it. *Check:* a test that an account with no
   profile reads 2200 / 140 / 250 / 70 on the Day view, and that the existing suites pass unchanged.
+  *Amended 2026-11-04 by R54: it still holds for reading and for managing foods and meals, but an account
+  with no profile can no longer log.*
 - **R39 - what a profile holds.** Display name, sex (the calorie equation has one constant for each of two
   values and needs it), date of birth, height, weight and the date the weight was set, activity level,
   goal, and a units setting (metric or imperial). Stored in metric; the units setting only changes what the
@@ -1033,6 +1035,16 @@ depends on the other. Robert's call on order.
   or replace someone's profile. The profile routes take the session and refuse the bot, so the bot reads
   no profile until a decision to let it (D31). *Check:* a test that the same bot credentials open
   `/api/foods` and are refused (401) on all three profile methods.
+- **R54 - a profile comes before logging** (proposed 2026-11-04, Robert: *"make it so that the profile must
+  be entered before logging any meals"*; amends R38). An account with no profile cannot add an entry to a
+  day. The API refuses it (409, "set up your profile before logging a meal"), and the screen does not offer a
+  dead button: any "add" action opens the Profile dialog with a line saying why. Everything else works
+  without one: reading days, creating and editing foods and meals, looking a food up, removing an entry. So
+  nothing already logged is trapped, and a person can prepare their foods while they decide on a profile.
+  *Check:* a test that adding an entry without a profile is refused and writes nothing (both an entry and a
+  looked-up food, so a refusal cannot leave an orphan food behind), that every other route still answers, that
+  the same call succeeds once a profile exists and fails again after it is removed, and an e2e test that
+  the add buttons open the Profile dialog and that logging works straight after saving.
 
 **Worked examples** (invented people; every figure computed by the formulas above, not by hand):
 
@@ -1087,6 +1099,27 @@ depends on the other. Robert's call on order.
   - *Greeting by name in the bot, or the bot reading targets.* Possible after D25, not part of this.
   - *Account deletion (R29, Part 10 step 4).* `RESTRICT` means the deletion route must remove the profile
     first. Noted here so step 4 does not discover it.
+
+**Amendment, 2026-11-04 - decisions R54 needs. Proposed; nothing built until Robert confirms.**
+
+- **D32 - where it is enforced.** Proposed: in the API *and* on the screen. A screen-only rule is a suggestion:
+  the bot is a client of the same API (D14) and would walk straight past it, and "the API is the authority, the
+  browser holds a copy" is already how this app works (D12). The cost: the bot cannot log for an account with
+  no profile until one is saved on the web. It needs no code to say so, because `bot.app_refusal` relays the
+  app's own sentence for any refusal that is not a 403, and this one is a 409 on purpose (a 403 is the bot's cue
+  for "this chat is not linked"). The bot is still never given the profile (R53); the check is only whether one
+  exists. *Alternative:* screen only, which leaves the bot able to log.
+- **D33 - what stays open.** Only adding an entry is refused. Reading, foods, meals, lookups and removing an
+  entry are not, so the rule gates the thing asked for and traps nothing. The looked-up-food route creates a
+  food and then an entry, so the entry is checked first: a refusal must not leave a food behind.
+- **D34 - the live account.** It has no profile, so the first thing it meets after the rebuild is this rule.
+  That is the intent, but it is worth saying plainly: until the profile dialog is filled in, the app reads but
+  does not log, **including from Telegram.** A fresh database is seeded with sample data and **no** profile,
+  because a seed must not pre-fill a person.
+- **D35 - what it costs to build.** About 30 backend tests that log as the seeded account, the 15 browser tests
+  that log, and the component tests' stub, all gain a step that gives the account an invented profile first. A
+  helper does it in one line each and removes it afterwards, so the suites still start from "no profile" where
+  that is the thing under test. The e2e stack is rebuilt every run, so nothing carries over.
 
 **Steps, each stopping for approval:**
 
