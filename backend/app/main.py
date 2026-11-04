@@ -23,6 +23,7 @@ from app.auth import SESSION_SECRET
 from app.auth import router as session_router
 from app.db import initialise
 from app.lookup import router as lookup_router
+from app.profile import router as profile_router
 from app.telegram import router as telegram_router
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -64,6 +65,7 @@ async def refuse_invalid(_: Request, error: RequestValidationError) -> JSONRespo
 app.include_router(session_router)
 app.include_router(telegram_router)
 app.include_router(lookup_router)
+app.include_router(profile_router)
 app.include_router(nutrition_router)
 
 

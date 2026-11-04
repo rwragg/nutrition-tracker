@@ -1,8 +1,8 @@
 {
   "name": "nutrition-tracker",
-  "status": "approved by Robert 2026-11-01, and implemented. Four revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), accounts became real: email, telegram id and a stored password hash (3 -> 4), and pairing codes arrived so a chat can be bound to an account (4 -> 5).",
+  "status": "approved by Robert 2026-11-01, and implemented. Four revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), accounts became real: email, telegram id and a stored password hash (3 -> 4), and pairing codes arrived so a chat can be bound to an account (4 -> 5), and a profile per account arrived so calorie and protein targets can be worked out from the person (6 -> 7, Part 12: an additive table, nothing existing touched).",
   "engine": "sqlite",
-  "schema_version": 6,
+  "schema_version": 7,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -42,6 +42,26 @@
       ],
       "primary_key": ["code"],
       "indexes": [{ "name": "telegram_codes_by_user", "columns": ["user_id"] }]
+    },
+    {
+      "name": "profiles",
+      "purpose": "What the targets are worked out from (Part 12, R38-R46): one row per account, inputs only. No target is stored (R42) - a target derived from the weight goes stale the day the weight changes - so the two overrides are the person's own figures, which are inputs too. An account with no row is a legitimate state and sees the fixed targets (R38). Private to the account, and reachable only from a signed-in browser, not by the bot (R41, R53).",
+      "columns": [
+        { "name": "user_id", "type": "TEXT", "nullable": false, "references": "users(id) ON DELETE RESTRICT", "notes": "Primary key, so a second profile for one account cannot exist. RESTRICT: leaving an account (Part 10 step 4) must remove the profile first." },
+        { "name": "display_name", "type": "TEXT", "nullable": false, "check": "1 to 40 characters", "notes": "What the app calls the person. Not the username, which is a login." },
+        { "name": "sex", "type": "TEXT", "nullable": false, "check": "one of 'female' or 'male'", "notes": "The calorie equation has one constant for each. Used for that and for the calorie floor, nothing else." },
+        { "name": "birth_date", "type": "TEXT", "nullable": false, "check": "a valid ISO date", "notes": "A date, not an age: an age is derived and goes stale. The 18 to 100 limit is enforced by the route, because it depends on today's date, which a CHECK cannot know." },
+        { "name": "height_cm", "type": "REAL", "nullable": false, "check": "120 to 230", "notes": "Always metric. The units setting changes what the form shows, not what is stored." },
+        { "name": "weight_kg", "type": "REAL", "nullable": false, "check": "30 to 300", "notes": "Always metric." },
+        { "name": "weight_on", "type": "TEXT", "nullable": false, "check": "a valid ISO date", "notes": "When the weight was set. Written by the server, and kept when a save does not change the weight, so the Day view can say what a target rests on (R48)." },
+        { "name": "activity", "type": "TEXT", "nullable": false, "check": "one of 'sedentary', 'light', 'moderate', 'active', 'very_active'" },
+        { "name": "goal", "type": "TEXT", "nullable": false, "check": "one of 'lose', 'maintain', 'gain'" },
+        { "name": "units", "type": "TEXT", "nullable": false, "default": "metric", "check": "one of 'metric' or 'imperial'", "notes": "A display preference only." },
+        { "name": "kcal_override", "type": "INTEGER", "nullable": true, "check": "800 to 6000, or NULL", "notes": "The person's own calorie target. It wins over the computed one, and the calorie floor does not apply to it (R46, D28)." },
+        { "name": "protein_override", "type": "INTEGER", "nullable": true, "check": "20 to 400, or NULL", "notes": "The person's own protein target. Independent of the calorie override." }
+      ],
+      "primary_key": ["user_id"],
+      "indexes": []
     },
     {
       "name": "foods",
@@ -131,6 +151,7 @@
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
     "CREATE TABLE telegram_codes (\n    code    TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    expires TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', expires) IS expires),\n    used    INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))\n)",
     "CREATE INDEX telegram_codes_by_user ON telegram_codes (user_id)",
+    "CREATE TABLE profiles (\n    user_id          TEXT PRIMARY KEY REFERENCES users (id) ON DELETE RESTRICT,\n    display_name     TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 40),\n    sex              TEXT NOT NULL CHECK (sex IN ('female', 'male')),\n    birth_date       TEXT NOT NULL CHECK (date(birth_date) IS birth_date),\n    height_cm        REAL NOT NULL CHECK (height_cm BETWEEN 120 AND 230),\n    weight_kg        REAL NOT NULL CHECK (weight_kg BETWEEN 30 AND 300),\n    weight_on        TEXT NOT NULL CHECK (date(weight_on) IS weight_on),\n    activity         TEXT NOT NULL CHECK (activity IN ('sedentary', 'light', 'moderate', 'active', 'very_active')),\n    goal             TEXT NOT NULL CHECK (goal IN ('lose', 'maintain', 'gain')),\n    units            TEXT NOT NULL DEFAULT 'metric' CHECK (units IN ('metric', 'imperial')),\n    kcal_override    INTEGER CHECK (kcal_override IS NULL OR kcal_override BETWEEN 800 AND 6000),\n    protein_override INTEGER CHECK (protein_override IS NULL OR protein_override BETWEEN 20 AND 400)\n)",
     "CREATE TABLE foods (\n    id       TEXT PRIMARY KEY,\n    user_id  TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name     TEXT NOT NULL,\n    unit     TEXT NOT NULL CHECK (unit IN ('cup', 'tbsp', 'tsp', 'oz', 'piece', 'slice', 'scoop', 'g')),\n    calories REAL NOT NULL CHECK (calories >= 0),\n    protein  REAL NOT NULL CHECK (protein >= 0),\n    carbs    REAL NOT NULL CHECK (carbs >= 0),\n    fat      REAL NOT NULL CHECK (fat >= 0),\n    source    TEXT NOT NULL DEFAULT 'typed' CHECK (source IN ('typed', 'usda')),\n    source_id TEXT\n)",
     "CREATE INDEX foods_by_user ON foods (user_id)",
     "CREATE TABLE meals (\n    id      TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    name    TEXT NOT NULL\n)",

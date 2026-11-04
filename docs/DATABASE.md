@@ -31,6 +31,7 @@ reasoning: what each choice buys, what it costs, and what it deliberately leaves
 | --- | --- | --- |
 | `users` | one row per person | every other table carries `user_id`, so R2 is a filter rather than a redesign |
 | `foods` | a food and the macros one unit of it contributes | the unit is part of the record; macros are per unit, exactly as the frontend's `Food` type says |
+| `profiles` | what a person's calorie and protein targets are worked out from | body measurements are not a login: kept apart from `users` so an account with none is simply absent, and so the two can be handled differently |
 | `meals` | a named group of foods | the name is the whole record |
 | `meal_foods` | which foods a meal is made of, and how much of each | a meal is a list, and a list in a column would have to be parsed to answer "which meals use this food?" |
 | `entries` | one thing logged, in one section, on one date, by one user | the only table the frontend's `LogEntry` maps to — and it carries its own date, so there is no day table to join through |
@@ -167,6 +168,38 @@ migrated one column for column.
 **What it does not do.** There is no table-level rule that `usda` goes with an id: SQLite cannot add one
 by `ALTER`, and a fresh file and a migrated one must be the same shape. The API enforces the pairing.
 
+## A profile per account, and version 7
+
+**What changed.** A `profiles` table, one row per account, with `user_id` as its primary key and a foreign
+key to `users` (`ON DELETE RESTRICT`). It holds a display name, sex, date of birth, height, weight and the
+date the weight was set, an activity level, a goal, a units preference, and two optional figures the
+person may set themselves (Part 12, R38-R46).
+
+**Inputs, never targets.** No calorie or protein target is stored (R42). A target is derived from the
+weight, so a stored one is a second copy that goes stale the day the weight changes; the app works it out
+on every read (`app/targets.py`). The two override columns are the person's own figures, so they are
+inputs. That keeps the fourth sign-off decision below intact: targets stay out of the database.
+
+**Why a table of its own, not columns on `users`.** `users` is who may sign in. A profile is body
+measurements, and the two want different handling: an account with no profile is a legitimate state (it
+sees the fixed targets, R38) and is represented by no row rather than by a row of NULLs; the profile is
+reachable only from a signed-in browser and never by the bot (R53), while `users` is read by every
+route; and leaving an account (Part 10 step 4) now has two things to remove, in the right order, because
+`RESTRICT` refuses the other order.
+
+**How the step works.** The simplest kind, in the mould of 4 -> 5: a new table needs no rebuild, no added
+column and nothing copied. The DDL is defined once (`PROFILES_DDL`) and used by both the schema and the
+migration, so a fresh file and a migrated one cannot differ; a test compares them column for column and
+by their SQL. Verified on a copy of the handover database, not only in tests: version 6 to 7 with 1 user,
+32 foods, 5 meals, 19 ingredients and 18 entries unchanged, no profile rows, and
+`PRAGMA foreign_key_check` clean.
+
+**What a CHECK can and cannot hold.** Bounds on height, weight and both overrides, the closed lists, a
+name of 1 to 40 characters, and real dates are all in the table, so a route that forgets one is still
+refused. Dates use `IS`, for the reason the section on the schema as run gives. The one rule that is not
+here is the age limit of 18 to 100: it depends on today's date, which a CHECK cannot know, so the route
+enforces it (R40).
+
 ## Decisions worth stating
 
 - **TEXT ids, not integers.** Seeded rows keep the slugs the frontend already uses (`hummus`,
@@ -280,8 +313,10 @@ Every route the schema needs, and what the two parts ask for:
 
 ## What is deliberately not here
 
-- **Targets.** R10 and R17 put them in one place, `frontend/lib/targets.ts`. The API returns sums, not
-  judgements, so nothing needs to store them. Per-user targets would fit this schema later.
+- **Targets.** Still not stored. Until Part 12 the fixed ones lived in one place, `frontend/lib/targets.ts`
+  (R10, R17). A profile (version 7) now gives a person their own, but as the inputs they are worked out
+  from, never as figures: see "A profile per account" above. The fixed ones remain the answer for an
+  account with no profile.
 - **Timestamps.** Nothing reads them yet.
 - **Migrations, beyond the one that exists.** One step is implemented — 2 → 3, for the gram basis —
   and it is the pattern for the next: versioned, verified by row count, and refused when there is no

@@ -23,7 +23,7 @@ from app.passwords import hash_password
 
 # Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
 # different version is migrated where a migration exists, and refused where it does not.
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "7"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
 
@@ -50,6 +50,41 @@ META = """
         value TEXT NOT NULL
     )
     """
+
+# What a profile may hold (Part 12, R39, R40). The bounds sit here as well as in the API so the
+# storage refuses what the route forgot to. The age limit is not here: it depends on today's date,
+# which a CHECK cannot know, so the route enforces it.
+SEXES = ("female", "male")
+ACTIVITY_LEVELS = ("sedentary", "light", "moderate", "active", "very_active")
+GOALS = ("lose", "maintain", "gain")
+UNIT_SYSTEMS = ("metric", "imperial")
+
+
+def _in(values: tuple[str, ...]) -> str:
+    return ", ".join(f"'{value}'" for value in values)
+
+
+# One row per account. `user_id` is the key, so a second profile for the same account cannot exist,
+# and RESTRICT means deleting an account has to remove its profile first (noted for Part 10 step 4).
+# Inputs only: no target is stored (R42), because a target derived from the weight goes stale when
+# the weight changes. The two overrides are the person's own figures and so are inputs too (R46).
+PROFILES_DDL = f"""
+    CREATE TABLE IF NOT EXISTS profiles (
+        user_id          TEXT PRIMARY KEY REFERENCES users (id) ON DELETE RESTRICT,
+        display_name     TEXT NOT NULL CHECK (length(display_name) BETWEEN 1 AND 40),
+        sex              TEXT NOT NULL CHECK (sex IN ({_in(SEXES)})),
+        birth_date       TEXT NOT NULL CHECK (date(birth_date) IS birth_date),
+        height_cm        REAL NOT NULL CHECK (height_cm BETWEEN 120 AND 230),
+        weight_kg        REAL NOT NULL CHECK (weight_kg BETWEEN 30 AND 300),
+        weight_on        TEXT NOT NULL CHECK (date(weight_on) IS weight_on),
+        activity         TEXT NOT NULL CHECK (activity IN ({_in(ACTIVITY_LEVELS)})),
+        goal             TEXT NOT NULL CHECK (goal IN ({_in(GOALS)})),
+        units            TEXT NOT NULL DEFAULT 'metric' CHECK (units IN ({_in(UNIT_SYSTEMS)})),
+        kcal_override    INTEGER CHECK (kcal_override IS NULL OR kcal_override BETWEEN 800 AND 6000),
+        protein_override INTEGER CHECK (protein_override IS NULL OR protein_override BETWEEN 20 AND 400)
+    )
+"""
+
 
 def foods_ddl(table: str = "foods", *, with_source: bool = True) -> str:
     """The foods table, taking its unit list from UNITS so the two cannot drift apart.
@@ -107,6 +142,7 @@ SCHEMA = (
     )
     """,
     "CREATE INDEX IF NOT EXISTS telegram_codes_by_user ON telegram_codes (user_id)",
+    PROFILES_DDL,
     foods_ddl(),
     "CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)",
     """
@@ -326,6 +362,17 @@ def _migrate_food_source(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE foods ADD COLUMN source_id TEXT")
 
 
+def _migrate_profiles(connection: sqlite3.Connection) -> None:
+    """6 -> 7: a profile per account, so targets can be worked out from the person (Part 12, R52).
+
+    Only adds a table, in the mould of 4 -> 5: nothing is rebuilt and no existing row is touched.
+    An existing account simply has no profile, which is a legitimate state (R38) and reads exactly
+    as it did before. The DDL is the one `SCHEMA` runs, so a fresh file and a migrated one agree.
+    """
+    with connection:
+        connection.execute(PROFILES_DDL)
+
+
 # Keyed by the version being migrated FROM, each with the version it produces and the step that
 # does it. The steps do not write the version themselves: the loop below does, from the target
 # recorded here. That is not tidiness — a step that wrote the *current* `SCHEMA_VERSION` instead
@@ -336,6 +383,7 @@ MIGRATIONS: dict[str, tuple[str, Callable[[sqlite3.Connection], None]]] = {
     "3": ("4", _migrate_users_accounts),
     "4": ("5", _migrate_telegram_codes),
     "5": ("6", _migrate_food_source),
+    "6": ("7", _migrate_profiles),
 }
 
 

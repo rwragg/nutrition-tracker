@@ -944,7 +944,7 @@ because they need a second USDA call per food and a decision about which portion
   USDA call per food and a choice of which portion to trust; and the lookup from the Telegram bot, which
   belongs with the model parser and confirm-before-write (D19).
 
-## Part 12 - a profile, and targets worked out from it · **draft for approval, nothing built**
+## Part 12 - a profile, and targets worked out from it · **approved 2026-11-04; step 1 (backend) built, step 2 not started**
 
 Robert's ask, 2026-11-04: *"add in a plan for a user profile ... would need name, etc. and then based on the
 profile we would calculate kcal and protein needs."* No model is involved and nothing leaves the machine: a
@@ -1027,6 +1027,12 @@ depends on the other. Robert's call on order.
   primary key and a foreign key to `users` with `ON DELETE RESTRICT`. No existing row is touched, version 7
   is recorded beside the step, and an existing database opens with no profile. *Check:* the migration test
   in the pattern of 4 -> 5 and 5 -> 6, and the chain test from the oldest version.
+- **R53 - the profile is reachable from a signed-in browser and from nothing else** (added at build,
+  2026-11-04). `auth.current_user` also accepts the Telegram bot speaking for a bound chat, which is right
+  for foods and meals and wrong for body measurements: anything holding the bot secret could otherwise read
+  or replace someone's profile. The profile routes take the session and refuse the bot, so the bot reads
+  no profile until a decision to let it (D31). *Check:* a test that the same bot credentials open
+  `/api/foods` and are refused (401) on all three profile methods.
 
 **Worked examples** (invented people; every figure computed by the formulas above, not by hand):
 
@@ -1037,7 +1043,7 @@ depends on the other. Robert's call on order.
 | C | woman, 55, 165 cm, 70 kg, light, maintain | 1,295.2 | 1,781.0 | 1,781.0 | **1,780 kcal** | 112 -> **110 g** |
 | D | man, 25, 183 cm, 75 kg, active, gain | 1,773.8 | 3,059.7 | 3,365.7 | **3,370 kcal** | 120 -> **120 g** |
 
-**Decisions - proposed, Robert to confirm each:**
+**Decisions - accepted as drafted (Robert, 2026-11-04: "seems good, please start to build").** He did not go through them one by one, so D25, D27, D28 and D30 are the ones worth a second look at the step 2 gate, because they are the ones that shape what he sees:
 
 - **D25 - where the targets are worked out.** Proposed: on the backend, in one module, returned by the profile
   route together with the working. One implementation, tested in pytest at the pinned figures, and the bot
@@ -1087,6 +1093,45 @@ depends on the other. Robert's call on order.
    examples. The figures above are what Robert checks before the screen exists.
 2. *Frontend.* The Profile dialog, the Day view reading the profile's targets, the no-profile prompt, the
    screenshot script on its own stack, and the e2e test. Then `CLAUDE.md` and `docs/RESUME.md` revised for D25.
+
+### Status - step 1 built, 2026-11-04
+
+**Built.** The 6 -> 7 migration and the `profiles` table (`db.PROFILES_DDL`, one definition used by both the
+schema and the migration); the calculation in its own pure module (`app/targets.py`); `GET`, `PUT` and
+`DELETE /api/profile` (`app/profile.py`); `docs/schema.json` and `docs/DATABASE.md` brought to version 7.
+Not deployed: the live container still runs the image built before this, at schema 6, and its database
+migrates when the image is rebuilt (snapshot first, as before).
+
+**Verified, by running it.** Backend 360 passed (was 282; 78 new: 25 on the arithmetic, 50 on the routes,
+3 on the migration), including the image-building tests. Frontend 140 unit tests and the 28 browser tests
+still pass; `tsc` is clean. The migration was run against a copy of the handover database: version 6 to 7,
+every count unchanged, no profile rows, `foreign_key_check` clean. The four worked examples above are
+pinned as tests and match the formulas to the digit. No linter is installed, so PEP 8 is not machine
+checked here (as `R`-style requirements say when they cannot be enforced).
+
+**Where the build differs from the draft, and why.**
+
+- **R53 was added** (above): the bot's credentials would otherwise have reached the profile.
+- **Conversion between pounds/inches and kg/cm is not in the backend.** The API takes and stores metric,
+  and the units setting is a display preference. That makes R39's check ("190 lb is stored as 86.18 kg and
+  read back as 190.0 lb, 5 ft 7 in as 170.2 cm") a step 2 test, in the one place the conversion will live
+  (`frontend/lib/units.ts`). Step 1 tests that metric is stored as sent and the preference is kept.
+- **The server dates the weight.** `weight_on` is set by the server and kept when a save does not move the
+  weight by 0.05 kg or more, because a converted pounds figure never round-trips to the stored value
+  exactly and that is not a new weigh-in. Step 2 should send back the stored kilograms unchanged when the
+  displayed figure has not been edited.
+- **No profile answers 200 with nulls, not 404**, since the browser asks on every load and a 404 each
+  time is console noise the end-to-end suite counts. `DELETE` of an absent profile is 204.
+- **R51 is half met.** No real figure is in any test, fixture or this document, and every person above is
+  invented. The screenshot script that must refuse the live stack is step 2.
+- **R47, R48, R49 are step 2**, as planned.
+
+**Found while building, not in the plan.** `app.routes` no longer lists routes from included routers flat in
+this FastAPI version, so a test that walked it found nothing and failed; the OpenAPI schema is what to read
+for "what is served". Worth knowing before the next test of that kind.
+
+**Not touched yet, on purpose.** The rule in `CLAUDE.md` that targets live only in `frontend/lib/targets.ts`
+stays true until step 2 makes the Day view read the profile; D25 revises it then, in the same change.
 
 ## Open questions
 

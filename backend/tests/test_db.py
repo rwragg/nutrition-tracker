@@ -61,7 +61,9 @@ def test_a_missing_file_becomes_the_whole_schema(tmp_path: Path) -> None:
     connection = db.initialise(path, today=date(2026, 11, 1))
 
     assert path.exists()
-    assert table_names(connection) == {"users", "telegram_codes", "foods", "meals", "meal_foods", "entries", "meta"}
+    assert table_names(connection) == {
+        "users", "telegram_codes", "profiles", "foods", "meals", "meal_foods", "entries", "meta",
+    }
     assert index_names(connection) == {
         "users_by_email",
         "users_by_telegram",
@@ -163,6 +165,9 @@ def rewind(path: Path, version: str) -> sqlite3.Connection:
     String comparison is fine for the version, which is a single digit.
     """
     connection = sqlite3.connect(path)
+
+    if version < "7":  # before profiles
+        connection.execute("DROP TABLE profiles")
 
     if version < "6":  # before food sources
         connection.execute("ALTER TABLE foods DROP COLUMN source")
@@ -381,7 +386,7 @@ def test_a_version_5_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
     try:
         assert migrated.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()[0] == db.SCHEMA_VERSION == "6"
+        ).fetchone()[0] == db.SCHEMA_VERSION  # carried on through every later step too
 
         # every row intact, none of its figures touched
         after = migrated.execute(
@@ -406,6 +411,84 @@ def test_a_version_5_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
                 " VALUES ('odd', 'user', 'Odd', 'g', 1, 1, 1, 1, 'guessed')"
             )
     finally:
+        migrated.close()
+
+
+def test_a_version_6_file_is_migrated_rather_than_refused(tmp_path: Path) -> None:
+    """6 -> 7: a profile table is added and nothing else moves (Part 12, R52). Every existing
+    account simply has no profile, which is a legitimate state and reads as it did before."""
+    path = tmp_path / "v6.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+
+    legacy = rewind(path, "6")
+    assert legacy.execute(
+        "SELECT count(*) FROM sqlite_master WHERE name = 'profiles'"
+    ).fetchone()[0] == 0
+    users_before = legacy.execute("SELECT * FROM users ORDER BY id").fetchall()
+    foods_before = legacy.execute("SELECT * FROM foods ORDER BY id").fetchall()
+    entries_before = legacy.execute("SELECT * FROM entries ORDER BY id").fetchall()
+    legacy.close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == db.SCHEMA_VERSION == "7"
+
+        # nothing that existed was touched
+        assert [tuple(r) for r in migrated.execute("SELECT * FROM users ORDER BY id")] == [tuple(r) for r in users_before]
+        assert [tuple(r) for r in migrated.execute("SELECT * FROM foods ORDER BY id")] == [tuple(r) for r in foods_before]
+        assert [tuple(r) for r in migrated.execute("SELECT * FROM entries ORDER BY id")] == [tuple(r) for r in entries_before]
+
+        # the account that was already there has no profile, and the table is usable
+        assert migrated.execute("SELECT count(*) FROM profiles").fetchone()[0] == 0
+        migrated.execute(
+            "INSERT INTO profiles (user_id, display_name, sex, birth_date, height_cm, weight_kg,"
+            " weight_on, activity, goal) VALUES ('user', 'Ana', 'female', '1986-03-01', 165, 70,"
+            " '2026-11-04', 'light', 'maintain')"
+        )
+        assert migrated.execute("SELECT units FROM profiles").fetchone()[0] == "metric"  # the default
+        with pytest.raises(sqlite3.IntegrityError):  # one profile per account
+            migrated.execute(
+                "INSERT INTO profiles (user_id, display_name, sex, birth_date, height_cm, weight_kg,"
+                " weight_on, activity, goal) VALUES ('user', 'Again', 'male', '1986-03-01', 170, 80,"
+                " '2026-11-04', 'light', 'lose')"
+            )
+    finally:
+        migrated.close()
+
+
+def test_the_chain_runs_from_the_oldest_version_to_the_newest(tmp_path: Path) -> None:
+    """Every step, one after another, from version 2 (the oldest this build still carries)."""
+    path = tmp_path / "chain.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+    rewind(path, "2").close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == db.SCHEMA_VERSION == "7"
+        assert migrated.execute("SELECT count(*) FROM profiles").fetchone()[0] == 0
+    finally:
+        migrated.close()
+
+
+def test_a_fresh_file_and_a_migrated_one_have_the_same_profiles_table(tmp_path: Path) -> None:
+    """The version number claims the two are the same shape, constraints included."""
+    fresh = db.initialise(tmp_path / "fresh.db", today=date(2026, 11, 1))
+    db.initialise(tmp_path / "old.db", today=date(2026, 11, 1)).close()
+    rewind(tmp_path / "old.db", "6").close()
+    migrated = db.initialise(tmp_path / "old.db", today=date(2026, 11, 1))
+    try:
+        def shape(connection: sqlite3.Connection) -> tuple:
+            columns = [tuple(row)[1:] for row in connection.execute("PRAGMA table_info(profiles)")]
+            sql = connection.execute("SELECT sql FROM sqlite_master WHERE name = 'profiles'").fetchone()[0]
+            return columns, " ".join(sql.split())
+
+        assert shape(migrated) == shape(fresh)
+    finally:
+        fresh.close()
         migrated.close()
 
 

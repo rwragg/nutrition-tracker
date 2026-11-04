@@ -8,7 +8,7 @@ code, the code is right: say so and fix the sentence.
 ## Where it stands
 
 A nutrition tracker: a Next.js 16 frontend (a static export) served by a FastAPI backend in one container,
-the log in SQLite at **schema version 6**, real accounts, three views (Day, Foods, Meals), and an optional
+the log in SQLite at **schema version 7**, real accounts, three views (Day, Foods, Meals), and an optional
 Telegram bot that is a second client of the same API. Everything below is built, tested and running.
 
 - **Parts 1-9** are the MVP, the Telegram skeleton and the gram basis (`docs/PLAN.md`,
@@ -31,7 +31,7 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 282 passed (277 plus 5 container tests)
+cd backend && uv run pytest -q          # 360 passed (355 plus 5 container tests)
 cd ../frontend && npm test              # 140 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 28 passed, builds its own stack on :8100 with no USDA key
@@ -57,7 +57,7 @@ stops for Robert's approval before the next begins. Robert's note when handing o
 ### 1. Planned, decisions taken, no plan part written yet
 
 - **Confirm before writing, a model parser, and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`).**
-  The first job is to write the plan for it (a Part 12) and get it approved. Order within it:
+  The first job is to write the plan for it (a Part 13, since Part 12 is now the profile) and get it approved. Order within it:
   1. *Confirm before writing.* Anything parsed or transcribed is shown as "Log 2 eggs and 1 banana to
      breakfast? [Yes] [No]" and written only on Yes. The bot currently writes immediately, which is fine for
      a typed command and unacceptable for a transcript. Needs the bot to handle Telegram callback queries

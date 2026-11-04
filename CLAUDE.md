@@ -8,8 +8,10 @@ The root `PLAN.md` is superseded; ignore it.
 ## State
 
 Parts 1-9, Part 10 steps 1-2 (accounts; a chat linked by a pairing code) and Part 11 (suggest a food that
-is not in the list, from the person's own foods and from USDA) are done. Schema version 6. Nothing is in
-flight.
+is not in the list, from the person's own foods and from USDA) are done. **Part 12 (a profile, and calorie and
+protein targets worked out from it) is approved and half built:** step 1, the backend, is done at schema
+version 7; step 2, the screen, is not started, and `docs/PLAN.md` Part 12 says what it holds. Until step 2
+lands, the Day view still reads the fixed targets in `frontend/lib/targets.ts`.
 
 **Next, none started, each gated on Robert's approval:** write the plan for confirm-before-write, a model
 parser and lookup from the Telegram bot (D19-D21 in `docs/PLAN.md`); then voice (D16 still open); then
@@ -32,7 +34,7 @@ is "What is left" at the top of `docs/RESUME.md`. What the code review found and
 ```bash
 ./scripts/start.sh                       # build + start, app on :8000 (user / password)
 ./scripts/stop.sh
-cd backend && uv run pytest -q           # 282 tests
+cd backend && uv run pytest -q           # 360 tests
 cd frontend && npm test                  # 140 unit/component tests
 cd frontend && npm run lint && npx tsc --noEmit
 cd frontend && npm run test:e2e          # 28 Playwright tests, own stack on :8100
