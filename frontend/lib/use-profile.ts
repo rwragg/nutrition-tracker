@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, deleteProfile, getProfile, saveProfile } from "./api";
 import type { ProfileInput, ProfileState, SaveResult } from "./types";
 
-const OFFLINE = "Could not reach the server. Check your connection and try again.";
+const OFFLINE =
+  "Could not reach the server. Check your connection and try again.";
 
 function reason(error: unknown): string {
   return error instanceof ApiError ? error.message : OFFLINE;
@@ -22,16 +23,26 @@ export function useProfile() {
   const [state, setState] = useState<ProfileState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // True once the server has told us whether there is a profile, by a read, a save or a remove. A failed read
+  // leaves `state` null too, but that is "we do not know", not "there is none": the first must not tell a
+  // person to set one up, and dismissing an error message must not change which of the two it is.
+  const [known, setKnown] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     getProfile()
       .then((loaded) => {
-        if (active) setState(loaded);
+        if (active) {
+          setState(loaded);
+          setKnown(true);
+        }
       })
       .catch((cause: unknown) => {
-        if (active) setError(`Your profile could not be loaded, so the standard targets are showing. ${reason(cause)}`);
+        if (active)
+          setError(
+            `Your profile could not be loaded, so the standard targets are showing. ${reason(cause)}`,
+          );
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -46,6 +57,7 @@ export function useProfile() {
   const save = useCallback(async (input: ProfileInput): Promise<SaveResult> => {
     try {
       setState(await saveProfile(input));
+      setKnown(true);
       setError(null);
       return { ok: true };
     } catch (cause) {
@@ -57,6 +69,7 @@ export function useProfile() {
     try {
       await deleteProfile();
       setState(null);
+      setKnown(true);
       return { ok: true };
     } catch (cause) {
       return { ok: false, message: reason(cause) };
@@ -65,5 +78,8 @@ export function useProfile() {
 
   const dismissError = useCallback(() => setError(null), []);
 
-  return { state, loading, error, save, remove, dismissError };
+  /** The server has said there is no profile (R54: nothing can be added until there is one). */
+  const none = known && state === null;
+
+  return { state, none, loading, error, save, remove, dismissError };
 }

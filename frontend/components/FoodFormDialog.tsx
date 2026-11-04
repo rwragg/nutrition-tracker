@@ -16,6 +16,7 @@ import { matchFoods } from "@/lib/match";
 import CandidateList from "./CandidateList";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_PRIMARY } from "./styles";
+import { NeedProfileNotice, useProfileGate } from "./ProfileGate";
 
 const FIELDS: { key: keyof Macros; label: string }[] = [
   { key: "calories", label: "Calories" },
@@ -97,7 +98,9 @@ export default function FoodFormDialog({
       name: name.trim(),
       unit,
       macros,
-      ...(usda && unit === "g" ? { source: "usda" as const, sourceId: usda.sourceId } : {}),
+      ...(usda && unit === "g"
+        ? { source: "usda" as const, sourceId: usda.sourceId }
+        : {}),
     });
     setSaving(false);
 
@@ -108,6 +111,9 @@ export default function FoodFormDialog({
 
     onClose();
   }
+
+  const { needProfile } = useProfileGate();
+  const blocked = needProfile && !food;
 
   return (
     <Dialog
@@ -121,7 +127,7 @@ export default function FoodFormDialog({
           <button
             type="button"
             onClick={save}
-            disabled={!canSave || saving}
+            disabled={!canSave || saving || blocked}
             className={BTN_PRIMARY}
             data-testid="save-food"
           >
@@ -130,6 +136,7 @@ export default function FoodFormDialog({
         </div>
       }
     >
+      {!food && <NeedProfileNotice onClose={onClose} />}
       <div className="d-flex flex-column gap-3">
         {problem && (
           <p className="small mb-0 text-ember" data-testid="food-problem">
@@ -155,8 +162,13 @@ export default function FoodFormDialog({
 
           {similar.length > 0 && (
             <div className="mt-2" data-testid="similar-foods">
-              <p className="small text-muted-brand mb-1" data-testid="similar-heading">
-                {alreadyThere ? "You already have this food." : "Already in your list:"}
+              <p
+                className="small text-muted-brand mb-1"
+                data-testid="similar-heading"
+              >
+                {alreadyThere
+                  ? "You already have this food."
+                  : "Already in your list:"}
               </p>
               <ul className="list-unstyled mb-0 d-flex flex-column gap-1">
                 {similar.map(({ food: existing }) => (
@@ -168,7 +180,8 @@ export default function FoodFormDialog({
                     <span className="min-w-0">
                       <span className="fw-medium">{existing.name}</span>{" "}
                       <span className="tabular text-muted-brand">
-                        per {formatQuantity(1, existing.unit)} · {formatCalories(existing.macros.calories)} kcal
+                        per {formatQuantity(1, existing.unit)} ·{" "}
+                        {formatCalories(existing.macros.calories)} kcal
                       </span>
                     </span>
                     <button
@@ -196,34 +209,53 @@ export default function FoodFormDialog({
               >
                 {looking ? "Looking it up..." : "Look it up"}
               </button>
-              <span className="small text-muted-brand ms-2">in USDA FoodData Central</span>
+              <span className="small text-muted-brand ms-2">
+                in USDA FoodData Central
+              </span>
             </div>
           )}
 
           {lookupProblem && (
-            <p className="small text-ember mt-2 mb-0" role="alert" data-testid="lookup-problem">
+            <p
+              className="small text-ember mt-2 mb-0"
+              role="alert"
+              data-testid="lookup-problem"
+            >
               {lookupProblem}
             </p>
           )}
 
           {candidates && candidates.length === 0 && (
-            <p className="small text-muted-brand mt-2 mb-0" data-testid="lookup-empty">
-              USDA has nothing under that name. Try a simpler word, or enter the figures yourself.
+            <p
+              className="small text-muted-brand mt-2 mb-0"
+              data-testid="lookup-empty"
+            >
+              USDA has nothing under that name. Try a simpler word, or enter the
+              figures yourself.
             </p>
           )}
 
           {candidates && candidates.length > 0 && (
             <div className="mt-2">
               <p className="small text-muted-brand mb-2">
-                From USDA, generic foods. Picking one fills the form; nothing is saved until you do.
+                From USDA, generic foods. Picking one fills the form; nothing is
+                saved until you do.
               </p>
-              <CandidateList candidates={candidates} onPick={use} pickLabel="Use" />
+              <CandidateList
+                candidates={candidates}
+                onPick={use}
+                pickLabel="Use"
+              />
             </div>
           )}
 
           {usda && unit === "g" && (
-            <p className="small text-muted-brand mt-2 mb-0" data-testid="usda-note">
-              Figures are USDA&apos;s, per gram. Check them, then create the food.
+            <p
+              className="small text-muted-brand mt-2 mb-0"
+              data-testid="usda-note"
+            >
+              Figures are USDA&apos;s, per gram. Check them, then create the
+              food.
             </p>
           )}
         </div>
@@ -256,7 +288,10 @@ export default function FoodFormDialog({
           <div className="row g-3">
             {FIELDS.map((field) => (
               <div key={field.key} className="col-6">
-                <label className="form-label small text-muted-brand" htmlFor={`food-${field.key}`}>
+                <label
+                  className="form-label small text-muted-brand"
+                  htmlFor={`food-${field.key}`}
+                >
                   {field.label}
                 </label>
                 <input
@@ -267,7 +302,10 @@ export default function FoodFormDialog({
                   value={macros[field.key]}
                   data-testid={`food-${field.key}`}
                   onChange={(event) =>
-                    setMacros({ ...macros, [field.key]: Number(event.target.value) || 0 })
+                    setMacros({
+                      ...macros,
+                      [field.key]: Number(event.target.value) || 0,
+                    })
                   }
                   className="form-control"
                 />

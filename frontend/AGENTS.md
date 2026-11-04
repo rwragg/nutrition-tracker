@@ -79,7 +79,12 @@ and the `cacheComponents` machinery that enables it; neither is used here.
   140 g protein / 250 g carbs / 70 g fat. An account with a profile sees calories and protein that the
   **server** worked out from it (D25), and no carbs or fat target (D30). `targets.ts` only chooses between
   them; it does no arithmetic, so there is one calculation and it is tested in the backend. The Profile
-  dialog shows the server's own working, and a refusal is shown as it came, naming the field. The true height
+  dialog shows the server's own working, and a refusal is shown as it came, naming the field.
+- **Nothing is added without a profile (R54).** `components/ProfileGate.tsx` carries `needProfile` (true only once the
+  server has *said* there is none: `use-profile` keeps a `known` flag, because a failed read also leaves the state null
+  and must not tell anyone to set one up) and `NeedProfileNotice`, shown at the top of the five dialogs that create
+  something (add food, add meal, look up, new food, new meal; editing is not gated). Each keeps its Add or Create button
+  disabled; the link closes that dialog and opens the profile one. The server refuses regardless. The true height
   and weight are held in metric and the boxes only display them, so switching units can never change a figure.
 
 ## Conventions

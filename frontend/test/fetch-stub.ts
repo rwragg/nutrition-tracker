@@ -1,6 +1,20 @@
 import { vi } from "vitest";
-import type { Day, Food, FoodCandidate, LogEntry, Meal, Section } from "@/lib/types";
-import { DATES, EMPTY_SECTIONS, FOODS, MEALS, SECTIONS_BY_DATE, macrosOf } from "./fixture";
+import type {
+  Day,
+  Food,
+  FoodCandidate,
+  LogEntry,
+  Meal,
+  Section,
+} from "@/lib/types";
+import {
+  DATES,
+  EMPTY_SECTIONS,
+  FOODS,
+  MEALS,
+  SECTIONS_BY_DATE,
+  macrosOf,
+} from "./fixture";
 
 type SessionAnswer = { ok: boolean; body?: unknown; status?: number };
 type LoginAnswer = { ok: boolean; body?: unknown; status?: number };
@@ -34,7 +48,10 @@ function world(): World {
       ingredients: meal.ingredients.map((item) => ({ ...item })),
     })),
     entries: Object.fromEntries(
-      DATES.map((date) => [date, cloneSections(SECTIONS_BY_DATE[date] ?? EMPTY_SECTIONS)]),
+      DATES.map((date) => [
+        date,
+        cloneSections(SECTIONS_BY_DATE[date] ?? EMPTY_SECTIONS),
+      ]),
     ),
     created: 0,
   };
@@ -52,12 +69,33 @@ function world(): World {
  * either way. Signed in by default, because that is the state most tests are about; a test that
  * needs the signed-out screen or a failed sign-in overrides the handler it cares about.
  */
+/** Nobody real (R51): the account every stubbed test is signed in as, unless it asks for none. */
+export const STUB_PERSON: Record<string, unknown> = {
+  display_name: "Ana Example",
+  sex: "male",
+  birth_date: "1986-03-01",
+  height_cm: 178,
+  weight_kg: 82,
+  weight_on: "2026-10-12",
+  activity: "moderate",
+  goal: "lose",
+  units: "metric",
+  kcal_override: null,
+  protein_override: null,
+};
+
 export function stubFetch(
   handlers: {
     session?: SessionAnswer;
-    login?: (submitted: { username?: string; password?: string }) => LoginAnswer;
+    login?: (submitted: {
+      username?: string;
+      password?: string;
+    }) => LoginAnswer;
     /** Answer a registration. Refuse one with {ok:false, status:409, body:{detail:"..."}}. */
-    register?: (submitted: { username?: string; email?: string }) => LoginAnswer;
+    register?: (submitted: {
+      username?: string;
+      email?: string;
+    }) => LoginAnswer;
     /**
      * The Telegram link. `linked` is the chat the account starts linked to. A code is minted as `code`
      * and expires `expiresInMs` from now, which may be negative for a code that has already run out.
@@ -68,30 +106,47 @@ export function stubFetch(
      * What a food lookup finds. `results` answers every query; `refuse` answers with that status and
      * sentence instead. `asked` collects the queries, so a test can see what the app sent.
      */
-    lookup?: { results?: FoodCandidate[]; refuse?: { status: number; detail: string }; asked?: string[] };
+    lookup?: {
+      results?: FoodCandidate[];
+      refuse?: { status: number; detail: string };
+      asked?: string[];
+    };
     /**
-     * The profile. `existing` is what the account starts with (none by default). Saving stores what was
+     * The profile. `existing` is what the account starts with: **an invented person by default**, because an
+     * account with no profile cannot add anything (R54) and most tests add something; a test about having none
+     * says `existing: null`. Saving stores what was
      * sent and answers with canned targets - 2,150 kcal and 130 g, or the person's own figures where they
      * set them - because the arithmetic is the backend's and is tested there; a second copy here would be
      * one more thing to drift. `sent` collects every body saved, so a test can see exactly what went out.
      * `today` dates a changed weight, as the server does. `refuse` answers a save with a 422 naming a field.
      */
     profile?: {
-      existing?: Record<string, unknown>;
+      existing?: Record<string, unknown> | null;
       sent?: Record<string, unknown>[];
       today?: string;
       floored?: boolean;
       refuse?: { field: string; msg: string };
     };
     /** Answer a request yourself - to fail one, or to answer a route the stub does not know. */
-    intercept?: (request: { path: string; method: string; body: unknown }) => Intercepted;
+    intercept?: (request: {
+      path: string;
+      method: string;
+      body: unknown;
+    }) => Intercepted;
     /** Requests that reject, the way they do when the server cannot be reached. All of them, or those a predicate picks out. */
-    offline?: boolean | ((request: { path: string; method: string }) => boolean);
+    offline?:
+      boolean | ((request: { path: string; method: string }) => boolean);
   } = {},
 ) {
   const data = world();
-  const chat = { id: handlers.telegram?.linked ?? (null as string | null), minted: 0 };
-  let profile: Record<string, unknown> | null = handlers.profile?.existing ?? null;
+  const chat = {
+    id: handlers.telegram?.linked ?? (null as string | null),
+    minted: 0,
+  };
+  let profile: Record<string, unknown> | null =
+    handlers.profile && "existing" in handlers.profile
+      ? (handlers.profile.existing ?? null)
+      : { ...STUB_PERSON };
 
   /** The shape the backend answers with: the profile, and targets worked out from it. Canned, see above. */
   const profileAnswer = () => {
@@ -107,8 +162,10 @@ export function stubFetch(
       targets: {
         calories: kcalOwn ?? computed.calories,
         protein: proteinOwn ?? computed.protein,
-        calories_from: kcalOwn !== null && kcalOwn !== undefined ? "own" : "profile",
-        protein_from: proteinOwn !== null && proteinOwn !== undefined ? "own" : "profile",
+        calories_from:
+          kcalOwn !== null && kcalOwn !== undefined ? "own" : "profile",
+        protein_from:
+          proteinOwn !== null && proteinOwn !== undefined ? "own" : "profile",
         computed,
         working: {
           age: 40,
@@ -134,21 +191,32 @@ export function stubFetch(
 
     const answer = (payload: unknown, status = 200) =>
       Promise.resolve(
-        new Response(status === 204 ? null : JSON.stringify(payload ?? {}), { status }),
+        new Response(status === 204 ? null : JSON.stringify(payload ?? {}), {
+          status,
+        }),
       );
 
     const unreachable =
-      handlers.offline === true || (typeof handlers.offline === "function" && handlers.offline({ path, method }));
+      handlers.offline === true ||
+      (typeof handlers.offline === "function" &&
+        handlers.offline({ path, method }));
     if (unreachable) {
       return Promise.reject(new TypeError("Failed to fetch"));
     }
 
     const intercepted = handlers.intercept?.({ path, method, body });
-    if (intercepted) return answer(intercepted.body, intercepted.status ?? (intercepted.ok ? 200 : 500));
+    if (intercepted)
+      return answer(
+        intercepted.body,
+        intercepted.status ?? (intercepted.ok ? 200 : 500),
+      );
 
     // --- the session ------------------------------------------------------------------
     if (path === "/api/session") {
-      const session = handlers.session ?? { ok: true, body: { username: "user" } };
+      const session = handlers.session ?? {
+        ok: true,
+        body: { username: "user" },
+      };
       return answer(session.body, session.status ?? (session.ok ? 200 : 401));
     }
 
@@ -158,14 +226,23 @@ export function stubFetch(
         body: { id: `user-${++data.created}`, username: body?.username },
       };
       return answer(
-        registered.body ?? { id: `user-${++data.created}`, username: body?.username },
+        registered.body ?? {
+          id: `user-${++data.created}`,
+          username: body?.username,
+        },
         registered.status ?? (registered.ok ? 201 : 409),
       );
     }
 
     if (path === "/api/login") {
-      const login = handlers.login?.(body ?? {}) ?? { ok: true, body: { username: body?.username } };
-      return answer(login.body ?? { username: body?.username }, login.status ?? (login.ok ? 200 : 401));
+      const login = handlers.login?.(body ?? {}) ?? {
+        ok: true,
+        body: { username: body?.username },
+      };
+      return answer(
+        login.body ?? { username: body?.username },
+        login.status ?? (login.ok ? 200 : 401),
+      );
     }
 
     if (path === "/api/logout") return answer({ status: "signed out" });
@@ -175,16 +252,31 @@ export function stubFetch(
       handlers.lookup?.asked?.push(url.searchParams.get("q") ?? "");
       const refuse = handlers.lookup?.refuse;
       if (refuse) return answer({ detail: refuse.detail }, refuse.status);
-      return answer({ query: url.searchParams.get("q"), results: handlers.lookup?.results ?? [] });
+      return answer({
+        query: url.searchParams.get("q"),
+        results: handlers.lookup?.results ?? [],
+      });
     }
 
     // --- the profile (Part 12) -----------------------------------------------------------
-    if (path === "/api/profile" && method === "GET") return answer(profileAnswer());
+    if (path === "/api/profile" && method === "GET")
+      return answer(profileAnswer());
 
     if (path === "/api/profile" && method === "PUT") {
       const refuse = handlers.profile?.refuse;
       if (refuse) {
-        return answer({ detail: [{ type: "value_error", loc: ["body", refuse.field], msg: refuse.msg }] }, 422);
+        return answer(
+          {
+            detail: [
+              {
+                type: "value_error",
+                loc: ["body", refuse.field],
+                msg: refuse.msg,
+              },
+            ],
+          },
+          422,
+        );
       }
 
       handlers.profile?.sent?.push(body);
@@ -192,7 +284,10 @@ export function stubFetch(
       // The server dates a weight by whether it moved by 0.05 kg or more.
       const today = handlers.profile?.today ?? "2026-11-04";
       const kept =
-        profile && Math.abs((profile.weight_kg as number) - body.weight_kg) < 0.05 ? (profile.weight_on as string) : today;
+        profile &&
+        Math.abs((profile.weight_kg as number) - body.weight_kg) < 0.05
+          ? (profile.weight_on as string)
+          : today;
       profile = { ...body, weight_on: kept };
       return answer(profileAnswer());
     }
@@ -203,7 +298,8 @@ export function stubFetch(
     }
 
     // --- the Telegram link ------------------------------------------------------------
-    if (path === "/api/telegram/link" && method === "GET") return answer({ telegram_id: chat.id });
+    if (path === "/api/telegram/link" && method === "GET")
+      return answer({ telegram_id: chat.id });
 
     if (path === "/api/telegram/link" && method === "DELETE") {
       chat.id = null;
@@ -214,8 +310,13 @@ export function stubFetch(
       chat.minted += 1;
       const lasts = handlers.telegram?.expiresInMs ?? 15 * 60_000;
       // The server's shape: whole seconds, UTC, a trailing Z.
-      const expires = new Date(Date.now() + lasts).toISOString().replace(/\.\d{3}Z$/, "Z");
-      return answer({ code: handlers.telegram?.code ?? `CODE${chat.minted}X`, expires }, 201);
+      const expires = new Date(Date.now() + lasts)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z");
+      return answer(
+        { code: handlers.telegram?.code ?? `CODE${chat.minted}X`, expires },
+        201,
+      );
     }
 
     // --- foods ------------------------------------------------------------------------
@@ -227,7 +328,12 @@ export function stubFetch(
         id: `food-${data.created}`,
         name: body.name,
         unit: body.unit,
-        macros: { calories: body.calories, protein: body.protein, carbs: body.carbs, fat: body.fat },
+        macros: {
+          calories: body.calories,
+          protein: body.protein,
+          carbs: body.carbs,
+          fat: body.fat,
+        },
         source: body.source ?? "typed",
         sourceId: body.source_id,
       };
@@ -246,7 +352,12 @@ export function stubFetch(
           id,
           name: body.name,
           unit: body.unit,
-          macros: { calories: body.calories, protein: body.protein, carbs: body.carbs, fat: body.fat },
+          macros: {
+            calories: body.calories,
+            protein: body.protein,
+            carbs: body.carbs,
+            fat: body.fat,
+          },
         };
         return answer(data.foods[index]);
       }
@@ -268,7 +379,13 @@ export function stubFetch(
             {
               detail: {
                 message: "cannot be deleted",
-                usedBy: { meals: meals.map((meal) => ({ id: meal.id, name: meal.name })), days },
+                usedBy: {
+                  meals: meals.map((meal) => ({
+                    id: meal.id,
+                    name: meal.name,
+                  })),
+                  days,
+                },
               },
             },
             409,
@@ -282,7 +399,10 @@ export function stubFetch(
 
     // --- meals ------------------------------------------------------------------------
     const ingredientsFrom = (sent: { food_id: string; quantity: number }[]) =>
-      (sent ?? []).map((item) => ({ foodId: item.food_id, quantity: item.quantity }));
+      (sent ?? []).map((item) => ({
+        foodId: item.food_id,
+        quantity: item.quantity,
+      }));
 
     if (path === "/api/meals" && method === "GET") return answer(data.meals);
 
@@ -304,7 +424,11 @@ export function stubFetch(
       if (index < 0) return answer({ detail: "no such meal" }, 404);
 
       if (method === "PUT") {
-        data.meals[index] = { id, name: body.name, ingredients: ingredientsFrom(body.ingredients) };
+        data.meals[index] = {
+          id,
+          name: body.name,
+          ingredients: ingredientsFrom(body.ingredients),
+        };
         return answer(data.meals[index]);
       }
 
@@ -318,7 +442,15 @@ export function stubFetch(
         );
 
         if (days.length > 0) {
-          return answer({ detail: { message: "cannot be deleted", usedBy: { meals: [], days } } }, 409);
+          return answer(
+            {
+              detail: {
+                message: "cannot be deleted",
+                usedBy: { meals: [], days },
+              },
+            },
+            409,
+          );
         }
 
         data.meals.splice(index, 1);
@@ -356,7 +488,9 @@ export function stubFetch(
       return answer(entry, 201);
     }
 
-    const removeEntryMatch = path.match(/^\/api\/days\/([^/]+)\/entries\/([^/]+)$/);
+    const removeEntryMatch = path.match(
+      /^\/api\/days\/([^/]+)\/entries\/([^/]+)$/,
+    );
     if (removeEntryMatch && method === "DELETE") {
       const date = decodeURIComponent(removeEntryMatch[1]);
       const id = decodeURIComponent(removeEntryMatch[2]);
@@ -364,7 +498,9 @@ export function stubFetch(
 
       if (sections) {
         for (const section of SECTIONS) {
-          sections[section] = sections[section].filter((entry) => entry.id !== id);
+          sections[section] = sections[section].filter(
+            (entry) => entry.id !== id,
+          );
         }
       }
 

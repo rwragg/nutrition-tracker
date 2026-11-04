@@ -93,11 +93,34 @@ try {
     throw new Error(`sign-in failed: HTTP ${signedIn.status()} — is the seeded stack running?`);
   }
 
+  // Refuse before anything is written if the stack holds a profile that is not the invented one: it could be
+  // somebody's real figures, and a picture of it would publish them.
+  const existing = await (await page.request.get(`${BASE}/api/profile`)).json();
+  if (existing.profile && existing.profile.display_name !== INVENTED_PROFILE.display_name) {
+    throw new Error("refusing to photograph a profile that is not the invented one: this stack holds someone's real figures.");
+  }
+
+  // ---- No profile yet: an account cannot add anything until it has one (Part 12, R54) ----
+  await page.request.delete(`${BASE}/api/profile`);
+  await page.goto(`${BASE}/`);
+  await page.getByTestId("day-total-calories").waitFor();
+  await page.getByRole("button", { name: "Add food to Lunch" }).click();
+  await page.getByRole("dialog", { name: "Add food to Lunch" }).getByText("Rolled oats, dry").click();
+  await page.getByTestId("need-profile").waitFor();
+  await settle();
+  await shot("need-profile", "No profile yet: the dialog says a profile comes first, and its Add button is disabled");
+  await page.keyboard.press("Escape");
+
+  // ---- From here on the account has a profile, which is the normal state: everything else is photographed in it ----
+  const saved = await page.request.put(`${BASE}/api/profile`, { data: INVENTED_PROFILE });
+  if (!saved.ok()) throw new Error(`could not save the invented profile: HTTP ${saved.status()}`);
+
   // ---- The day: what the app shows on open ----
   await page.goto(`${BASE}/`);
   await page.getByTestId("day-total-calories").waitFor();
+  await page.getByTestId("day-basis").waitFor();
   await settle();
-  await shot("day", "The day view: sections, entries and the macro bars");
+  await shot("day", "The day view on a profile's own targets: sections, entries, the macro bars and what the targets rest on");
 
   // ---- The catalogue ----
   await page.getByRole("button", { name: "Foods", exact: true }).click();
@@ -151,20 +174,6 @@ try {
   await page.getByTestId("close-dialog").click();
 
   // ---- A profile: the targets worked out from a person, and the working shown ----
-  // Last, so the pictures above are unchanged. Refuses to proceed if the stack already holds a profile
-  // that is not the invented one: it could be somebody's real figures, and the shot would publish them.
-  const existing = await (await page.request.get(`${BASE}/api/profile`)).json();
-  if (existing.profile && existing.profile.display_name !== INVENTED_PROFILE.display_name) {
-    throw new Error("refusing to photograph a profile that is not the invented one: this stack holds someone's real figures.");
-  }
-  const saved = await page.request.put(`${BASE}/api/profile`, { data: INVENTED_PROFILE });
-  if (!saved.ok()) throw new Error(`could not save the invented profile: HTTP ${saved.status()}`);
-
-  await page.goto(`${BASE}/`);
-  await page.getByTestId("day-basis").waitFor();
-  await settle();
-  await shot("day-profile", "The day view on a profile's own targets, with what they rest on");
-
   await page.getByTestId("open-profile").click();
   await page.getByTestId("profile-working").waitFor();
   await settle();

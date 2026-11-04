@@ -11,6 +11,7 @@ import DayView from "./DayView";
 import FoodsView from "./FoodsView";
 import MealsView from "./MealsView";
 import ProfileDialog from "./ProfileDialog";
+import { ProfileGateContext } from "./ProfileGate";
 import SignIn from "./SignIn";
 import TelegramDialog from "./TelegramDialog";
 import TitleBar from "./TitleBar";
@@ -38,7 +39,9 @@ export default function App() {
 }
 
 function SessionGate() {
-  const [session, setSession] = useState<Session | null | "checking">("checking");
+  const [session, setSession] = useState<Session | null | "checking">(
+    "checking",
+  );
 
   useEffect(() => {
     let active = true;
@@ -59,19 +62,29 @@ function SessionGate() {
   if (session === "checking") return <Shell />;
   if (session === null) return <SignIn onSignedIn={setSession} />;
 
-  return <Tracker username={session.username} onSignOut={() => setSession(null)} />;
+  return (
+    <Tracker username={session.username} onSignOut={() => setSession(null)} />
+  );
 }
 
 function Shell({ children }: { children?: React.ReactNode }) {
   return (
     <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
       <TitleBar />
-      {children ?? <div className="day-panel" style={{ height: "14rem", opacity: 0.15 }} />}
+      {children ?? (
+        <div className="day-panel" style={{ height: "14rem", opacity: 0.15 }} />
+      )}
     </main>
   );
 }
 
-function Tracker({ username, onSignOut }: { username: string; onSignOut: () => void }) {
+function Tracker({
+  username,
+  onSignOut,
+}: {
+  username: string;
+  onSignOut: () => void;
+}) {
   const tracker = useTracker();
   const profile = useProfile();
   const [view, setView] = useState<View>("day");
@@ -131,7 +144,12 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
         Telegram
       </button>
 
-      <button type="button" className={BTN_GHOST} onClick={signOut} data-testid="sign-out">
+      <button
+        type="button"
+        className={BTN_GHOST}
+        onClick={signOut}
+        data-testid="sign-out"
+      >
         Log out
       </button>
     </div>
@@ -162,68 +180,94 @@ function Tracker({ username, onSignOut }: { username: string; onSignOut: () => v
   const { store, day } = tracker;
 
   return (
-    <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
-      <TitleBar>{header}</TitleBar>
+    <ProfileGateContext.Provider
+      value={{
+        needProfile: profile.none,
+        openProfile: () => setProfileOpen(true),
+      }}
+    >
+      <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
+        <TitleBar>{header}</TitleBar>
 
-      {(tracker.error || profile.error || signOutFailed) && (
-        <div className="d-flex align-items-start justify-content-between gap-3" data-testid="page-problem">
-          <p className="small text-ember mb-0">
-            {tracker.error ?? profile.error ?? "Could not log out. Check your connection and try again."}
-          </p>
-          <button
-            type="button"
-            className={BTN_GHOST}
-            onClick={() => {
-              tracker.dismissError();
-              profile.dismissError();
-              setSignOutFailed(false);
-            }}
+        {(tracker.error || profile.error || signOutFailed) && (
+          <div
+            className="d-flex align-items-start justify-content-between gap-3"
+            data-testid="page-problem"
           >
-            Dismiss
-          </button>
-        </div>
-      )}
+            <p className="small text-ember mb-0">
+              {tracker.error ??
+                profile.error ??
+                "Could not log out. Check your connection and try again."}
+            </p>
+            <button
+              type="button"
+              className={BTN_GHOST}
+              onClick={() => {
+                tracker.dismissError();
+                profile.dismissError();
+                setSignOutFailed(false);
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
-      {view === "day" && (
-        <DayView
-          store={store}
-          day={day}
-          onSelectDay={(date) => {
-            void tracker.selectDay(date);
-          }}
-          onAddEntry={tracker.addEntry}
-          onAddLookedUpFood={tracker.addLookedUpFood}
-          onRemoveEntry={tracker.removeEntry}
-          targets={dayTargets(profile.state)}
-          basis={basisLine(profile.state)}
-          onOpenProfile={() => setProfileOpen(true)}
-        />
-      )}
+        {view === "day" && (
+          <DayView
+            store={store}
+            day={day}
+            onSelectDay={(date) => {
+              void tracker.selectDay(date);
+            }}
+            onAddEntry={tracker.addEntry}
+            onAddLookedUpFood={tracker.addLookedUpFood}
+            onRemoveEntry={tracker.removeEntry}
+            targets={dayTargets(profile.state)}
+            basis={basisLine(profile.state)}
+            onOpenProfile={() => setProfileOpen(true)}
+          />
+        )}
 
-      {view === "foods" && (
-        <FoodsView store={store} onSaveFood={tracker.saveFood} onDeleteFood={tracker.deleteFood} />
-      )}
+        {view === "foods" && (
+          <FoodsView
+            store={store}
+            onSaveFood={tracker.saveFood}
+            onDeleteFood={tracker.deleteFood}
+          />
+        )}
 
-      {view === "meals" && (
-        <MealsView store={store} onSaveMeal={tracker.saveMeal} onDeleteMeal={tracker.deleteMeal} />
-      )}
+        {view === "meals" && (
+          <MealsView
+            store={store}
+            onSaveMeal={tracker.saveMeal}
+            onDeleteMeal={tracker.deleteMeal}
+          />
+        )}
 
-      {!tracker.error && (
-        <p className="text-center small text-muted-brand mb-0" data-testid="storage-note">
-          Saved. Your log is kept on the server, so it is here when you come back.
-        </p>
-      )}
+        {!tracker.error && (
+          <p
+            className="text-center small text-muted-brand mb-0"
+            data-testid="storage-note"
+          >
+            Saved. Your log is kept on the server, so it is here when you come
+            back.
+          </p>
+        )}
 
-      {telegramOpen && <TelegramDialog onClose={() => setTelegramOpen(false)} />}
+        {telegramOpen && (
+          <TelegramDialog onClose={() => setTelegramOpen(false)} />
+        )}
 
-      {profileOpen && (
-        <ProfileDialog
-          state={profile.state}
-          onSave={profile.save}
-          onRemove={profile.remove}
-          onClose={() => setProfileOpen(false)}
-        />
-      )}
-    </main>
+        {profileOpen && (
+          <ProfileDialog
+            state={profile.state}
+            onSave={profile.save}
+            onRemove={profile.remove}
+            onClose={() => setProfileOpen(false)}
+          />
+        )}
+      </main>
+    </ProfileGateContext.Provider>
   );
 }

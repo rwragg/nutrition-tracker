@@ -1035,72 +1035,20 @@ depends on the other. Robert's call on order.
   or replace someone's profile. The profile routes take the session and refuse the bot, so the bot reads
   no profile until a decision to let it (D31). *Check:* a test that the same bot credentials open
   `/api/foods` and are refused (401) on all three profile methods.
-- **R54 - a profile comes before logging** (proposed 2026-11-04, Robert: *"make it so that the profile must
-  be entered before logging any meals"*; amends R38). An account with no profile cannot add an entry to a
-  day. The API refuses it (409, "set up your profile before logging a meal"), and the screen does not offer a
-  dead button: any "add" action opens the Profile dialog with a line saying why. Everything else works
-  without one: reading days, creating and editing foods and meals, looking a food up, removing an entry. So
-  nothing already logged is trapped, and a person can prepare their foods while they decide on a profile.
-  *Check:* a test that adding an entry without a profile is refused and writes nothing (both an entry and a
-  looked-up food, so a refusal cannot leave an orphan food behind), that every other route still answers, that
-  the same call succeeds once a profile exists and fails again after it is removed, and an e2e test that
-  the add buttons open the Profile dialog and that logging works straight after saving.
-
-**Worked examples** (invented people; every figure computed by the formulas above, not by hand):
-
-| | Person | Resting | Daily need | After goal | Result | Protein |
-|---|---|---|---|---|---|---|
-| A | man, 40, 178 cm, 82 kg, moderate, lose | 1,737.5 | 2,693.1 | 2,154.5 | **2,150 kcal** | 131.2 -> **130 g** |
-| B | woman, 30, 155 cm, 50 kg, sedentary, lose | 1,157.8 | 1,389.3 | 1,111.4 | **1,200 kcal** (floor) | 80 -> **80 g** |
-| C | woman, 55, 165 cm, 70 kg, light, maintain | 1,295.2 | 1,781.0 | 1,781.0 | **1,780 kcal** | 112 -> **110 g** |
-| D | man, 25, 183 cm, 75 kg, active, gain | 1,773.8 | 3,059.7 | 3,365.7 | **3,370 kcal** | 120 -> **120 g** |
-
-**Decisions - accepted as drafted (Robert, 2026-11-04: "seems good, please start to build").** He did not go through them one by one, so D25, D27, D28 and D30 are the ones worth a second look at the step 2 gate, because they are the ones that shape what he sees:
-
-- **D25 - where the targets are worked out.** Proposed: on the backend, in one module, returned by the profile
-  route together with the working. One implementation, tested in pytest at the pinned figures, and the bot
-  (D14: computes nothing) can read the same numbers later without a second copy. **This replaces a standing
-  rule.** `CLAUDE.md` says "Targets live only in `frontend/lib/targets.ts`; the API returns sums." The
-  revision: targets are worked out in one place, the backend, from the profile; `targets.ts` keeps only the
-  no-profile fallback (R38). The rule moves, it is not weakened, and `CLAUDE.md` and `docs/RESUME.md`
-  change in the same part. *Alternative:* the frontend works them out and the old rule stands as written;
-  the cost is that the bot would need its own copy of the arithmetic the day it shows a target.
-- **D26 - which equation.** Mifflin-St Jeor. A systematic review for the American Dietetic Association
-  (Frankenfield et al., *J Am Diet Assoc* 2005;105:775-89) found it predicted resting energy within 10% of
-  measured in more people than Harris-Benedict, Owen or WHO/FAO/UNU, with the narrowest error range, and
-  also found that errors for an individual can be large and that **older adults were under-represented in
-  the validation work.** That is part of the reason for D28: the people the equation was tested least on are
-  the ones most likely to need to correct it.
-- **D27 - protein at 1.6 g/kg of total body weight, for every goal.** The basis: the RDA of 0.8 g/kg is the
-  amount that prevents deficiency, not a target for someone who trains; a meta-regression of 49 trials
-  (Morton et al., *Br J Sports Med* 2018;52:376-84) put the point beyond which extra protein stopped adding
-  muscle in resistance training at about 1.62 g/kg/day; the 2017 ISSN position stand gives 1.4 to 2.0.
-  **Where this is soft, and the plan should say so:** those trials are in people lifting weights, so for a
-  sedentary person 1.6 is more than the evidence asks for; in an energy deficit the trial evidence points
-  higher still (Helms et al., 2014, per kg of lean mass), which a formula with no body-fat input cannot
-  see; and total weight overstates the need at a high body-fat percentage. The upper end of Morton's
-  interval, which I recall as about 2.2, was not re-checked for this draft. *Alternatives:* a factor that
-  rises on a "lose" goal, or a yes/no "do you lift weights" that sets it. One constant is the simplest
-  thing that tests cleanly; the alternatives add an input and a rule.
-- **D28 - let the person override.** Two optional numbers. An estimate with no way to correct it is a trap,
-  most of all when D26 says the equation is least validated for older adults. A person may also already work
-  from a figure of their own that is not the equation's, and the app should let them use it. *If declined:* drop R46 and the two nullable columns.
-- **D29 - one fixed adjustment per goal, not a pace choice.** A percentage scales with the person, and the
-  floor protects the small end. The "7,700 kcal per kg" rule is too crude to promise a rate of loss, so the
-  screen promises none. *Alternative:* a pace the person picks.
-- **D30 - carbs and fat.** The ask was calories and protein. Proposed: with a profile, carbs and fat show
-  their totals with no target; without one, nothing changes. Keeping 250 g and 70 g beside a personal
-  calorie figure would contradict it, and any split I derive (say fat at 30% of calories, carbs the
-  remainder) is a second set of rules nobody asked for. *Alternative:* that split. Robert to choose.
-- **D31 - what is left out of this part, and why.**
-  - *Weight history.* The weight is overwritten and dated. A weigh-in log is a later part, and would also
-    give past days the target they were judged against; today a past day is measured against today's.
-  - *Body fat, or protein per kg of lean mass.* Needs an input that is hard to measure honestly.
-  - *Greeting by name in the bot, or the bot reading targets.* Possible after D25, not part of this.
-  - *Account deletion (R29, Part 10 step 4).* `RESTRICT` means the deletion route must remove the profile
-    first. Noted here so step 4 does not discover it.
-
-**Amendment, 2026-11-04 - decisions R54 needs. Proposed; nothing built until Robert confirms.**
+- **R54 - a profile comes before adding anything** (accepted and built 2026-11-04, Robert: *"make it so that the profile
+  must be entered before logging any meals"*, then *"you shouldn't be able to add a food either ... ok with
+  looking up but not adding"*; amends R38). An account with no profile cannot create a record: not an entry on
+  a day, not a food, not a meal. The API refuses each (409, "set up your profile before adding anything"). On the
+  screen the add and new dialogs still **open**, so a person can look a food up in USDA, but each says at the
+  top that a profile comes first, offers to set one up (which closes that dialog and opens the Profile one), and
+  has its Add or Create button disabled. No button is dead without saying why. Everything that does not create
+  works without a profile: reading, **looking a food up**, editing a food or a meal, deleting one, removing an
+  entry. So nothing already in the log is trapped. *Check:* tests that each of the three creates is refused and
+  writes nothing (and that the lookup-then-add path leaves no food behind), that every other route still
+  answers, that the same call succeeds once a profile exists and fails again after it is removed; component
+  tests that each creating dialog shows the notice and a disabled button and that its link opens the Profile
+  dialog; and an e2e test of the whole path, from the notice to a first logged meal.
+**Amendment, 2026-11-04 - decisions R54 needs. Accepted (Robert: "ok when ready please build", after his note that a food must not be addable either); built.**
 
 - **D32 - where it is enforced.** Proposed: in the API *and* on the screen. A screen-only rule is a suggestion:
   the bot is a client of the same API (D14) and would walk straight past it, and "the API is the authority, the
@@ -1109,17 +1057,25 @@ depends on the other. Robert's call on order.
   app's own sentence for any refusal that is not a 403, and this one is a 409 on purpose (a 403 is the bot's cue
   for "this chat is not linked"). The bot is still never given the profile (R53); the check is only whether one
   exists. *Alternative:* screen only, which leaves the bot able to log.
-- **D33 - what stays open.** Only adding an entry is refused. Reading, foods, meals, lookups and removing an
-  entry are not, so the rule gates the thing asked for and traps nothing. The looked-up-food route creates a
-  food and then an entry, so the entry is checked first: a refusal must not leave a food behind.
+- **D33 - what stays open. Revised 2026-11-04 after Robert's note.** The rule gates *creating* and nothing
+  else: reading, looking a food up, editing, deleting and removing an entry are not refused, so the rule traps
+  nothing. Because the lookup is allowed, the creating dialogs must still open, which is why the screen shows a
+  notice and a disabled button rather than refusing to open them (R54). The routes are `POST /foods`,
+  `POST /meals` and `POST /days/{day}/entries`. A looked-up food is added by creating a food and then an entry,
+  so the first of those is refused and no food is left behind. *(Superseded wording, kept for the reason: "Only
+  adding an entry is refused." It was drafted before Robert said a food should not be addable either. A meal is
+  covered on the same reading, since it is a saved set of foods; if he wants meals left open, that is one
+  route and one dialog.)*
 - **D34 - the live account.** It has no profile, so the first thing it meets after the rebuild is this rule.
   That is the intent, but it is worth saying plainly: until the profile dialog is filled in, the app reads but
   does not log, **including from Telegram.** A fresh database is seeded with sample data and **no** profile,
   because a seed must not pre-fill a person.
-- **D35 - what it costs to build.** About 30 backend tests that log as the seeded account, the 15 browser tests
-  that log, and the component tests' stub, all gain a step that gives the account an invented profile first. A
-  helper does it in one line each and removes it afterwards, so the suites still start from "no profile" where
-  that is the thing under test. The e2e stack is rebuilt every run, so nothing carries over.
+- **D35 - what it costs to build.** Counted, not estimated: 14 backend call sites that create a food or a meal and
+  30 that create an entry, 21 browser-test steps that create something, and the component tests' stub. Each gains
+  one line that gives the account an invented profile first, through a helper, and takes it away afterwards, so
+  the suites still start from "no profile" where that is the thing under test. The stub's default world gets an
+  invented profile and a test that wants none asks for none. The e2e stack is rebuilt every run, so nothing
+  carries over. A fresh database is still seeded with **no** profile: a seed must not pre-fill a person.
 
 **Steps, each stopping for approval:**
 
@@ -1217,11 +1173,42 @@ after. The pictures were looked at, not only generated.
 - **The root `AGENTS.md` still says the targets are "held in one place".** That file is Robert's brief, so it is
   left as written; the live statement of the rule is in `CLAUDE.md`.
 
-**Not done, on purpose.** The deck is not rebuilt with the new pictures (`docs/screenshots/day-profile.png`,
-`profile.png`, `profile-working.png`); it was not asked for, and the deck's slides are a separate
+**Not done, on purpose.** The deck is not rebuilt with the new pictures (`docs/screenshots/need-profile.png`,
+`profile.png`, `profile-working.png`; `day.png` now shows a profile); it was not asked for, and the deck's slides are a separate
 artefact to approve. **Not deployed:** the live containers are still the schema 6 build.
 
-**Part 12 is complete** against R38 to R53, with R39 and R47 to R51 now met on screen.
+**Part 12 is complete** against R38 to R54, with R39 and R47 to R51 met on screen. R54 is described below.
+
+### Status - R54 built, 2026-11-04
+
+**Built.** `profile.require_profile` (409, one sentence) on `POST /foods`, `POST /meals` and
+`POST /days/{day}/entries`; `ProfileGate.tsx` and a notice at the top of the five creating dialogs, each with its Add
+or Create button disabled and a link that closes it and opens the profile; the stub's default world and the e2e
+`openTracker` now give the account an invented profile unless a test asks for none; a new picture, `need-profile.png`.
+
+**Verified, by running it.** Backend **368** (360 before; 8 new, and 37 existing tests that create things now
+give their account a profile first - counted before and after, not assumed). Frontend **189** (178 before; 11 new).
+Browser **35** (34 before; one new test walks the whole path: the three server refusals, the notice, the link, saving
+a profile, and then a first logged meal, and puts the log back). Lint and `tsc` clean. Two mutation checks: with the
+gate forced open the dialog tests fail, and with "unknown" treated as "none" exactly the two tests about it fail.
+The bot's path was tested with real bot credentials: a bound chat on an account with no profile reads foods, is
+refused on adding with the 409 sentence, and still gets a 401 on `/api/profile` (R53).
+
+**Found by building it.**
+
+- **"No profile" and "profile unreadable" are different, and the app's own state could not tell them apart.** Both left
+  the profile null, and the error message that explains an unreadable one can be dismissed. Derived from null, dismissing
+  the message would have told someone to set up a profile they already have. `use-profile` now records that the server
+  has *said* there is none (`known`), and a test dismisses the message to check.
+- **FastAPI validates a body before the gate runs**, so a malformed create from an account with no profile gets its
+  422, not the 409. That is the right order (a sentence about the body is more useful than one about the profile),
+  and it is noted here because a test of mine had a wrong meal body and failed for exactly that reason.
+- **The screenshot script would have photographed notices and disabled buttons in every add picture**, because it
+  starts from a stack with no profile. It now saves the invented profile before them; `day-profile.png`, which
+  `day.png` now duplicates, is removed.
+
+**Not done.** The deck is not rebuilt. The live stack is not rebuilt: **until it is, none of this is in effect on the
+running app, and when it is, the live account cannot add anything until its profile is saved (D34).**
 
 ## Open questions
 

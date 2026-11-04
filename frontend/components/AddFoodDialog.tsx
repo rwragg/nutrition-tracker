@@ -7,6 +7,7 @@ import { scaleMacros, ZERO } from "@/lib/nutrition";
 import { SECTION_LABELS, type Section, type Store } from "@/lib/types";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_PRIMARY, BTN_NEUTRAL } from "./styles";
+import { NeedProfileNotice, useProfileGate } from "./ProfileGate";
 
 const STEP = 0.25;
 const MIN_QUANTITY = 0.25;
@@ -30,10 +31,13 @@ export default function AddFoodDialog({
   onLookUp: () => void;
   onClose: () => void;
 }) {
-  const [selectedId, setSelectedId] = useState(initialFoodId ?? store.foods[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(
+    initialFoodId ?? store.foods[0]?.id ?? "",
+  );
   const [quantity, setQuantity] = useState(1);
 
-  const selected = store.foods.find((food) => food.id === selectedId) ?? store.foods[0];
+  const selected =
+    store.foods.find((food) => food.id === selectedId) ?? store.foods[0];
   const macros = selected ? scaleMacros(selected.macros, quantity) : ZERO;
 
   const submit = () => {
@@ -47,6 +51,8 @@ export default function AddFoodDialog({
     setQuantity(round(Math.max(MIN_QUANTITY, Math.min(20, value))));
   };
 
+  const { needProfile } = useProfileGate();
+
   return (
     <Dialog
       title={`Add food to ${SECTION_LABELS[section]}`}
@@ -54,13 +60,15 @@ export default function AddFoodDialog({
       footer={
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 w-100">
           <p className="small text-muted-brand mb-0" data-testid="food-preview">
-            {formatCalories(macros.calories)} kcal · {formatGrams(macros.protein)} g protein ·{" "}
-            {formatGrams(macros.carbs)} g carbs · {formatGrams(macros.fat)} g fat
+            {formatCalories(macros.calories)} kcal ·{" "}
+            {formatGrams(macros.protein)} g protein ·{" "}
+            {formatGrams(macros.carbs)} g carbs · {formatGrams(macros.fat)} g
+            fat
           </p>
           <button
             type="button"
             onClick={submit}
-            disabled={!selected}
+            disabled={!selected || needProfile}
             className={BTN_PRIMARY}
             data-testid="confirm-add-food"
           >
@@ -70,12 +78,18 @@ export default function AddFoodDialog({
         </div>
       }
     >
+      <NeedProfileNotice onClose={onClose} />
       {store.foods.length === 0 ? (
         <p className="small text-muted-brand mb-0">
           No foods yet. Look one up below, or add one from the Foods view.
         </p>
       ) : (
-        <ul className="list-unstyled mb-0 overflow-y-auto dark-scroll d-flex flex-column gap-1" style={{ maxHeight: "18rem" }} role="listbox" aria-label="Foods">
+        <ul
+          className="list-unstyled mb-0 overflow-y-auto dark-scroll d-flex flex-column gap-1"
+          style={{ maxHeight: "18rem" }}
+          role="listbox"
+          aria-label="Foods"
+        >
           {store.foods.map((food) => (
             <li key={food.id}>
               <button
@@ -88,7 +102,8 @@ export default function AddFoodDialog({
               >
                 <span className="fw-medium">{food.name}</span>
                 <span className="text-muted-brand flex-shrink-0">
-                  {formatCalories(food.macros.calories)} kcal / {formatQuantity(1, food.unit)}
+                  {formatCalories(food.macros.calories)} kcal /{" "}
+                  {formatQuantity(1, food.unit)}
                 </span>
               </button>
             </li>
@@ -97,7 +112,12 @@ export default function AddFoodDialog({
       )}
 
       <p className="small mt-3 mb-0">
-        <button type="button" className={`${BTN_GHOST} p-0`} onClick={onLookUp} data-testid="open-lookup">
+        <button
+          type="button"
+          className={`${BTN_GHOST} p-0`}
+          onClick={onLookUp}
+          data-testid="open-lookup"
+        >
           Not in your list? Look it up
         </button>
       </p>
@@ -133,7 +153,11 @@ export default function AddFoodDialog({
             <Plus size={14} aria-hidden="true" />
           </button>
         </div>
-        {selected && <span className="small text-muted-brand">{formatQuantity(quantity, selected.unit)}</span>}
+        {selected && (
+          <span className="small text-muted-brand">
+            {formatQuantity(quantity, selected.unit)}
+          </span>
+        )}
       </div>
     </Dialog>
   );

@@ -128,6 +128,24 @@ def payload(row: sqlite3.Row | None) -> dict:
     return {"profile": profile, "targets": worked}
 
 
+# What is said when a create is refused for want of a profile (R54). One sentence, used by every route that
+# creates a record, so the screen and the bot repeat the same words.
+SET_UP_FIRST = "set up your profile before adding anything"
+
+
+def require_profile(connection: sqlite3.Connection, user: str) -> None:
+    """Refuse (409) unless this account has a profile (Part 12, R54).
+
+    Only whether one exists is asked, never what is in it, so the bot can be refused by this and still
+    cannot read a profile (R53). 409 and not 403 on purpose: the bot reads a 403 as "this chat is not
+    linked to an account", which is a different thing to tell a person, and it relays the sentence of
+    any other refusal as it came.
+    """
+    exists = connection.execute("SELECT 1 FROM profiles WHERE user_id = ?", (user,)).fetchone()
+    if exists is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=SET_UP_FIRST)
+
+
 @router.get("")
 def get_profile(connection: Connection, user: Owner) -> dict:
     return payload(read(connection, user))

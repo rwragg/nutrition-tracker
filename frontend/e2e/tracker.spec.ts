@@ -1,8 +1,21 @@
-import { expect, test as base, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  test as base,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 import { formatCalories } from "../lib/format";
 import { dayLabel } from "../lib/dates";
 import { dayMacros, entryMacros, sectionMacros } from "../lib/nutrition";
-import { SECTIONS, type Day, type Food, type LogEntry, type Meal, type Section, type Store } from "../lib/types";
+import {
+  SECTIONS,
+  type Day,
+  type Food,
+  type LogEntry,
+  type Meal,
+  type Section,
+  type Store,
+} from "../lib/types";
 
 /**
  * The browser tests, against the container the compose stack builds.
@@ -29,7 +42,8 @@ const test = base.extend<{ consoleErrors: string[] }>({
       // signed-out path. Anything else counts.
       const url = message.location().url ?? "";
       const expected401 =
-        message.text().includes("401") && (url.endsWith("/api/session") || url.endsWith("/api/login"));
+        message.text().includes("401") &&
+        (url.endsWith("/api/session") || url.endsWith("/api/login"));
       if (expected401) return;
 
       errors.push(message.text());
@@ -46,7 +60,9 @@ const expectQuiet = (errors: string[]) => expect(errors).toEqual([]);
  * refusal has to count that one out - and only that one, by status.
  */
 const expectQuietApartFrom = (errors: string[], allowed: string[]) =>
-  expect(errors.filter((line) => !allowed.some((text) => line.includes(text)))).toEqual([]);
+  expect(
+    errors.filter((line) => !allowed.some((text) => line.includes(text))),
+  ).toEqual([]);
 
 const openView = (page: Page, label: string) =>
   page.getByRole("button", { name: label, exact: true }).click();
@@ -65,13 +81,24 @@ type AppState = { store: Store; open: Day; dates: string[] };
 async function readState(request: APIRequestContext): Promise<AppState> {
   const foods = (await (await request.get("/api/foods")).json()) as Food[];
   const meals = (await (await request.get("/api/meals")).json()) as Meal[];
-  const days = (await (await request.get("/api/days")).json()) as { date: string; macros: Day["macros"] }[];
+  const days = (await (await request.get("/api/days")).json()) as {
+    date: string;
+    macros: Day["macros"];
+  }[];
   const newest = days[0].date;
-  const day = (await (await request.get(`/api/days/${newest}`)).json()) as Omit<Day, "id">;
+  const day = (await (await request.get(`/api/days/${newest}`)).json()) as Omit<
+    Day,
+    "id"
+  >;
 
   return {
     store: { foods, meals, days },
-    open: { id: day.date, date: day.date, macros: day.macros, sections: day.sections },
+    open: {
+      id: day.date,
+      date: day.date,
+      macros: day.macros,
+      sections: day.sections,
+    },
     dates: days.map((candidate) => candidate.date),
   };
 }
@@ -87,11 +114,15 @@ async function removeEntries(
   date: string,
   matches: (entry: LogEntry) => boolean,
 ) {
-  const day = (await (await request.get(`/api/days/${date}`)).json()) as Omit<Day, "id">;
+  const day = (await (await request.get(`/api/days/${date}`)).json()) as Omit<
+    Day,
+    "id"
+  >;
 
   for (const section of SECTIONS) {
     for (const entry of day.sections[section]) {
-      if (matches(entry)) await request.delete(`/api/days/${date}/entries/${entry.id}`);
+      if (matches(entry))
+        await request.delete(`/api/days/${date}/entries/${entry.id}`);
     }
   }
 }
@@ -100,14 +131,16 @@ async function deleteFoodNamed(request: APIRequestContext, name: string) {
   const foods = (await (await request.get("/api/foods")).json()) as Food[];
   const found = foods.filter((food) => food.name === name);
 
-  for (const food of found) await request.delete(`/api/foods/${encodeURIComponent(food.id)}`);
+  for (const food of found)
+    await request.delete(`/api/foods/${encodeURIComponent(food.id)}`);
 }
 
 async function deleteMealNamed(request: APIRequestContext, name: string) {
   const meals = (await (await request.get("/api/meals")).json()) as Meal[];
   const found = meals.filter((meal) => meal.name === name);
 
-  for (const meal of found) await request.delete(`/api/meals/${encodeURIComponent(meal.id)}`);
+  for (const meal of found)
+    await request.delete(`/api/meals/${encodeURIComponent(meal.id)}`);
 }
 
 /**
@@ -121,17 +154,36 @@ async function deleteMealNamed(request: APIRequestContext, name: string) {
  * The gate itself - what a signed-out visitor sees, and what a refused sign-in looks like - has its
  * own tests at the end of this file, which go to the page without signing in.
  */
-async function openTracker(page: Page) {
+async function openTracker(
+  page: Page,
+  { profile = true }: { profile?: boolean } = {},
+) {
   const signedIn = await page.request.post("/api/login", {
     data: { username: "user", password: "password" },
   });
   expect(signedIn.ok()).toBeTruthy();
 
+  // An account with no profile cannot add anything (Part 12, R54), and most tests add something, so the
+  // account gets an invented one unless the test is about having none. Either way the state is set here, so
+  // a test never depends on what the one before it left behind.
+  if (profile) {
+    const saved = await page.request.put("/api/profile", {
+      data: inventedProfile(),
+    });
+    expect(saved.ok()).toBeTruthy();
+  } else {
+    expect((await page.request.delete("/api/profile")).ok()).toBeTruthy();
+  }
+
   await page.goto("/");
   await expect(page.getByTestId("day-total-calories")).toBeVisible();
 }
 
-test("opens on the newest day, with its log and its figures", async ({ page, request, consoleErrors }) => {
+test("opens on the newest day, with its log and its figures", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
 
   await openTracker(page);
@@ -150,17 +202,25 @@ test("opens on the newest day, with its log and its figures", async ({ page, req
   await expect(page.getByTestId(`day-${open.date}-calories`)).toHaveText(
     formatCalories(open.macros.calories),
   );
-  await expect(page.getByTestId("day-switcher").getByText("Today")).toBeVisible();
+  await expect(
+    page.getByTestId("day-switcher").getByText("Today"),
+  ).toBeVisible();
 
   expectQuiet(consoleErrors);
 });
 
-test("lists every logged day, newest first, each with the server's figure", async ({ page, request, consoleErrors }) => {
+test("lists every logged day, newest first, each with the server's figure", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store } = await state(request);
 
   await openTracker(page);
 
-  await expect(page.getByTestId("day-switcher").getByRole("button")).toHaveCount(store.days.length);
+  await expect(
+    page.getByTestId("day-switcher").getByRole("button"),
+  ).toHaveCount(store.days.length);
   for (const day of store.days) {
     await expect(page.getByTestId(`day-${day.date}-calories`)).toHaveText(
       formatCalories(day.macros.calories),
@@ -173,8 +233,16 @@ test("lists every logged day, newest first, each with the server's figure", asyn
 test("digs into another day", async ({ page, request, consoleErrors }) => {
   const { store, dates } = await state(request);
   const other = dates[1];
-  const day = (await (await request.get(`/api/days/${other}`)).json()) as Omit<Day, "id">;
-  const target: Day = { id: day.date, date: day.date, macros: day.macros, sections: day.sections };
+  const day = (await (await request.get(`/api/days/${other}`)).json()) as Omit<
+    Day,
+    "id"
+  >;
+  const target: Day = {
+    id: day.date,
+    date: day.date,
+    macros: day.macros,
+    sections: day.sections,
+  };
 
   await openTracker(page);
   await page.getByTestId(`day-${other}`).click();
@@ -195,9 +263,16 @@ test("digs into another day", async ({ page, request, consoleErrors }) => {
   expectQuiet(consoleErrors);
 });
 
-test("logs a food with a quantity onto the selected day", async ({ page, request, consoleErrors }) => {
+test("logs a food with a quantity onto the selected day", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
-  const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 2 }, store);
+  const added = entryMacros(
+    { id: "", kind: "food", foodId: "hummus", quantity: 2 },
+    store,
+  );
   const before = dayMacros(open, store).calories;
 
   await openTracker(page);
@@ -210,13 +285,23 @@ test("logs a food with a quantity onto the selected day", async ({ page, request
   await expect(page.getByTestId("day-total-calories")).toHaveText(
     formatCalories(before + added.calories),
   );
-  await expect(page.getByTestId("section-snacks").getByText("Hummus", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId("section-snacks").getByText("Hummus", { exact: true }),
+  ).toBeVisible();
 
-  await removeEntries(request, open.date, (entry) => entry.kind === "food" && entry.foodId === "hummus");
+  await removeEntries(
+    request,
+    open.date,
+    (entry) => entry.kind === "food" && entry.foodId === "hummus",
+  );
   expectQuiet(consoleErrors);
 });
 
-test("logs a meal and expands it into its foods", async ({ page, request, consoleErrors }) => {
+test("logs a meal and expands it into its foods", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
   // A meal with more than one food that this day does not already log. Adding one that is already
   // there leaves two rows with the same name and the same "N foods" detail, so an assertion inside
@@ -259,7 +344,11 @@ test("logs a meal and expands it into its foods", async ({ page, request, consol
   expectQuiet(consoleErrors);
 });
 
-test("removes a logged entry and the figures follow", async ({ page, request, consoleErrors }) => {
+test("removes a logged entry and the figures follow", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
   const before = dayMacros(open, store).calories;
 
@@ -271,16 +360,25 @@ test("removes a logged entry and the figures follow", async ({ page, request, co
   await openTracker(page);
   await page.getByRole("button", { name: "Remove Hummus from Snacks" }).click();
 
-  await expect(page.getByTestId("day-total-calories")).toHaveText(formatCalories(before));
-  await expect(page.getByTestId("section-snacks").getByText("Hummus", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(before),
+  );
+  await expect(
+    page.getByTestId("section-snacks").getByText("Hummus", { exact: true }),
+  ).toHaveCount(0);
 
   expectQuiet(consoleErrors);
 });
 
 test("the log survives a reload", async ({ page, request, consoleErrors }) => {
   const { store, open } = await state(request);
-  const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 2 }, store);
-  const expected = formatCalories(dayMacros(open, store).calories + added.calories);
+  const added = entryMacros(
+    { id: "", kind: "food", foodId: "hummus", quantity: 2 },
+    store,
+  );
+  const expected = formatCalories(
+    dayMacros(open, store).calories + added.calories,
+  );
 
   await openTracker(page);
   await page.getByRole("button", { name: "Add food to Snacks" }).click();
@@ -293,16 +391,31 @@ test("the log survives a reload", async ({ page, request, consoleErrors }) => {
   // R23: the same day, the same entries, after the page is loaded from scratch.
   await page.reload();
   await expect(page.getByTestId("day-total-calories")).toHaveText(expected);
-  await expect(page.getByTestId("section-snacks").getByText("Hummus", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTestId("section-snacks").getByText("Hummus", { exact: true }),
+  ).toBeVisible();
 
-  await removeEntries(request, open.date, (entry) => entry.kind === "food" && entry.foodId === "hummus");
+  await removeEntries(
+    request,
+    open.date,
+    (entry) => entry.kind === "food" && entry.foodId === "hummus",
+  );
   expectQuiet(consoleErrors);
 });
 
-test("a second session sees the same log", async ({ page, request, consoleErrors }) => {
+test("a second session sees the same log", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
-  const added = entryMacros({ id: "", kind: "food", foodId: "hummus", quantity: 2 }, store);
-  const expected = formatCalories(dayMacros(open, store).calories + added.calories);
+  const added = entryMacros(
+    { id: "", kind: "food", foodId: "hummus", quantity: 2 },
+    store,
+  );
+  const expected = formatCalories(
+    dayMacros(open, store).calories + added.calories,
+  );
 
   await openTracker(page);
   await page.getByRole("button", { name: "Add food to Snacks" }).click();
@@ -315,14 +428,24 @@ test("a second session sees the same log", async ({ page, request, consoleErrors
   const other = await second.newPage();
   await openTracker(other);
   await expect(other.getByTestId("day-total-calories")).toHaveText(expected);
-  await expect(other.getByTestId("section-snacks").getByText("Hummus", { exact: true })).toBeVisible();
+  await expect(
+    other.getByTestId("section-snacks").getByText("Hummus", { exact: true }),
+  ).toBeVisible();
   await second.close();
 
-  await removeEntries(request, open.date, (entry) => entry.kind === "food" && entry.foodId === "hummus");
+  await removeEntries(
+    request,
+    open.date,
+    (entry) => entry.kind === "food" && entry.foodId === "hummus",
+  );
   expectQuiet(consoleErrors);
 });
 
-test("creates a food, then logs it on a day", async ({ page, request, consoleErrors }) => {
+test("creates a food, then logs it on a day", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
   const before = dayMacros(open, store).calories;
 
@@ -338,26 +461,50 @@ test("creates a food, then logs it on a day", async ({ page, request, consoleErr
   await page.getByTestId("food-fat").fill("0.4");
   await page.getByTestId("save-food").click();
 
-  await expect(page.getByTestId("foods-view").getByText("Cup of rice")).toBeVisible();
+  await expect(
+    page.getByTestId("foods-view").getByText("Cup of rice"),
+  ).toBeVisible();
 
   await openView(page, "Day");
   await page.getByRole("button", { name: "Add food to Lunch" }).click();
-  await page.getByRole("listbox", { name: "Foods" }).getByText("Cup of rice").click();
+  await page
+    .getByRole("listbox", { name: "Foods" })
+    .getByText("Cup of rice")
+    .click();
   await page.getByTestId("confirm-add-food").click();
 
-  await expect(page.getByTestId("section-lunch").getByText("Cup of rice")).toBeVisible();
-  await expect(page.getByTestId("day-total-calories")).toHaveText(formatCalories(before + 205));
+  await expect(
+    page.getByTestId("section-lunch").getByText("Cup of rice"),
+  ).toBeVisible();
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(before + 205),
+  );
 
-  await removeEntries(request, open.date, (entry) => entry.kind === "food" && entry.foodId === "rice");
+  await removeEntries(
+    request,
+    open.date,
+    (entry) => entry.kind === "food" && entry.foodId === "rice",
+  );
   await deleteFoodNamed(request, "Cup of rice");
   expectQuiet(consoleErrors);
 });
 
-test("edits a food and every day that logs it follows", async ({ page, request, consoleErrors }) => {
+test("edits a food and every day that logs it follows", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   await state(request);
 
   await request.post("/api/foods", {
-    data: { name: "Steady food", unit: "cup", calories: 100, protein: 1, carbs: 1, fat: 1 },
+    data: {
+      name: "Steady food",
+      unit: "cup",
+      calories: 100,
+      protein: 1,
+      carbs: 1,
+      fat: 1,
+    },
   });
 
   const { store, open } = await readState(request);
@@ -377,14 +524,24 @@ test("edits a food and every day that logs it follows", async ({ page, request, 
   await page.getByTestId("save-food").click();
 
   await openView(page, "Day");
-  await expect(page.getByTestId("day-total-calories")).toHaveText(formatCalories(before + 200));
+  await expect(page.getByTestId("day-total-calories")).toHaveText(
+    formatCalories(before + 200),
+  );
 
-  await removeEntries(request, open.date, (entry) => entry.kind === "food" && entry.foodId === created.id);
+  await removeEntries(
+    request,
+    open.date,
+    (entry) => entry.kind === "food" && entry.foodId === created.id,
+  );
   await deleteFoodNamed(request, "Steady food");
   expectQuiet(consoleErrors);
 });
 
-test("creates a meal from foods and logs it", async ({ page, request, consoleErrors }) => {
+test("creates a meal from foods and logs it", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { open } = await state(request);
 
   await openTracker(page);
@@ -397,16 +554,24 @@ test("creates a meal from foods and logs it", async ({ page, request, consoleErr
   await page.getByTestId("row-food-1").selectOption("white-rice");
   await page.getByTestId("save-meal").click();
 
-  const row = page.getByTestId("meals-view").getByText("Rice and beans").locator("xpath=../..");
+  const row = page
+    .getByTestId("meals-view")
+    .getByText("Rice and beans")
+    .locator("xpath=../..");
   await expect(row).toContainText("Black beans, cooked 1 cup");
   await expect(row).toContainText("White rice, cooked 1 cup");
 
   await openView(page, "Day");
   await page.getByRole("button", { name: "Add meal to Lunch" }).click();
-  await page.getByRole("listbox", { name: "Meals" }).getByText("Rice and beans").click();
+  await page
+    .getByRole("listbox", { name: "Meals" })
+    .getByText("Rice and beans")
+    .click();
   await page.getByTestId("confirm-add-meal").click();
 
-  await expect(page.getByTestId("section-lunch").getByText("Rice and beans")).toBeVisible();
+  await expect(
+    page.getByTestId("section-lunch").getByText("Rice and beans"),
+  ).toBeVisible();
 
   const meals = (await (await request.get("/api/meals")).json()) as Meal[];
   const built = meals.find((meal) => meal.name === "Rice and beans")!;
@@ -419,7 +584,11 @@ test("creates a meal from foods and logs it", async ({ page, request, consoleErr
   expectQuiet(consoleErrors);
 });
 
-test("deletes a food nothing uses", async ({ page, request, consoleErrors }) => {
+test("deletes a food nothing uses", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   await state(request);
 
   await openTracker(page);
@@ -432,11 +601,17 @@ test("deletes a food nothing uses", async ({ page, request, consoleErrors }) => 
   await page.getByRole("button", { name: "Delete Temporary food" }).click();
   await page.getByTestId("confirm-delete").click();
 
-  await expect(page.getByTestId("foods-view").getByText("Temporary food")).toHaveCount(0);
+  await expect(
+    page.getByTestId("foods-view").getByText("Temporary food"),
+  ).toHaveCount(0);
   expectQuiet(consoleErrors);
 });
 
-test("deletes a meal nothing logs", async ({ page, request, consoleErrors }) => {
+test("deletes a meal nothing logs", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   await state(request);
 
   await openTracker(page);
@@ -449,15 +624,23 @@ test("deletes a meal nothing logs", async ({ page, request, consoleErrors }) => 
   await page.getByRole("button", { name: "Delete Temporary meal" }).click();
   await page.getByTestId("confirm-delete").click();
 
-  await expect(page.getByTestId("meals-view").getByText("Temporary meal")).toHaveCount(0);
+  await expect(
+    page.getByTestId("meals-view").getByText("Temporary meal"),
+  ).toHaveCount(0);
   expectQuiet(consoleErrors);
 });
 
-test("refuses to delete a food that meals still use, and names them", async ({ page, request, consoleErrors }) => {
+test("refuses to delete a food that meals still use, and names them", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store } = await state(request);
   // A food some meal uses, whichever the sample happens to hold.
   const used = store.foods.find((food) =>
-    store.meals.some((meal) => meal.ingredients.some((item) => item.foodId === food.id)),
+    store.meals.some((meal) =>
+      meal.ingredients.some((item) => item.foodId === food.id),
+    ),
   )!;
   const meals = store.meals.filter((meal) =>
     meal.ingredients.some((item) => item.foodId === used.id),
@@ -478,17 +661,25 @@ test("refuses to delete a food that meals still use, and names them", async ({ p
 
   // The food is still there, and the dialog closes.
   await page.getByTestId("close-after-problem").click();
-  await expect(page.getByRole("button", { name: `Delete ${used.name}` })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `Delete ${used.name}` }),
+  ).toBeVisible();
 
   // The 409 is the point of this test: the browser logs it as a console error like any other 4xx.
   expectQuietApartFrom(consoleErrors, ["409"]);
 });
 
-test("refuses to delete a meal that a day logs, and names the day", async ({ page, request, consoleErrors }) => {
+test("refuses to delete a meal that a day logs, and names the day", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   const { store, open } = await state(request);
   const logged = store.meals.find((meal) =>
     SECTIONS.some((section) =>
-      open.sections[section].some((entry) => entry.kind === "meal" && entry.mealId === meal.id),
+      open.sections[section].some(
+        (entry) => entry.kind === "meal" && entry.mealId === meal.id,
+      ),
     ),
   )!;
 
@@ -506,7 +697,11 @@ test("refuses to delete a meal that a day logs, and names the day", async ({ pag
   expectQuietApartFrom(consoleErrors, ["409"]);
 });
 
-test("opens the dialog as an opaque Bootstrap modal", async ({ page, request, consoleErrors }) => {
+test("opens the dialog as an opaque Bootstrap modal", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   await state(request);
   await openTracker(page);
   await page.getByRole("button", { name: "Add food to Breakfast" }).click();
@@ -533,7 +728,11 @@ test("opens the dialog as an opaque Bootstrap modal", async ({ page, request, co
   expectQuiet(consoleErrors);
 });
 
-test("lays out on a phone viewport without horizontal overflow", async ({ page, request, consoleErrors }) => {
+test("lays out on a phone viewport without horizontal overflow", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   await state(request);
   await page.setViewportSize({ width: 390, height: 844 });
   await openTracker(page);
@@ -544,7 +743,9 @@ test("lays out on a phone viewport without horizontal overflow", async ({ page, 
   }
 
   const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
 
@@ -552,7 +753,10 @@ test("lays out on a phone viewport without horizontal overflow", async ({ page, 
 });
 
 test.describe("the sign-in gate", () => {
-  test("asks for credentials when nobody is signed in", async ({ page, consoleErrors }) => {
+  test("asks for credentials when nobody is signed in", async ({
+    page,
+    consoleErrors,
+  }) => {
     await page.goto("/");
 
     await expect(page.getByTestId("sign-in")).toBeVisible();
@@ -561,20 +765,29 @@ test.describe("the sign-in gate", () => {
     expectQuiet(consoleErrors);
   });
 
-  test("refuses the wrong password, says so, and stays put", async ({ page, consoleErrors }) => {
+  test("refuses the wrong password, says so, and stays put", async ({
+    page,
+    consoleErrors,
+  }) => {
     await page.goto("/");
     await page.getByLabel("Username").fill("user");
     await page.getByLabel("Password").fill("wrong");
     await page.getByTestId("sign-in-submit").click();
 
     // Scoped to the panel: Next.js ships its own role="alert" route announcer.
-    await expect(page.getByTestId("sign-in").getByRole("alert")).toContainText("did not match");
+    await expect(page.getByTestId("sign-in").getByRole("alert")).toContainText(
+      "did not match",
+    );
     await expect(page.getByTestId("day-total-calories")).toHaveCount(0);
 
     expectQuiet(consoleErrors);
   });
 
-  test("signs in and then logs out, back to the sign-in screen", async ({ page, request, consoleErrors }) => {
+  test("signs in and then logs out, back to the sign-in screen", async ({
+    page,
+    request,
+    consoleErrors,
+  }) => {
     await state(request);
     await openTracker(page);
     await expect(page.getByTestId("signed-in-as")).toHaveText("user");
@@ -600,7 +813,10 @@ test.describe("the sign-in gate", () => {
     expect(response?.status()).toBe(200);
   });
 
-  test("registers an account through the screen, and it starts with nothing", async ({ page, consoleErrors }) => {
+  test("registers an account through the screen, and it starts with nothing", async ({
+    page,
+    consoleErrors,
+  }) => {
     // R24 end to end: the real stack, a new account, and a log of its own - empty, rather than
     // the seeded one with someone else's name on it (R25).
     const name = `newcomer-${Date.now()}`;
@@ -626,7 +842,10 @@ test.describe("the sign-in gate", () => {
     expectQuiet(consoleErrors);
   });
 
-  test("a registration that is refused says which field, and stays on the form", async ({ page, consoleErrors }) => {
+  test("a registration that is refused says which field, and stays on the form", async ({
+    page,
+    consoleErrors,
+  }) => {
     const name = `taken-${Date.now()}`;
 
     // register it once, for real
@@ -648,8 +867,12 @@ test.describe("the sign-in gate", () => {
     await page.getByTestId("sign-in-submit").click();
 
     // the server's sentence names the field, and the form is still there to fix it in
-    await expect(page.getByTestId("register").getByRole("alert")).toContainText("username");
-    await expect(page.getByTestId("register").getByRole("alert")).toContainText("already registered");
+    await expect(page.getByTestId("register").getByRole("alert")).toContainText(
+      "username",
+    );
+    await expect(page.getByTestId("register").getByRole("alert")).toContainText(
+      "already registered",
+    );
     await expect(page.getByTestId("day-total-calories")).toHaveCount(0);
 
     // The 409 is the point of this test: the browser logs it as a console error like any other 4xx.
@@ -657,7 +880,10 @@ test.describe("the sign-in gate", () => {
   });
 });
 
-test("shows a pairing code for linking a Telegram chat", async ({ page, consoleErrors }) => {
+test("shows a pairing code for linking a Telegram chat", async ({
+  page,
+  consoleErrors,
+}) => {
   // The e2e stack has no bot, so the flow stops where the person would switch to Telegram. What can be
   // checked here is the half the app owns: a real code from the real server, in the alphabet people can
   // read, with the exact line to send - and that asking for one did not link anything.
@@ -671,7 +897,9 @@ test("shows a pairing code for linking a Telegram chat", async ({ page, consoleE
 
   const code = (await page.getByTestId("telegram-code").textContent()) ?? "";
   expect(code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
-  await expect(page.getByTestId("telegram-bind-line")).toHaveText(`/bind ${code}`);
+  await expect(page.getByTestId("telegram-bind-line")).toHaveText(
+    `/bind ${code}`,
+  );
   await expect(page.getByTestId("telegram-expiry")).toContainText("minutes");
 
   // a second code replaces the first, because two live codes would be two chances to bind
@@ -687,7 +915,11 @@ test("shows a pairing code for linking a Telegram chat", async ({ page, consoleE
   expectQuiet(consoleErrors);
 });
 
-test("a new food that is really an old one is caught before it is created", async ({ page, request, consoleErrors }) => {
+test("a new food that is really an old one is caught before it is created", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
   // The seeded list has "Greek yogurt, plain 0%". Typing the short name must offer it rather than
   // let a second copy be made - checked against the real server's list, and by counting what it holds.
   const before = (await state(request)).store.foods.length;
@@ -697,14 +929,20 @@ test("a new food that is really an old one is caught before it is created", asyn
   await page.getByTestId("new-food").click();
   await page.getByTestId("food-name").fill("greek yogurt");
 
-  await expect(page.getByTestId("similar-heading")).toHaveText("Already in your list:");
-  const offered = page.getByRole("button", { name: "Edit Greek yogurt, plain 0% instead" });
+  await expect(page.getByTestId("similar-heading")).toHaveText(
+    "Already in your list:",
+  );
+  const offered = page.getByRole("button", {
+    name: "Edit Greek yogurt, plain 0% instead",
+  });
   await expect(offered).toBeVisible();
 
   await offered.click();
 
   await expect(page.getByRole("dialog", { name: "Edit food" })).toBeVisible();
-  await expect(page.getByTestId("food-name")).toHaveValue("Greek yogurt, plain 0%");
+  await expect(page.getByTestId("food-name")).toHaveValue(
+    "Greek yogurt, plain 0%",
+  );
   await page.getByRole("button", { name: "Cancel" }).click();
 
   expect((await state(request)).store.foods).toHaveLength(before);
@@ -712,7 +950,10 @@ test("a new food that is really an old one is caught before it is created", asyn
   expectQuiet(consoleErrors);
 });
 
-test("looking a food up says so plainly when lookup is not set up", async ({ page, consoleErrors }) => {
+test("looking a food up says so plainly when lookup is not set up", async ({
+  page,
+  consoleErrors,
+}) => {
   // The suite's stack has no USDA key on purpose, so this is the deterministic half: the button is
   // there, it asks the real server, and the person is told the truth rather than shown a dead end.
   await openTracker(page);
@@ -724,7 +965,9 @@ test("looking a food up says so plainly when lookup is not set up", async ({ pag
   await page.getByTestId("food-name").fill("tempeh");
   await page.getByTestId("lookup-food").click();
 
-  await expect(page.getByTestId("lookup-problem")).toHaveText("food lookup is not configured");
+  await expect(page.getByTestId("lookup-problem")).toHaveText(
+    "food lookup is not configured",
+  );
   // and the form is still a working form
   await expect(page.getByTestId("save-food")).toBeEnabled();
 
@@ -732,24 +975,33 @@ test("looking a food up says so plainly when lookup is not set up", async ({ pag
   expectQuietApartFrom(consoleErrors, ["503"]);
 });
 
-test("adding a food to a day that is not in the list says plainly when lookup is not set up", async ({ page, consoleErrors }) => {
+test("adding a food to a day that is not in the list says plainly when lookup is not set up", async ({
+  page,
+  consoleErrors,
+}) => {
   await openTracker(page);
 
   await page.getByRole("button", { name: "Add food to Lunch" }).click();
   await page.getByTestId("open-lookup").click();
-  await expect(page.getByRole("dialog", { name: "Look up a food for Lunch" })).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Look up a food for Lunch" }),
+  ).toBeVisible();
   await expect(page.getByTestId("lookup-go")).toBeDisabled();
 
   await page.getByTestId("lookup-name").fill("tempeh");
   await page.getByTestId("lookup-go").click();
 
-  await expect(page.getByTestId("lookup-problem")).toHaveText("food lookup is not configured");
+  await expect(page.getByTestId("lookup-problem")).toHaveText(
+    "food lookup is not configured",
+  );
   await expect(page.getByTestId("confirm-lookup-add")).toBeDisabled();
 
   // nothing was written: the day and the list are as they were
   await page.getByRole("button", { name: "Close" }).first().click();
   const foods = await (await page.request.get("/api/foods")).json();
-  expect(foods.some((food: { name: string }) => food.name === "Tempeh")).toBe(false);
+  expect(foods.some((food: { name: string }) => food.name === "Tempeh")).toBe(
+    false,
+  );
 
   expectQuietApartFrom(consoleErrors, ["503"]);
 });
@@ -769,6 +1021,20 @@ function bornForty(): string {
   return born.toISOString().slice(0, 10);
 }
 
+/** Example A in docs/PLAN.md, as the API takes it. Nobody real (R51). */
+function inventedProfile() {
+  return {
+    display_name: "Ana Example",
+    sex: "male",
+    birth_date: bornForty(),
+    height_cm: 178,
+    weight_kg: 82,
+    activity: "moderate",
+    goal: "lose",
+    units: "metric",
+  };
+}
+
 async function fillProfile(page: Page) {
   await page.getByTestId("profile-name").fill("Ana Example");
   await page.getByTestId("profile-sex").selectOption("male");
@@ -779,38 +1045,56 @@ async function fillProfile(page: Page) {
   await page.getByTestId("profile-goal").selectOption("lose");
 }
 
-test("an account with no profile sees the standard targets and an offer to set one up", async ({ page, consoleErrors }) => {
-  await openTracker(page);
+test("an account with no profile sees the standard targets and an offer to set one up", async ({
+  page,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
 
   await expect(page.getByTestId("day-target-calories")).toHaveText("2,200");
   await expect(page.getByTestId("macro-protein-target")).toHaveText("140");
   await expect(page.getByTestId("macro-carbs-target")).toHaveText("250");
-  await expect(page.getByTestId("profile-prompt")).toContainText("standard targets");
+  await expect(page.getByTestId("profile-prompt")).toContainText(
+    "standard targets",
+  );
 
   expectQuiet(consoleErrors);
 });
 
-test("sets up a profile, and the Day view takes the server's own figures", async ({ page, consoleErrors }) => {
-  await openTracker(page);
+test("sets up a profile, and the Day view takes the server's own figures", async ({
+  page,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
 
   await page.getByTestId("open-profile").click();
   await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
-  await expect(page.getByTestId("profile-estimate-note")).toContainText("estimates");
+  await expect(page.getByTestId("profile-estimate-note")).toContainText(
+    "estimates",
+  );
 
   await fillProfile(page);
   await page.getByTestId("save-profile").click();
 
   // example A in docs/PLAN.md, worked out by the real backend
-  await expect(page.getByTestId("profile-in-force")).toHaveText(/2,150 kcal and 130 g protein/);
-  await expect(page.getByTestId("working-resting")).toContainText("age 40: 1,737.5 kcal");
+  await expect(page.getByTestId("profile-in-force")).toHaveText(
+    /2,150 kcal and 130 g protein/,
+  );
+  await expect(page.getByTestId("working-resting")).toContainText(
+    "age 40: 1,737.5 kcal",
+  );
   await expect(page.getByTestId("working-need")).toContainText("Times 1.55");
-  await expect(page.getByTestId("working-goal")).toContainText("Minus 20% to lose fat: 2,154.5 kcal");
+  await expect(page.getByTestId("working-goal")).toContainText(
+    "Minus 20% to lose fat: 2,154.5 kcal",
+  );
 
   await page.getByTestId("close-dialog").click();
   await expect(page.getByTestId("day-target-calories")).toHaveText("2,150");
   await expect(page.getByTestId("macro-protein-target")).toHaveText("130");
   await expect(page.getByTestId("macro-carbs-target")).toHaveCount(0);
-  await expect(page.getByTestId("day-basis")).toContainText("From your profile (82 kg, set");
+  await expect(page.getByTestId("day-basis")).toContainText(
+    "From your profile (82 kg, set",
+  );
 
   // it is the server's, so it is still there after a reload
   await page.reload();
@@ -821,8 +1105,11 @@ test("sets up a profile, and the Day view takes the server's own figures", async
   expectQuiet(consoleErrors);
 });
 
-test("a figure typed in pounds is stored in kilograms and shown back in pounds", async ({ page, consoleErrors }) => {
-  await openTracker(page);
+test("a figure typed in pounds is stored in kilograms and shown back in pounds", async ({
+  page,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
   await page.getByTestId("open-profile").click();
 
   await page.getByTestId("profile-units").selectOption("imperial");
@@ -858,15 +1145,20 @@ test("a figure typed in pounds is stored in kilograms and shown back in pounds",
   expectQuiet(consoleErrors);
 });
 
-test("a refused profile says which field, and nothing is saved", async ({ page, consoleErrors }) => {
-  await openTracker(page);
+test("a refused profile says which field, and nothing is saved", async ({
+  page,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
   await page.getByTestId("open-profile").click();
   await fillProfile(page);
   await page.getByTestId("profile-height-cm").fill("5");
 
   await page.getByTestId("save-profile").click();
 
-  await expect(page.getByTestId("profile-problem")).toContainText("Height (cm):");
+  await expect(page.getByTestId("profile-problem")).toContainText(
+    "Height (cm):",
+  );
   await expect(page.getByTestId("profile-saved")).toHaveCount(0);
   const answer = await (await page.request.get("/api/profile")).json();
   expect(answer).toEqual({ profile: null, targets: null });
@@ -876,25 +1168,35 @@ test("a refused profile says which field, and nothing is saved", async ({ page, 
   expectQuietApartFrom(consoleErrors, ["422"]);
 });
 
-test("the person's own calorie target wins, and the dialog says what the calculation gave", async ({ page, consoleErrors }) => {
-  await openTracker(page);
+test("the person's own calorie target wins, and the dialog says what the calculation gave", async ({
+  page,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
   await page.getByTestId("open-profile").click();
   await fillProfile(page);
   await page.getByTestId("profile-kcal-own").fill("2300");
 
   await page.getByTestId("save-profile").click();
 
-  await expect(page.getByTestId("working-calories-own")).toContainText("your own calorie target of 2,300 kcal; the calculation gave 2,150");
+  await expect(page.getByTestId("working-calories-own")).toContainText(
+    "your own calorie target of 2,300 kcal; the calculation gave 2,150",
+  );
   await page.getByTestId("close-dialog").click();
   await expect(page.getByTestId("day-target-calories")).toHaveText("2,300");
-  await expect(page.getByTestId("day-basis")).toContainText("Calories: your own");
+  await expect(page.getByTestId("day-basis")).toContainText(
+    "Calories: your own",
+  );
 
   await page.request.delete("/api/profile");
   expectQuiet(consoleErrors);
 });
 
-test("removing the profile puts the standard targets back", async ({ page, consoleErrors }) => {
-  await openTracker(page);
+test("removing the profile puts the standard targets back", async ({
+  page,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
   await page.getByTestId("open-profile").click();
   await fillProfile(page);
   await page.getByTestId("save-profile").click();
@@ -906,7 +1208,102 @@ test("removing the profile puts the standard targets back", async ({ page, conso
   await expect(page.getByTestId("profile-dialog")).toHaveCount(0);
   await expect(page.getByTestId("day-target-calories")).toHaveText("2,200");
   await expect(page.getByTestId("profile-prompt")).toBeVisible();
-  expect(await (await page.request.get("/api/profile")).json()).toEqual({ profile: null, targets: null });
+  expect(await (await page.request.get("/api/profile")).json()).toEqual({
+    profile: null,
+    targets: null,
+  });
 
+  expectQuiet(consoleErrors);
+});
+
+// --- Part 12, R54: a profile comes before adding anything -----------------------------------------
+
+test("with no profile nothing can be added, and setting one up is the way through to a first logged meal", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
+  await openTracker(page, { profile: false });
+  const { open } = await state(request);
+  const before = new Set(
+    SECTIONS.flatMap((section) =>
+      open.sections[section].map((entry) => entry.id),
+    ),
+  );
+
+  // the server refuses all three creates, in its own words, and nothing is written
+  const foods = (await (await page.request.get("/api/foods")).json()) as Food[];
+  const refused = await Promise.all([
+    page.request.post("/api/foods", {
+      data: {
+        name: "R54 food",
+        unit: "cup",
+        calories: 1,
+        protein: 1,
+        carbs: 1,
+        fat: 1,
+      },
+    }),
+    page.request.post("/api/meals", {
+      data: {
+        name: "R54 meal",
+        ingredients: [{ food_id: foods[0].id, quantity: 1 }],
+      },
+    }),
+    page.request.post(`/api/days/${open.date}/entries`, {
+      data: { section: "lunch", food_id: foods[0].id, quantity: 1 },
+    }),
+  ]);
+  expect(refused.map((response) => response.status())).toEqual([409, 409, 409]);
+  expect((await refused[0].json()).detail).toBe(
+    "set up your profile before adding anything",
+  );
+  expect(
+    ((await (await page.request.get("/api/foods")).json()) as Food[]).length,
+  ).toBe(foods.length);
+
+  // the screen says so before anyone fills anything in, and will not add
+  await page.getByRole("button", { name: "Add food to Lunch" }).click();
+  const addDialog = page.getByRole("dialog", { name: "Add food to Lunch" });
+  await addDialog.getByText("Rolled oats, dry").click();
+  await expect(page.getByTestId("need-profile")).toContainText(
+    "A profile comes first",
+  );
+  await expect(page.getByTestId("confirm-add-food")).toBeDisabled();
+
+  // the link: this dialog closes, the profile one opens, and saving it opens the gate
+  await page.getByTestId("need-profile-open").click();
+  await expect(addDialog).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Profile" })).toBeVisible();
+  await fillProfile(page);
+  await page.getByTestId("save-profile").click();
+  await expect(page.getByTestId("profile-in-force")).toHaveText(
+    /2,150 kcal and 130 g protein/,
+  );
+  await page.getByTestId("close-dialog").click();
+
+  // and now the same thing works, through to the server
+  await page.getByRole("button", { name: "Add food to Lunch" }).click();
+  await page
+    .getByRole("dialog", { name: "Add food to Lunch" })
+    .getByText("Rolled oats, dry")
+    .click();
+  await expect(page.getByTestId("need-profile")).toHaveCount(0);
+  await page.getByTestId("confirm-add-food").click();
+  await expect(page.getByTestId("section-lunch")).toContainText(
+    "Rolled oats, dry",
+  );
+
+  const after = (await (
+    await page.request.get(`/api/days/${open.date}`)
+  ).json()) as Omit<Day, "id">;
+  const added = SECTIONS.flatMap((section) => after.sections[section]).filter(
+    (entry) => !before.has(entry.id),
+  );
+  expect(added).toHaveLength(1);
+
+  // put it back as it was found: the entry, and the profile
+  await removeEntries(request, open.date, (entry) => !before.has(entry.id));
+  await page.request.delete("/api/profile");
   expectQuiet(consoleErrors);
 });

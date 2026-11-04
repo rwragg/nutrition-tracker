@@ -39,9 +39,9 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
 cd backend && uv run pytest -q          # 360 passed (355 plus 5 container tests)
-cd ../frontend && npm test              # 178 passed
+cd ../frontend && npm test              # 189 passed
 npm run lint && npx tsc --noEmit        # clean
-npm run test:e2e                        # 34 passed, builds its own stack on :8100 with no USDA key
+npm run test:e2e                        # 35 passed, builds its own stack on :8100 with no USDA key
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
 docker compose --profile bot ps         # backend healthy on 127.0.0.1:8000, bot up
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"

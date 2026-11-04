@@ -3,9 +3,16 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { formatQuantity } from "@/lib/format";
-import type { Ingredient, Meal, MealInput, SaveResult, Store } from "@/lib/types";
+import type {
+  Ingredient,
+  Meal,
+  MealInput,
+  SaveResult,
+  Store,
+} from "@/lib/types";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_NEUTRAL, BTN_PRIMARY } from "./styles";
+import { NeedProfileNotice, useProfileGate } from "./ProfileGate";
 
 export default function MealFormDialog({
   meal,
@@ -28,7 +35,8 @@ export default function MealFormDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const canSave = name.trim().length > 0 && ingredients.length > 0 && store.foods.length > 0;
+  const canSave =
+    name.trim().length > 0 && ingredients.length > 0 && store.foods.length > 0;
 
   async function save() {
     if (!canSave || saving) return;
@@ -49,7 +57,12 @@ export default function MealFormDialog({
   }
 
   const updateRow = (index: number, patch: Partial<Ingredient>) =>
-    setIngredients((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    setIngredients((rows) =>
+      rows.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    );
+
+  const { needProfile } = useProfileGate();
+  const blocked = needProfile && !meal;
 
   return (
     <Dialog
@@ -63,7 +76,7 @@ export default function MealFormDialog({
           <button
             type="button"
             onClick={save}
-            disabled={!canSave || saving}
+            disabled={!canSave || saving || blocked}
             className={BTN_PRIMARY}
             data-testid="save-meal"
           >
@@ -72,6 +85,7 @@ export default function MealFormDialog({
         </div>
       }
     >
+      {!meal && <NeedProfileNotice onClose={onClose} />}
       <div className="d-flex flex-column gap-3">
         {problem && (
           <p className="small mb-0 text-ember" data-testid="meal-problem">
@@ -97,14 +111,18 @@ export default function MealFormDialog({
           <h3 className="form-label fw-medium mb-2">Foods</h3>
           <ul className="list-unstyled d-flex flex-column gap-2 mb-0">
             {ingredients.map((ingredient, index) => {
-              const food = store.foods.find((candidate) => candidate.id === ingredient.foodId);
+              const food = store.foods.find(
+                (candidate) => candidate.id === ingredient.foodId,
+              );
               return (
                 <li key={index} className="d-flex align-items-center gap-2">
                   <select
                     value={ingredient.foodId}
                     aria-label={`Food ${index + 1}`}
                     data-testid={`row-food-${index}`}
-                    onChange={(event) => updateRow(index, { foodId: event.target.value })}
+                    onChange={(event) =>
+                      updateRow(index, { foodId: event.target.value })
+                    }
                     className="form-select form-select-sm flex-grow-1"
                   >
                     {store.foods.map((option) => (
@@ -120,18 +138,29 @@ export default function MealFormDialog({
                     value={ingredient.quantity}
                     aria-label={`Quantity ${index + 1}`}
                     data-testid={`row-quantity-${index}`}
-                    onChange={(event) => updateRow(index, { quantity: Number(event.target.value) || 1 })}
+                    onChange={(event) =>
+                      updateRow(index, {
+                        quantity: Number(event.target.value) || 1,
+                      })
+                    }
                     className="form-control form-control-sm text-center tabular"
                     style={{ width: "5rem" }}
                   />
-                  <span className="small text-muted-brand" style={{ width: "4rem" }}>
+                  <span
+                    className="small text-muted-brand"
+                    style={{ width: "4rem" }}
+                  >
                     {food ? formatQuantity(ingredient.quantity, food.unit) : ""}
                   </span>
                   <button
                     type="button"
                     aria-label={`Remove food ${index + 1}`}
                     data-testid={`remove-row-${index}`}
-                    onClick={() => setIngredients((rows) => rows.filter((_, i) => i !== index))}
+                    onClick={() =>
+                      setIngredients((rows) =>
+                        rows.filter((_, i) => i !== index),
+                      )
+                    }
                     className={BTN_NEUTRAL}
                   >
                     <Trash2 size={14} aria-hidden="true" />
@@ -145,7 +174,10 @@ export default function MealFormDialog({
             type="button"
             data-testid="add-row"
             onClick={() =>
-              setIngredients((rows) => [...rows, { foodId: store.foods[0]?.id ?? "", quantity: 1 }])
+              setIngredients((rows) => [
+                ...rows,
+                { foodId: store.foods[0]?.id ?? "", quantity: 1 },
+              ])
             }
             className={`${BTN_GHOST} mt-3 d-inline-flex align-items-center gap-2`}
           >

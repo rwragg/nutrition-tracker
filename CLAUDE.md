@@ -10,7 +10,8 @@ The root `PLAN.md` is superseded; ignore it.
 Parts 1-9, Part 10 steps 1-2 (accounts; a chat linked by a pairing code) and Part 11 (suggest a food that
 is not in the list, from the person's own foods and from USDA) are done. **Part 12 (a profile, and calorie and
 protein targets worked out from it) is built and tested:** schema version 7, the `/api/profile` routes, and
-the Profile dialog and Day view on the screen. **As of 2026-11-04 it is checked in but not deployed:** the
+the Profile dialog and Day view on the screen, **and R54: an account with no profile cannot add an entry, a food or a
+meal** (it can still read, look a food up, edit and delete). **As of 2026-11-04 it is checked in but not deployed:** the
 live containers are still the schema 6 build, and rebuilding migrates the database 6 to 7 (snapshot and
 rollback images: `~/backups/nutrition/2026-11-04-pre-profile`). `docs/PLAN.md` Part 12 has the status.
 
@@ -35,10 +36,10 @@ is "What is left" at the top of `docs/RESUME.md`. What the code review found and
 ```bash
 ./scripts/start.sh                       # build + start, app on :8000 (user / password)
 ./scripts/stop.sh
-cd backend && uv run pytest -q           # 360 tests
-cd frontend && npm test                  # 178 unit/component tests
+cd backend && uv run pytest -q           # 368 tests
+cd frontend && npm test                  # 189 unit/component tests
 cd frontend && npm run lint && npx tsc --noEmit
-cd frontend && npm run test:e2e          # 34 Playwright tests, own stack on :8100
+cd frontend && npm run test:e2e          # 35 Playwright tests, own stack on :8100
 ./scripts/e2e-persistence.sh             # write, rebuild image, read back
 docker compose --profile bot up -d --build   # optional Telegram bot
 ```
@@ -67,6 +68,10 @@ Verify before starting: clean `git status`, and the suites above green.
   account's profile (D25).** The browser never calculates one: `frontend/lib/targets.ts` holds only the standard
   four for an account with no profile, and chooses between them. The log's API still returns sums. *(Until Part 12
   this read "targets live only in `targets.ts`"; D25 moved the rule, it did not remove it.)*
+- **Nothing is added before a profile exists (R54).** `POST /foods`, `POST /meals` and `POST /days/{day}/entries` call
+  `profile.require_profile`, which answers 409 (not 403: the bot reads a 403 as an unlinked chat) with one sentence the
+  screen and the bot both repeat. Any test that creates something gives its account a profile first
+  (`tests/people.give_profile`, the e2e `openTracker`, the stub's default world).
 - A profile is body measurements: reachable from a signed-in browser only, never by the bot (R53), never in a
   log or an error message (R50), and only invented people in tests, fixtures, screenshots and the deck (R51).
   The screenshot script refuses port 8000 and any stack holding a profile that is not its own.

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import App from "@/components/App";
@@ -30,7 +36,12 @@ const ANA = {
 };
 
 /** The same person as a US form would show them, with a weight that does not convert to a round number. */
-const ANA_IMPERIAL = { ...ANA, height_cm: 175.26, weight_kg: 74.84274, units: "imperial" };
+const ANA_IMPERIAL = {
+  ...ANA,
+  height_cm: 175.26,
+  weight_kg: 74.84274,
+  units: "imperial",
+};
 
 async function renderApp() {
   render(<App />);
@@ -46,7 +57,9 @@ async function openDialog(user: User) {
 async function fillMetric(user: User) {
   await user.type(screen.getByTestId("profile-name"), "Ana Example");
   await user.selectOptions(screen.getByTestId("profile-sex"), "male");
-  fireEvent.change(screen.getByTestId("profile-birth"), { target: { value: "1986-03-01" } });
+  fireEvent.change(screen.getByTestId("profile-birth"), {
+    target: { value: "1986-03-01" },
+  });
   await user.type(screen.getByTestId("profile-height-cm"), "178");
   await user.type(screen.getByTestId("profile-weight"), "82");
   await user.selectOptions(screen.getByTestId("profile-activity"), "moderate");
@@ -55,29 +68,35 @@ async function fillMetric(user: User) {
 
 describe("an account with no profile", () => {
   it("sees the standard targets, and an offer to set one up (R38)", async () => {
-    stubFetch();
+    stubFetch({ profile: { existing: null } });
     await renderApp();
 
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,200");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,200",
+    );
     expect(screen.getByTestId("macro-protein-target")).toHaveTextContent("140");
     expect(screen.getByTestId("macro-carbs-target")).toHaveTextContent("250");
     expect(screen.getByTestId("macro-fat-target")).toHaveTextContent("70");
     expect(screen.queryByTestId("day-basis")).not.toBeInTheDocument();
-    expect(screen.getByTestId("profile-prompt")).toHaveTextContent("standard targets");
+    expect(screen.getByTestId("profile-prompt")).toHaveTextContent(
+      "standard targets",
+    );
   });
 
   it("opens the dialog from the prompt as well as from the header", async () => {
-    stubFetch();
+    stubFetch({ profile: { existing: null } });
     const user = userEvent.setup();
     await renderApp();
 
     await user.click(screen.getByTestId("set-up-profile"));
 
-    expect(await screen.findByRole("dialog", { name: "Profile" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("dialog", { name: "Profile" }),
+    ).toBeInTheDocument();
   });
 
   it("is told plainly that the figures are estimates, and for whom they are not meant (R49)", async () => {
-    stubFetch();
+    stubFetch({ profile: { existing: null } });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -91,7 +110,7 @@ describe("an account with no profile", () => {
   });
 
   it("cannot save until the person has said who they are", async () => {
-    stubFetch();
+    stubFetch({ profile: { existing: null } });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -109,7 +128,7 @@ describe("an account with no profile", () => {
 describe("creating a profile", () => {
   it("sends the metric figures as typed, and shows the targets the server worked out", async () => {
     const sent: Record<string, unknown>[] = [];
-    stubFetch({ profile: { sent } });
+    stubFetch({ profile: { existing: null, sent } });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -132,11 +151,13 @@ describe("creating a profile", () => {
         protein_override: null,
       },
     ]);
-    expect(screen.getByTestId("profile-in-force")).toHaveTextContent("2,150 kcal and 130 g protein");
+    expect(screen.getByTestId("profile-in-force")).toHaveTextContent(
+      "2,150 kcal and 130 g protein",
+    );
   });
 
   it("shows the working, step by step, from the server's own figures (R47)", async () => {
-    stubFetch();
+    stubFetch({ profile: { existing: null } });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -144,16 +165,26 @@ describe("creating a profile", () => {
     await user.click(screen.getByTestId("save-profile"));
     await screen.findByTestId("profile-working");
 
-    expect(screen.getByTestId("working-resting")).toHaveTextContent("age 40: 1,737.5 kcal");
+    expect(screen.getByTestId("working-resting")).toHaveTextContent(
+      "age 40: 1,737.5 kcal",
+    );
     expect(screen.getByTestId("working-need")).toHaveTextContent("Times 1.55");
-    expect(screen.getByTestId("working-need")).toHaveTextContent("2,693.1 kcal");
-    expect(screen.getByTestId("working-goal")).toHaveTextContent("Minus 20% to lose fat: 2,154.5 kcal");
-    expect(screen.getByTestId("working-calories")).toHaveTextContent("Rounded to 2,150 kcal.");
-    expect(screen.getByTestId("working-protein")).toHaveTextContent("1.6 g per kg of body weight x 82 kg = 131.2 g, rounded to 130 g");
+    expect(screen.getByTestId("working-need")).toHaveTextContent(
+      "2,693.1 kcal",
+    );
+    expect(screen.getByTestId("working-goal")).toHaveTextContent(
+      "Minus 20% to lose fat: 2,154.5 kcal",
+    );
+    expect(screen.getByTestId("working-calories")).toHaveTextContent(
+      "Rounded to 2,150 kcal.",
+    );
+    expect(screen.getByTestId("working-protein")).toHaveTextContent(
+      "1.6 g per kg of body weight x 82 kg = 131.2 g, rounded to 130 g",
+    );
   });
 
   it("changes the Day view to the profile's targets, and says what they rest on (R48, D30)", async () => {
-    stubFetch({ profile: { today: "2026-11-04" } });
+    stubFetch({ profile: { existing: null, today: "2026-11-04" } });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -162,18 +193,30 @@ describe("creating a profile", () => {
     await screen.findByTestId("profile-saved");
     await user.click(screen.getByTestId("close-dialog"));
 
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,150");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,150",
+    );
     expect(screen.getByTestId("macro-protein-target")).toHaveTextContent("130");
     // calories and protein only: a fixed 250 g and 70 g beside a personal calorie figure would contradict it
     expect(screen.queryByTestId("macro-carbs-target")).not.toBeInTheDocument();
     expect(screen.queryByTestId("macro-fat-target")).not.toBeInTheDocument();
     expect(screen.getByTestId("macro-carbs")).toBeInTheDocument(); // the total is still there
-    expect(screen.getByTestId("day-basis")).toHaveTextContent(/^From your profile \(82 kg, set 4 Nov/);
+    expect(screen.getByTestId("day-basis")).toHaveTextContent(
+      /^From your profile \(82 kg, set 4 Nov/,
+    );
     expect(screen.queryByTestId("profile-prompt")).not.toBeInTheDocument();
   });
 
   it("says which field was refused, in the unit the server counts in, and stays open", async () => {
-    stubFetch({ profile: { refuse: { field: "height_cm", msg: "Input should be greater than or equal to 120" } } });
+    stubFetch({
+      profile: {
+        existing: null,
+        refuse: {
+          field: "height_cm",
+          msg: "Input should be greater than or equal to 120",
+        },
+      },
+    });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -187,11 +230,18 @@ describe("creating a profile", () => {
     expect(screen.queryByTestId("profile-saved")).not.toBeInTheDocument();
     expect(screen.getByTestId("profile-dialog")).toBeInTheDocument();
     // and the Day view is still on the standard targets, because nothing was saved
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,200");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,200",
+    );
   });
 
   it("does not repeat the server's wording for a field it has no name for", async () => {
-    stubFetch({ profile: { refuse: { field: "something_new", msg: "field required" } } });
+    stubFetch({
+      profile: {
+        existing: null,
+        refuse: { field: "something_new", msg: "field required" },
+      },
+    });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -199,21 +249,25 @@ describe("creating a profile", () => {
 
     await user.click(screen.getByTestId("save-profile"));
 
-    expect(await screen.findByTestId("profile-problem")).toHaveTextContent("The server refused that request.");
+    expect(await screen.findByTestId("profile-problem")).toHaveTextContent(
+      "The server refused that request.",
+    );
   });
 });
 
 describe("pounds, feet and inches", () => {
   it("converts what was typed to metric before it is sent (R39)", async () => {
     const sent: Record<string, unknown>[] = [];
-    stubFetch({ profile: { sent } });
+    stubFetch({ profile: { existing: null, sent } });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
 
     await user.selectOptions(screen.getByTestId("profile-units"), "imperial");
     await user.type(screen.getByTestId("profile-name"), "Ana Example");
-    fireEvent.change(screen.getByTestId("profile-birth"), { target: { value: "1986-03-01" } });
+    fireEvent.change(screen.getByTestId("profile-birth"), {
+      target: { value: "1986-03-01" },
+    });
     await user.type(screen.getByTestId("profile-height-ft"), "5");
     await user.type(screen.getByTestId("profile-height-in"), "9");
     await user.type(screen.getByTestId("profile-weight"), "165");
@@ -272,14 +326,18 @@ describe("pounds, feet and inches", () => {
     await openDialog(user);
 
     // 1.55 must not read as 1.6: this is the screen that shows the arithmetic honestly
-    expect(screen.getByTestId("working-need")).toHaveTextContent("Times 1.55 for your activity");
+    expect(screen.getByTestId("working-need")).toHaveTextContent(
+      "Times 1.55 for your activity",
+    );
   });
 
   it("sends an untouched height and weight back exactly as they were stored", async () => {
     // 165 lb converted to kilograms and typed back never lands on the stored figure, and the server dates a
     // weight by whether it changed - so opening the dialog and saving must not look like a new weigh-in.
     const sent: Record<string, unknown>[] = [];
-    stubFetch({ profile: { existing: ANA_IMPERIAL, sent, today: "2026-11-04" } });
+    stubFetch({
+      profile: { existing: ANA_IMPERIAL, sent, today: "2026-11-04" },
+    });
     const user = userEvent.setup();
     await renderApp();
     await openDialog(user);
@@ -334,8 +392,12 @@ describe("a person's own targets (R46)", () => {
     const user = userEvent.setup();
     await renderApp();
 
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,300");
-    expect(screen.getByTestId("day-basis")).toHaveTextContent(/^Calories: your own\. Protein: from your profile/);
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,300",
+    );
+    expect(screen.getByTestId("day-basis")).toHaveTextContent(
+      /^Calories: your own\. Protein: from your profile/,
+    );
 
     await openDialog(user);
     expect(screen.getByTestId("working-calories-own")).toHaveTextContent(
@@ -355,7 +417,9 @@ describe("a person's own targets (R46)", () => {
     await screen.findByTestId("profile-saved");
     await user.click(screen.getByTestId("close-dialog"));
 
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,150");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,150",
+    );
   });
 
   it("says when the floor decided the number", async () => {
@@ -377,7 +441,9 @@ describe("a profile that already exists", () => {
     await screen.findByTestId("day-total-calories");
 
     // the first render that has a Day view already has the person's own target
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,150");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,150",
+    );
     expect(screen.getByTestId("day-basis")).toHaveTextContent("set 12 Oct");
   });
 
@@ -396,13 +462,19 @@ describe("a profile that already exists", () => {
 
     await user.click(screen.getByTestId("profile-remove"));
     expect(requests).not.toContain("DELETE /api/profile"); // one click only asks
-    expect(screen.getByTestId("profile-remove-confirm")).toHaveTextContent("Your targets go back to the standard ones");
+    expect(screen.getByTestId("profile-remove-confirm")).toHaveTextContent(
+      "Your targets go back to the standard ones",
+    );
 
     await user.click(screen.getByTestId("profile-remove-yes"));
 
-    await waitFor(() => expect(screen.queryByTestId("profile-dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByTestId("profile-dialog")).not.toBeInTheDocument(),
+    );
     expect(requests).toContain("DELETE /api/profile");
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,200");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,200",
+    );
     expect(screen.getByTestId("profile-prompt")).toBeInTheDocument();
   });
 
@@ -413,18 +485,33 @@ describe("a profile that already exists", () => {
     await openDialog(user);
 
     await user.click(screen.getByTestId("profile-remove"));
-    await user.click(within(screen.getByTestId("profile-remove-confirm")).getByRole("button", { name: "Keep it" }));
+    await user.click(
+      within(screen.getByTestId("profile-remove-confirm")).getByRole("button", {
+        name: "Keep it",
+      }),
+    );
 
-    expect(screen.queryByTestId("profile-remove-confirm")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("profile-remove-confirm"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("profile-remove")).toBeInTheDocument();
   });
 
   it("falls back to the standard targets, and says why, when it cannot be read", async () => {
-    stubFetch({ offline: ({ path, method }) => path === "/api/profile" && method === "GET" });
+    stubFetch({
+      offline: ({ path, method }) =>
+        path === "/api/profile" && method === "GET",
+    });
     await renderApp();
 
-    expect(screen.getByTestId("day-target-calories")).toHaveTextContent("2,200");
-    expect(screen.getByTestId("page-problem")).toHaveTextContent("Your profile could not be loaded");
-    expect(screen.getByTestId("page-problem")).toHaveTextContent("standard targets");
+    expect(screen.getByTestId("day-target-calories")).toHaveTextContent(
+      "2,200",
+    );
+    expect(screen.getByTestId("page-problem")).toHaveTextContent(
+      "Your profile could not be loaded",
+    );
+    expect(screen.getByTestId("page-problem")).toHaveTextContent(
+      "standard targets",
+    );
   });
 });

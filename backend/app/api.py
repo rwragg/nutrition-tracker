@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.auth import Connection, User
+from app.profile import require_profile
 
 # Mirrors db.UNITS, and a test asserts the two agree so a unit cannot be added half-way.
 # `g` is the gram basis: macros per gram, so "183 g" logs 183 × the per-gram figure.
@@ -335,6 +336,7 @@ def list_foods(connection: Connection, user: User) -> list[dict]:
 
 @router.post("/foods", status_code=status.HTTP_201_CREATED)
 def create_food(food: FoodIn, connection: Connection, user: User) -> dict:
+    require_profile(connection, user)  # R54: nothing is added before a profile exists
     food_id = new_id("food")
 
     connection.execute(
@@ -389,6 +391,7 @@ def list_meals(connection: Connection, user: User) -> list[dict]:
 
 @router.post("/meals", status_code=status.HTTP_201_CREATED)
 def create_meal(meal: MealIn, connection: Connection, user: User) -> dict:
+    require_profile(connection, user)
     meal_id = new_id("meal")
 
     with connection:  # one transaction: a meal without its ingredients is not a state to leave behind
@@ -449,6 +452,7 @@ def read_day(day: calendar_date, connection: Connection, user: User) -> dict:
 @router.post("/days/{day}/entries", status_code=status.HTTP_201_CREATED)
 def add_entry(day: calendar_date, entry: EntryIn, connection: Connection, user: User) -> dict:
     """Log something into a date. Any valid date will do - there is no day to open first."""
+    require_profile(connection, user)
     if entry.food_id is not None:
         owned_food(connection, user, entry.food_id)
     else:

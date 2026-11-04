@@ -17,6 +17,8 @@ from fastapi.testclient import TestClient
 from app import db, telegram
 from app.auth import BOT_CHAT_HEADER, BOT_SECRET_HEADER
 from app.main import app
+from app.profile import SET_UP_FIRST
+from people import give_profile
 
 SECRET = "a-bot-secret-for-tests"
 
@@ -273,6 +275,7 @@ def test_an_unbound_chat_reaches_nothing(client: TestClient) -> None:
 def test_a_bound_chat_logs_into_that_accounts_day(client: TestClient) -> None:
     """R26's second clause: once bound, /log writes into that account's day."""
     seed_code = code_for(client, SEED)
+    give_profile(client)  # R54: an account with no profile cannot add anything, by the bot or the browser
     bind(client, "111", seed_code)
     client.post("/api/logout")  # the bot has no session; neither should this test
 
@@ -301,7 +304,9 @@ def test_a_bound_chat_cannot_see_another_accounts_log(client: TestClient) -> Non
     """The heart of it: the bot is trusted, the chat is not. Two bound chats, two logs."""
     register(client, ALICE)
     bind(client, "111", code_for(client, SEED))
-    bind(client, "222", code_for(client, ALICE))
+    alice_code = code_for(client, ALICE)
+    give_profile(client)  # alice may add things, so the refusal below is about whose food it is, not a missing profile
+    bind(client, "222", alice_code)
     client.post("/api/logout")
 
     seeded = client.get("/api/foods", headers=as_bot("111")).json()
@@ -384,3 +389,24 @@ def test_losing_a_race_to_bind_a_chat_is_a_409_not_a_server_error(client: TestCl
 
     assert response.status_code == 409
     assert "already linked" in response.json()["detail"]
+
+
+def test_a_bound_chat_of_an_account_with_no_profile_can_read_but_not_add_and_still_cannot_see_a_profile(client: TestClient) -> None:
+    """R54 through the door the bot uses. The gate asks only whether a profile exists, so the bot is refused in
+    the app's own words (a 409, not the 403 it reads as "this chat is not linked") and learns nothing else (R53)."""
+    bind(client, "111", code_for(client, SEED))
+    client.post("/api/logout")
+    headers = as_bot("111")
+
+    foods = client.get("/api/foods", headers=headers)
+    assert foods.status_code == 200  # reading is not gated
+
+    refused = client.post(
+        "/api/days/2026-11-02/entries",
+        json={"section": "lunch", "food_id": foods.json()[0]["id"], "quantity": 1},
+        headers=headers,
+    )
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == SET_UP_FIRST
+
+    assert client.get("/api/profile", headers=headers).status_code == 401  # and it still cannot read one

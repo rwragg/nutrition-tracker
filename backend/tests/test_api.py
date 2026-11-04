@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.main import app
+from people import give_profile
 
 MACROS: tuple[str, ...] = ("calories", "protein", "carbs", "fat")
 SECTIONS = ("breakfast", "lunch", "dinner", "snacks")
@@ -29,10 +30,16 @@ def client() -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def api(client: TestClient) -> TestClient:
-    """A client that is signed in."""
+def api_without_profile(client: TestClient) -> TestClient:
+    """A client that is signed in as the seeded account, which has no profile (R54: it cannot add anything)."""
     assert client.post("/api/login", json=MVP_CREDENTIALS).status_code == 200
     return client
+
+
+@pytest.fixture
+def api(api_without_profile: TestClient) -> TestClient:
+    """A client that is signed in, and whose account has a profile, so it is allowed to add things."""
+    return give_profile(api_without_profile)
 
 
 def food_body(**overrides) -> dict:

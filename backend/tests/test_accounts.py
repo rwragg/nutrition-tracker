@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.main import app
+from people import give_profile
 from app.passwords import hash_password, verify_password
 
 SEED_CREDENTIALS = {"username": "user", "password": "password"}
@@ -60,8 +61,8 @@ def alice_and_bob(client: TestClient) -> Iterator[tuple[TestClient, TestClient]]
     register(client, ALICE)
     register(client, BOB)
 
-    alice = signed_in(ALICE)
-    bob = signed_in(BOB)
+    alice = give_profile(signed_in(ALICE))  # each may add things (R54)
+    bob = give_profile(signed_in(BOB))
     try:
         yield alice, bob
     finally:

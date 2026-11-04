@@ -28,6 +28,8 @@ one in `docs/`.)
 - Move between days and open any one of them to dig into its log
 - Total each day against calorie and macronutrient targets, or - once you set up a **profile** - against calorie
   and protein targets worked out for you, with the arithmetic shown. You can enter your own figure instead
+- A profile comes first: until one is saved the app reads and looks foods up but will not add an entry, a food or a
+  meal, from the browser or from Telegram
 - Deleting a record that a meal or a day still refers to is refused, with the reason
 
 **The log is kept in the database**, so it is there when you come back, from another browser, and after
@@ -96,15 +98,17 @@ cd .. && docker compose -p nutrition-shots down -v      # throws the stack and i
 ```
 
 The stack reads the project's `.env`, so the USDA lookup pictures spend a few calls of the real key. The
-profile pictures use an invented person ("Ana Example", Part 12 example A), never anyone real.
+pictures use an invented person ("Ana Example", Part 12 example A), never anyone real. The script saves their
+profile before the add and create pictures, since an account with none cannot add anything, and takes one picture
+(`need-profile.png`) before that to show what such an account sees.
 
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 360 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
+cd backend && uv run pytest          # 368 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 178 unit and component tests
-npm run test:e2e                     # 34 Playwright tests, against its own container on :8100
+npm test                             # 189 unit and component tests
+npm run test:e2e                     # 35 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```
