@@ -1226,7 +1226,7 @@ refused on adding with the 409 sentence, and still gets a 401 on `/api/profile` 
 create was refused live with its sentence and wrote nothing, and the bot came up listening. **The live account has no profile
 yet, so it cannot add anything until Robert saves one (D34).** **Not done:** the deck is not rebuilt.
 
-## Part 14 - a bot token entered in the app · **proposed 2026-11-04, not approved, nothing built**
+## Part 14 - a bot token entered in the app, and approving who may use the app · **decisions taken 2026-11-04; two readings to confirm; nothing built**
 
 Robert, 4 Nov: *"can we rework so we enter it in the app"*, after making a second account and a bot of its own for it.
 Today a bot is attached by putting its token in `.env` (the live bot) or by running `scripts/link-bot.sh` (R55, a
@@ -1287,9 +1287,61 @@ recommendation, marked **[proposed]**, and what is lost if it is declined.
 - **D42 - `scripts/link-bot.sh` (R55).** **[proposed] retire it** when this ships: its job is done by the dialog. It
   stays as it is until then. It is not needed for this and need not be run.
 
-**Steps, each stopping for approval:** (1) the backend: schema 8 with a `bots` table, the crypto, the routes, `getMe`
-through an injectable client, the limits; (2) the bot: a poller per active token, fetching them from the app, conflict
-handling; (3) the dialog, a stand-in Telegram server for the e2e, the docs and the rollback notes.
+**Decisions taken by Robert, 4 Nov** (the proposals above stay as written, marked here as accepted or changed):
+
+- **D36 accepted:** one bot per account; the `.env` bot stays as the default.
+- **D37 accepted:** the token is encrypted at rest (Fernet, key in the environment).
+- **D38 accepted:** the polling runs in the bot process, which fetches active tokens from the app.
+- **D39, his words: "the app talks to the bot".** Read as: the app is the authority on who a bot may serve (only chats it has
+  bound with a code, R61), **and** the app is how the admin is told something (D43). *To confirm.*
+- **D40 changed:** not any account, but **one admin who approves**. His vision, in his words: *a field on the Telegram button
+  where the user can enter a key*, plus *a way to approve users*, done with a script, with an email "or something" to tell
+  him. Read as: any **approved** account enters its own key in that field (R56), and **who is approved** is the admin's
+  decision (R65-R70). *To confirm.*
+
+**Approving users (new, from the answer to 5)**
+
+- **R65 - an account has a status: `pending`, `approved` or `disabled`.** A new registration starts `pending` (this amends
+  R24, which let anyone register and sign in at once). **Every account that exists when this ships is `approved`**, the
+  seeded `user` and `rwragg` included, so the migration changes nobody's access. *Check:* a migration test that every
+  existing row comes out `approved`, counts unchanged; a registration test that a new account is `pending`.
+- **R66 - a `pending` or `disabled` account cannot sign in and has no session.** Sign-in answers with one sentence that
+  says so (and not "wrong password", so a person knows to wait), counts toward the same rate limits (R25), and a session
+  that already exists stops working the moment its account is `disabled`. *Check:* tests for each, including the existing
+  session case.
+- **R67 - only the admin changes a status, and only from the machine.** `scripts/users.sh list | approve | reject | disable |
+  enable NAME` runs inside the backend container (host access is the authority); **there is no web route that changes a
+  status**, so a signed-in account cannot approve itself or anyone. `reject` deletes a pending account that has no data.
+  Every change is logged: who, when, what, never a secret. *Check:* the route table has no status-changing route (read from
+  `app.openapi()["paths"]`); script tests with stand-ins; a log test.
+- **R68 - the admin is told, in the app's own way.** A registration queues a notice; **the bot (a client of the API) fetches
+  and delivers it** to the admin's chat, then acknowledges it, so a notice survives the bot being down and is delivered once
+  it is back. It names the username and the one command to approve, and contains no password and no token. *Check:* queue
+  tests; a bot test with a stand-in Telegram that a notice is delivered once and acknowledged.
+- **R69 - the admin chat is named in `.env`** (`TELEGRAM_ADMIN_CHAT`, his own chat id, which is not a secret). If it is unset
+  nothing is delivered and `users.sh list` still shows who is waiting. *Check:* both cases.
+- **R70 - what an approved account can do is unchanged,** and a person who is `pending` is told on the sign-in screen what
+  they are waiting for. The app does **not** tell them when they are approved (no email is sent: see D43); the admin does.
+  *Check:* a sign-in screen test.
+
+**Two more decisions**
+
+- **D43 - how the admin is told.** **[proposed] a Telegram message from the house bot to the admin chat.** It needs no new
+  credential and no mail server, arrives at once, and is already the channel he uses. **Email is the alternative** and
+  needs an SMTP account whose password goes in `.env`, a sending address that does not land in spam, and a library; it is
+  also the only way to tell the *applicant* they are approved, since they have no chat with the bot yet. *If he wants email:*
+  it is an additive piece (R68's queue stays; a second delivery channel is added), and it answers D17 (what the email on an
+  account is for), which is open today.
+- **D44 - what approval gates.** **[proposed] sign-in itself** (R66): an unapproved stranger sees nothing and can make no
+  request that does anything. *If declined:* approval gates only the bot attach (R56), and anyone can register and use the
+  food log; much smaller, but then "approving users" would not mean what he said.
+
+**Steps, each stopping for approval (revised 4 Nov):** (1) **approvals**: schema 8 (an account status), the sign-in refusal,
+the notice queue, `scripts/users.sh`, and the migration that approves everyone who exists; this alone is useful and
+independent of bots; (2) **bots**: schema 9 (a `bots` table), the crypto, the routes, `getMe` through an injectable
+client, the limits; (3) the bot process: a poller per active token, fetching them from the app, conflict handling, and
+delivery of the admin's notices; (4) the dialog (the field on the Telegram button), the sign-in screen's waiting message, a
+stand-in Telegram server for the e2e, the docs and the rollback notes.
 
 **What it costs.** A schema bump (8, additive, with the same refusal-on-older-build behaviour as 7), one new dependency,
 a rewrite of the bot's main loop from one token to many, and a new class of risk (a stored credential) that the app has
