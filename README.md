@@ -84,6 +84,20 @@ message. The same dialog unlinks the chat.
 What it deliberately does not do, in this cut: no natural-language parsing (text that is not a command
 gets a hint, not a guess), no editing of foods or meals, no voice, no photo meals.
 
+## Trying the Telegram bot on a throwaway stack
+
+A second bot (made with BotFather) can be attached to a throwaway stack without touching the live one:
+
+```bash
+scripts/link-bot.sh --project nutrition-shots --port 8200 --user alice
+```
+
+It asks for the bot's token (hidden), has Telegram confirm it and shows the bot's name, starts only the bot beside that
+stack, then asks for the app password (hidden), mints a pairing code and prints `/bind CODE` to send to the bot.
+`--check` verifies the token and stops. It refuses the live project and port, and any token another bot already uses
+(the live `.env`, or a Hermes profile): one token can be polled by one process only. Nothing secret is shown, logged or
+stored. Stop the bot with `docker compose -p nutrition-shots --profile bot stop bot`. The live bot is rotated by hand.
+
 ## Screenshots
 
 The pictures in `docs/screenshots/` come from a **throwaway stack**, never the live one: the repository is
@@ -105,7 +119,7 @@ profile before the add and create pictures, since an account with none cannot ad
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 368 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
+cd backend && uv run pytest          # 384 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
 npm test                             # 211 unit and component tests
 npm run test:e2e                     # 36 Playwright tests, against its own container on :8100

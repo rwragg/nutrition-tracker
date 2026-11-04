@@ -44,7 +44,7 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 368 passed (includes 5 container tests that build the real image)
+cd backend && uv run pytest -q          # 384 passed (includes 5 container tests that build the real image, and 16 for scripts/link-bot.sh)
 cd ../frontend && npm test              # 211 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 36 passed, builds its own stack on :8100 with no USDA key
@@ -93,6 +93,11 @@ Part 12 is **deployed** (4 Nov evening); a test copy may still be running (secti
   - **Rollback is not just the old image.** The schema 6 build refuses to start on a schema 7 database (tested). Going
     back means `nutrition-tracker:pre-r54` *and* a snapshot's `nutrition.db`, and loses anything logged since, so if
     something is wrong, say so **before** logging anything. Steps: that snapshot's own `SNAPSHOT.md`.
+- **Attaching a bot to the test copy (R55, built, not yet run with a real token).** Robert registered a second account
+  (`rwragg`) on the test copy and made a new bot with BotFather; the test copy has no bot process, so nothing could answer.
+  `scripts/link-bot.sh --project nutrition-shots --port 8200 --user rwragg` is the way: he types the token and password at hidden
+  prompts (never in chat), it starts only the bot, and prints `/bind CODE`. Tested end to end with stand-ins; **the real Telegram
+  round trip is unproven until he runs it**. Do not reuse `@rjw_nutrition_bot`'s token (the live bot) or a Hermes profile's.
 - **Pushed:** everything up to the `snapshot-2026-11-04` tag is on GitHub, in all four repositories (Robert said "push
   everything" on 4 Nov). Anything committed after that tag is not; check `git rev-list --count origin/main..HEAD`.
 - **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were

@@ -1048,6 +1048,21 @@ depends on the other. Robert's call on order.
   answers, that the same call succeeds once a profile exists and fails again after it is removed; component
   tests that each creating dialog shows the notice and a disabled button and that its link opens the Profile
   dialog; and an e2e test of the whole path, from the notice to a first logged meal.
+- **R55 - linking a bot to a throwaway stack is one guarded script** (Robert, 4 Nov: *"add a process that prompts for
+  bot token and then once verified gives the bind"*). `scripts/link-bot.sh --project P --port N` asks for a bot token
+  with a hidden prompt, has Telegram prove it (`getMe`) and shows the bot's name, starts **only the bot** beside that
+  stack, waits for it to report listening, signs in as an app account (hidden password) and prints `/bind CODE`.
+  It refuses: the live project and port 8000; a malformed token before sending it anywhere; a token another process
+  already polls (the live `.env`, or any Hermes profile's), because Telegram allows one poller per token and reusing
+  one would silently break that bot; a stack that is not healthy; an environment with no bot secret or no allowed
+  users. **No secret is shown, logged, stored or put on a command line**: the token reaches `curl` on stdin and
+  `docker` through the environment of one command. Rotating the live bot stays a by-hand step. *Check:*
+  `backend/tests/test_link_bot.py`, with stand-ins for `curl` and `docker` so nothing real is reached: each refusal,
+  `--check` starting nothing, the happy path (only `up -d --no-deps --force-recreate bot`, token in the environment,
+  not in argv), no secret in any output or call, a failed sign-in leaving the bot running with by-hand
+  instructions, and a bot that never listens being reported with its log. Broken three ways to prove the tests can
+  fail: drop `--no-deps`, skip the in-use check, print the token.
+
 **Amendment, 2026-11-04 - decisions R54 needs. Accepted (Robert: "ok when ready please build", after his note that a food must not be addable either); built.**
 
 - **D32 - where it is enforced.** Proposed: in the API *and* on the screen. A screen-only rule is a suggestion:
