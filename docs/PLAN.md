@@ -944,6 +944,150 @@ because they need a second USDA call per food and a decision about which portion
   USDA call per food and a choice of which portion to trust; and the lookup from the Telegram bot, which
   belongs with the model parser and confirm-before-write (D19).
 
+## Part 12 - a profile, and targets worked out from it · **draft for approval, nothing built**
+
+Robert's ask, 2026-11-04: *"add in a plan for a user profile ... would need name, etc. and then based on the
+profile we would calculate kcal and protein needs."* No model is involved and nothing leaves the machine: a
+profile is a handful of stored facts and the targets are arithmetic on them.
+
+**Numbering.** `docs/RESUME.md` and `CLAUDE.md` call the confirm-before-write plan "a Part 12". It has not
+been written, so nothing cites it yet beyond those two sentences. This part takes 12 as drafted; if it
+goes first, confirm-before-write becomes Part 13 and those two sentences change on approval. Neither part
+depends on the other. Robert's call on order.
+
+**Starting point - read off the repo on 2026-11-04, not assumed.**
+
+- Working tree clean at `d34e5f9`. Schema version 6. Backend 277 passed (the five image-building container
+  tests were not re-run for this draft; the recorded total is 282). Frontend unit 140 passed. The 28 e2e
+  tests were not re-run.
+- `users` holds `id`, `username`, `email`, `telegram_id`, `password_hash`. There is no name and no body
+  data anywhere in the schema.
+- Targets are four constants in `frontend/lib/targets.ts` (2200 kcal, 140 g protein, 250 g carbs, 70 g fat),
+  passed by `DayView` to `DaySummary`. They are the same for every account and cannot be changed without
+  editing code. The API returns sums only.
+- `auth.py` has register, login, logout and session. There is no profile route.
+- The bot holds no records and computes nothing (D14). This part does not touch it.
+
+**Requirements (R38 onward, to be approved):**
+
+- **R38 - an account may have one profile, and an account without one behaves exactly as it does today.**
+  It sees the four constants above and no new screen blocks it. *Check:* a test that an account with no
+  profile reads 2200 / 140 / 250 / 70 on the Day view, and that the existing suites pass unchanged.
+- **R39 - what a profile holds.** Display name, sex (the calorie equation has one constant for each of two
+  values and needs it), date of birth, height, weight and the date the weight was set, activity level,
+  goal, and a units setting (metric or imperial). Stored in metric; the units setting only changes what the
+  form shows. *Check:* a test that 190 lb is stored as 86.18 kg and read back as 190.0 lb, and that 5 ft
+  7 in is stored as 170.2 cm.
+- **R40 - the form refuses what the equation was not made for.** Age 18 to 100, worked out from the date of
+  birth; height 120 to 230 cm; weight 30 to 300 kg; a name of 1 to 40 characters that is not blank; sex,
+  activity and goal from closed lists. A refusal names the field and the rule, and nothing is written.
+  *Check:* a test on each side of each bound.
+- **R41 - a profile is private to its account.** `GET`, `PUT` and `DELETE /api/profile` act on the signed-in
+  account only; no route takes a user id, so there is nothing to address another account's profile with.
+  Signed out answers 401. *Check:* a test with two accounts, each reading and changing only its own, and
+  that deleting one leaves the other.
+- **R42 - inputs are stored and targets never are.** Targets are worked out on every read from the stored
+  facts. There is no targets column. A stored target is a second copy of something derived, and it goes
+  stale the day the weight changes. *Check:* a test that changing the weight changes the targets with no
+  other write.
+- **R43 - calories start from the Mifflin-St Jeor equation** (D26). Resting energy = 10 x kg + 6.25 x cm
+  - 5 x age + 5 (male) or - 161 (female). Daily need = resting energy x an activity factor: sedentary 1.2,
+  light 1.375, moderate 1.55, active 1.725, very active 1.9. *Check:* the four worked examples below are
+  pinned as tests; a changed constant fails one of them.
+- **R44 - the goal adjusts the calories, and a floor holds.** Lose fat 20% below the daily need, maintain 0,
+  gain 10% above (D29). The result is rounded to the nearest 10 kcal and never goes below 1,200 (female) or
+  1,500 (male); when the floor decides the number, the screen says so. *Check:* worked examples B and D
+  below, and a test that the floor message appears only when the floor applied.
+- **R45 - protein is 1.6 g per kg of body weight** (D27), rounded to the nearest 5 g, the same for every
+  goal. *Check:* the worked examples, and a test that it follows the weight and nothing else.
+- **R46 - the person can override either number.** An optional own calorie target (800 to 6,000) and an
+  optional own protein target (20 to 400 g). An override wins over the computed figure; the screen shows
+  which one is in force; clearing it returns to the computed one (D28). *Check:* tests of both, and of the
+  bounds.
+- **R47 - a Profile button in the header opens a dialog, in the pattern of the Telegram one.** It holds the
+  form, the units switch, and after a save the working: resting energy, activity factor, goal adjustment,
+  protein factor and the result. No preview before saving, so the arithmetic lives in one place (D25).
+  Bootstrap CSS only, colours as tokens, ink text on solid accent fills, 4.5:1 contrast, no emojis.
+  *Check:* component tests of the dialog, and an e2e test that fills it in and sees the Day view change.
+- **R48 - the Day view uses the profile's targets when there is one, and says what they rest on.** A line
+  such as "based on 82 kg, set 12 Oct" sits by the target, because a protein target built on a six-month-old
+  weight is a wrong number that looks right. Carbs and fat follow D30. An account with no profile sees a
+  short prompt to set one. *Check:* component tests of both states.
+- **R49 - the screen says what the number is.** One plain sentence in the dialog: these are estimates from
+  an equation that can be off by 10% or more for a given person; not for anyone under 18, pregnant or
+  breastfeeding, or managing a medical condition. *Check:* a test that the text is present.
+- **R50 - profile values never leave the profile.** Not in logs, not in a Telegram message, not in an error
+  beyond the name of the field. *Check:* a test that captures the logs during a save and an invalid save
+  and finds none of the submitted values.
+- **R51 - the repository holds only invented people.** Tests, fixtures, e2e, screenshots and the deck use a
+  fictitious profile. The screenshot script runs against its own throwaway stack and account, never the
+  live one, because the live account will hold real figures. *Check:* the screenshot script refuses to run
+  against port 8000 and builds its own stack, and a test pins that refusal.
+- **R52 - the 6 -> 7 migration only adds a table.** `profiles`, one row per account, `user_id` as its
+  primary key and a foreign key to `users` with `ON DELETE RESTRICT`. No existing row is touched, version 7
+  is recorded beside the step, and an existing database opens with no profile. *Check:* the migration test
+  in the pattern of 4 -> 5 and 5 -> 6, and the chain test from the oldest version.
+
+**Worked examples** (invented people; every figure computed by the formulas above, not by hand):
+
+| | Person | Resting | Daily need | After goal | Result | Protein |
+|---|---|---|---|---|---|---|
+| A | man, 40, 178 cm, 82 kg, moderate, lose | 1,737.5 | 2,693.1 | 2,154.5 | **2,150 kcal** | 131.2 -> **130 g** |
+| B | woman, 30, 155 cm, 50 kg, sedentary, lose | 1,157.8 | 1,389.3 | 1,111.4 | **1,200 kcal** (floor) | 80 -> **80 g** |
+| C | woman, 55, 165 cm, 70 kg, light, maintain | 1,295.2 | 1,781.0 | 1,781.0 | **1,780 kcal** | 112 -> **110 g** |
+| D | man, 25, 183 cm, 75 kg, active, gain | 1,773.8 | 3,059.7 | 3,365.7 | **3,370 kcal** | 120 -> **120 g** |
+
+**Decisions - proposed, Robert to confirm each:**
+
+- **D25 - where the targets are worked out.** Proposed: on the backend, in one module, returned by the profile
+  route together with the working. One implementation, tested in pytest at the pinned figures, and the bot
+  (D14: computes nothing) can read the same numbers later without a second copy. **This replaces a standing
+  rule.** `CLAUDE.md` says "Targets live only in `frontend/lib/targets.ts`; the API returns sums." The
+  revision: targets are worked out in one place, the backend, from the profile; `targets.ts` keeps only the
+  no-profile fallback (R38). The rule moves, it is not weakened, and `CLAUDE.md` and `docs/RESUME.md`
+  change in the same part. *Alternative:* the frontend works them out and the old rule stands as written;
+  the cost is that the bot would need its own copy of the arithmetic the day it shows a target.
+- **D26 - which equation.** Mifflin-St Jeor. A systematic review for the American Dietetic Association
+  (Frankenfield et al., *J Am Diet Assoc* 2005;105:775-89) found it predicted resting energy within 10% of
+  measured in more people than Harris-Benedict, Owen or WHO/FAO/UNU, with the narrowest error range, and
+  also found that errors for an individual can be large and that **older adults were under-represented in
+  the validation work.** Robert is 61 and that sentence applies to him; it is the reason for D28.
+- **D27 - protein at 1.6 g/kg of total body weight, for every goal.** The basis: the RDA of 0.8 g/kg is the
+  amount that prevents deficiency, not a target for someone who trains; a meta-regression of 49 trials
+  (Morton et al., *Br J Sports Med* 2018;52:376-84) put the point beyond which extra protein stopped adding
+  muscle in resistance training at about 1.62 g/kg/day; the 2017 ISSN position stand gives 1.4 to 2.0.
+  **Where this is soft, and the plan should say so:** those trials are in people lifting weights, so for a
+  sedentary person 1.6 is more than the evidence asks for; in an energy deficit the trial evidence points
+  higher still (Helms et al., 2014, per kg of lean mass), which a formula with no body-fat input cannot
+  see; and total weight overstates the need at a high body-fat percentage. The upper end of Morton's
+  interval, which I recall as about 2.2, was not re-checked for this draft. *Alternatives:* a factor that
+  rises on a "lose" goal, or a yes/no "do you lift weights" that sets it. One constant is the simplest
+  thing that tests cleanly; the alternatives add an input and a rule.
+- **D28 - let the person override.** Two optional numbers. An estimate with no way to correct it is a trap,
+  most of all when D26 says the equation is least validated for older adults. Robert already coaches from a
+  protein range that is not the equation's. *If declined:* drop R46 and the two nullable columns.
+- **D29 - one fixed adjustment per goal, not a pace choice.** A percentage scales with the person, and the
+  floor protects the small end. The "7,700 kcal per kg" rule is too crude to promise a rate of loss, so the
+  screen promises none. *Alternative:* a pace the person picks.
+- **D30 - carbs and fat.** The ask was calories and protein. Proposed: with a profile, carbs and fat show
+  their totals with no target; without one, nothing changes. Keeping 250 g and 70 g beside a personal
+  calorie figure would contradict it, and any split I derive (say fat at 30% of calories, carbs the
+  remainder) is a second set of rules nobody asked for. *Alternative:* that split. Robert to choose.
+- **D31 - what is left out of this part, and why.**
+  - *Weight history.* The weight is overwritten and dated. A weigh-in log is a later part, and would also
+    give past days the target they were judged against; today a past day is measured against today's.
+  - *Body fat, or protein per kg of lean mass.* Needs an input that is hard to measure honestly.
+  - *Greeting by name in the bot, or the bot reading targets.* Possible after D25, not part of this.
+  - *Account deletion (R29, Part 10 step 4).* `RESTRICT` means the deletion route must remove the profile
+    first. Noted here so step 4 does not discover it.
+
+**Steps, each stopping for approval:**
+
+1. *Backend.* Migration 6 -> 7, the calculation module, the three routes, and the tests that pin the four
+   examples. The figures above are what Robert checks before the screen exists.
+2. *Frontend.* The Profile dialog, the Day view reading the profile's targets, the no-profile prompt, the
+   screenshot script on its own stack, and the e2e test. Then `CLAUDE.md` and `docs/RESUME.md` revised for D25.
+
 ## Open questions
 
 - **Q1 — Registration is deferred, not dropped.** `AGENTS.md` asks for registration with a telegram id
