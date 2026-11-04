@@ -4,13 +4,16 @@ import { useState } from "react";
 import { Minus, Plus } from "lucide-react";
 import { formatCalories, formatGrams, formatQuantity } from "@/lib/format";
 import { scaleMacros, ZERO } from "@/lib/nutrition";
-import { SECTION_LABELS, type Section, type Store } from "@/lib/types";
+import { quantityRules, readQuantity } from "@/lib/quantity";
+import {
+  SECTION_LABELS,
+  type Food,
+  type Section,
+  type Store,
+} from "@/lib/types";
 import Dialog from "./Dialog";
 import { BTN_GHOST, BTN_PRIMARY, BTN_NEUTRAL } from "./styles";
 import { NeedProfileNotice, useProfileGate } from "./ProfileGate";
-
-const STEP = 0.25;
-const MIN_QUANTITY = 0.25;
 
 const round = (value: number) => Math.round(value * 100) / 100;
 
@@ -34,21 +37,38 @@ export default function AddFoodDialog({
   const [selectedId, setSelectedId] = useState(
     initialFoodId ?? store.foods[0]?.id ?? "",
   );
-  const [quantity, setQuantity] = useState(1);
 
   const selected =
     store.foods.find((food) => food.id === selectedId) ?? store.foods[0];
-  const macros = selected ? scaleMacros(selected.macros, quantity) : ZERO;
+  const unit = selected?.unit ?? "cup";
+  const rules = quantityRules(unit);
+
+  // What the person has typed, kept as text. It is read, never rewritten, while they type: clamping it on every
+  // keystroke made typing 183 give 0.26 (see lib/quantity.ts).
+  const [draft, setDraft] = useState(String(rules.start));
+  const reading = readQuantity(draft, unit);
+  const quantity = reading.ok ? reading.value : null;
+  const macros =
+    selected && quantity !== null
+      ? scaleMacros(selected.macros, quantity)
+      : ZERO;
 
   const submit = () => {
-    if (!selected) return;
+    if (!selected || quantity === null) return;
     onAdd(selected.id, quantity);
     onClose();
   };
 
-  const setQuantityClamped = (value: number) => {
-    if (Number.isNaN(value)) return;
-    setQuantity(round(Math.max(MIN_QUANTITY, Math.min(20, value))));
+  // The buttons start from the typed amount if it is one, and from the unit's own start if it is not.
+  const bump = (direction: 1 | -1) => {
+    const next = round((quantity ?? rules.start) + direction * rules.step);
+    setDraft(String(Math.min(rules.max, Math.max(rules.min, next))));
+  };
+
+  // A quantity means something different in another unit (1 cup, 100 g), so it starts over then and only then.
+  const choose = (food: Food) => {
+    if (food.unit !== unit) setDraft(String(quantityRules(food.unit).start));
+    setSelectedId(food.id);
   };
 
   const { needProfile } = useProfileGate();
@@ -68,7 +88,7 @@ export default function AddFoodDialog({
           <button
             type="button"
             onClick={submit}
-            disabled={!selected || needProfile}
+            disabled={!selected || quantity === null || needProfile}
             className={BTN_PRIMARY}
             data-testid="confirm-add-food"
           >
@@ -96,7 +116,7 @@ export default function AddFoodDialog({
                 type="button"
                 role="option"
                 aria-selected={selected?.id === food.id}
-                onClick={() => setSelectedId(food.id)}
+                onClick={() => choose(food)}
                 data-testid={`food-${food.id}`}
                 className="option-row d-flex align-items-center justify-content-between gap-3 small"
               >
@@ -128,34 +148,44 @@ export default function AddFoodDialog({
           <button
             type="button"
             aria-label="Decrease quantity"
-            onClick={() => setQuantityClamped(quantity - STEP)}
+            onClick={() => bump(-1)}
             className={BTN_NEUTRAL}
           >
             <Minus size={14} aria-hidden="true" />
           </button>
           <input
             type="number"
-            min={MIN_QUANTITY}
-            max={20}
-            step={STEP}
-            value={quantity}
+            min={rules.min}
+            max={rules.max}
+            step={rules.step}
+            value={draft}
             aria-label="Quantity"
-            onChange={(event) => setQuantityClamped(Number(event.target.value))}
+            aria-invalid={!reading.ok}
+            onChange={(event) => setDraft(event.target.value)}
             className="form-control form-control-sm text-center tabular"
-            style={{ width: "4.5rem" }}
+            style={{ width: "5.5rem" }}
           />
           <button
             type="button"
             aria-label="Increase quantity"
-            onClick={() => setQuantityClamped(quantity + STEP)}
+            onClick={() => bump(1)}
             className={BTN_NEUTRAL}
           >
             <Plus size={14} aria-hidden="true" />
           </button>
         </div>
-        {selected && (
+        {selected && quantity !== null && (
           <span className="small text-muted-brand">
             {formatQuantity(quantity, selected.unit)}
+          </span>
+        )}
+        {!reading.ok && (
+          <span
+            className="small text-ember"
+            role="status"
+            data-testid="quantity-problem"
+          >
+            {reading.problem}
           </span>
         )}
       </div>

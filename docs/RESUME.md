@@ -45,9 +45,9 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
 cd backend && uv run pytest -q          # 368 passed (includes 5 container tests that build the real image)
-cd ../frontend && npm test              # 189 passed
+cd ../frontend && npm test              # 211 passed
 npm run lint && npx tsc --noEmit        # clean
-npm run test:e2e                        # 35 passed, builds its own stack on :8100 with no USDA key
+npm run test:e2e                        # 36 passed, builds its own stack on :8100 with no USDA key
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
 docker compose --profile bot ps         # backend healthy on 127.0.0.1:8000, bot up
 docker compose logs bot | tail -3       # "the app accepted the bot secret", then "listening"
@@ -78,14 +78,16 @@ Part 12 is built but **not deployed**, and a test copy is running (section 0). E
   `nutrition-shots`, its own volume, seeded login `user` / `password`, no bot, loopback only). Robert is testing it by
   hand. **Taking it down is approval-gated:** `docker compose -p nutrition-shots down -v` deletes a volume, so it asks
   him; if the prompt times out, do **not** retry, rephrase or route around it. Say it is still running and ask. Nothing
-  in it matters: the data is the seed, and the live stack is untouched.
+  in it matters: the data is the seed, and the live stack is untouched. **It was built before the quantity-box fix**
+  (typing in the Add food quantity box still misbehaves there; the fix is in the code, the tests and the next build).
 - **Part 12 and R54 are not on the live stack.** The running containers are the schema 6 build (`pre-profile-2026-11-04`).
   Waiting for Robert's go after his test. To deploy, in this order:
   1. Re-take the snapshot if anything was logged since (the 4 Nov one holds 33 foods, 5 meals, 18 entries, 3 days, 2
      `usda` foods; compare before trusting it). Method: `references/deploy-snapshot-and-test-stack.md` in the
      `nutrition-app-ops` skill. Pin images by name first: a build moves the `local` tag and Docker can lose the running
      image's content (it already has once).
-  2. `cd ~/hermes_workspace/nutrition && docker compose --profile bot up -d --build` (recreates both containers, keeps
+  2. (The build includes the 4 Nov fix to the Add food quantity box: typing 183 used to give 0.26.)
+     `cd ~/hermes_workspace/nutrition && docker compose --profile bot up -d --build` (recreates both containers, keeps
      the volume, migrates the database 6 to 7). **Everyone is signed out afterwards** (the session secret regenerates).
   3. Check: `/api/health` 200; schema 7 (`docker compose exec -T backend python -c "from app import db; print(db.SCHEMA_VERSION)"`);
      sign in, then 33 foods and 3 days; the bot's log shows it listening.
@@ -96,8 +98,8 @@ Part 12 is built but **not deployed**, and a test copy is running (section 0). E
   5. **Rollback is not just the old image.** The schema 6 build refuses to start on a schema 7 database (tested, 4 Nov).
      Going back means the old image *and* the snapshot's `nutrition.db`, and loses anything logged since, so if the
      deploy is wrong, say so **before** logging anything. Steps are in the snapshot's own `SNAPSHOT.md`.
-- **Unpushed to GitHub (public repo):** the commits after `profile-r54-2026-11-04`, and the `handover-2026-11-04`
-  tag. Push only with Robert's say-so; the earlier push was explicitly approved.
+- **Pushed:** everything up to the `snapshot-2026-11-04` tag is on GitHub, in all four repositories (Robert said "push
+  everything" on 4 Nov). Anything committed after that tag is not; check `git rev-list --count origin/main..HEAD`.
 - **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were
   in `06c4cd2` and `d5fd646` (removed again in `a08aa97`; `git show` them there, do not copy them into a document). Robert said "no worries" on 4 Nov rather
   than have 3 commits rewritten. They were an accident (his real figures used as examples). **From here on, scan the
@@ -105,9 +107,6 @@ Part 12 is built but **not deployed**, and a test copy is running (section 0). E
 - **Unanswered:** he offered "a new key" (4 Nov) but never said **which** (USDA, Telegram bot token, or bot secret; the
   last two also need a bot restart). Method when he answers: he puts it in `.env` himself with `read -rsp`; you verify
   by length, a hash prefix and a live call; it is never pasted in chat.
-- **Reported, not diagnosed:** typing `183` into the quantity field of a gram-based food showed `0.26`. That is all
-  that was recorded: the cause, the food and the screen are unknown. Reproduce it in the browser first; there is no
-  test for it yet.
 - **Not rebuilt:** the deck (`docs/deck/`) does not use the new pictures (`need-profile`, `profile`,
   `profile-working`; `day.png` now shows a profile). It was not asked for.
 - **`command_allowlist` in the default profile's `config.yaml` gained `SQL DELETE without WHERE`** at 13:27 on 4 Nov.
@@ -426,6 +425,14 @@ Frontend: 96.1% statements, 82.5% branches.
 - **A container restart signs the browser out** (the session secret is per process): sign in again before a
   scripted browser check, or it finds no button and fails.
 - **A long command can outlive the tool's timeout.** Run the suites separately, with `timeout`.
+- **A controlled number input must never clamp or round on each keystroke.** The Add food quantity box did, so
+  clearing it snapped to the 0.25 minimum and the digits typed next were appended to that: typing 183 gave 0.26
+  and typing 2 gave 0.25 (reported 4 Nov, reproduced by a failing test first, fixed the same day). Keep the typed
+  text in state, read it after the fact (`lib/quantity.ts`), and say when it is out of range instead of changing
+  it. The limits are per unit: a gram food is 1 to 5000 (starts at 100, steps by 10); the household units keep a
+  quarter to 20. The backend never limited quantity, so those were screen assumptions that made a gram food
+  unloggable from this dialog. Tests that type must `clear()` first, as a person does, and a real-keystroke browser
+  test (`pressSequentially`) guards it, because `fill()` sets the value in one go and cannot meet this bug.
 
 ## Open items
 

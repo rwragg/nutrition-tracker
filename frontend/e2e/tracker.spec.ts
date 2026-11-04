@@ -1307,3 +1307,83 @@ test("with no profile nothing can be added, and setting one up is the way throug
   await page.request.delete("/api/profile");
   expectQuiet(consoleErrors);
 });
+
+// --- The quantity box: typing 183 must give 183 -------------------------------------------------
+
+test("typing 183 into the quantity of a gram food logs 183 g, and an impossible amount is explained, not changed", async ({
+  page,
+  request,
+  consoleErrors,
+}) => {
+  await openTracker(page);
+  const created = await page.request.post("/api/foods", {
+    data: {
+      name: "E2E quantity yogurt",
+      unit: "g",
+      calories: 0.61,
+      protein: 0.1,
+      carbs: 0.047,
+      fat: 0.0033,
+    },
+  });
+  expect(created.status()).toBe(201);
+  const food = (await created.json()) as Food;
+
+  const { open } = await state(request);
+  const before = new Set(
+    SECTIONS.flatMap((section) =>
+      open.sections[section].map((entry) => entry.id),
+    ),
+  );
+  await page.reload();
+  await expect(page.getByTestId("day-total-calories")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add food to Lunch" }).click();
+  await page.getByTestId(`food-${food.id}`).click();
+  const quantity = page.getByLabel("Quantity", { exact: true });
+  await expect(quantity).toHaveValue("100"); // a gram food starts at a sensible amount, not at 1 g
+
+  // real keystrokes, the way the bug was met: clear the box, then type
+  await quantity.clear();
+  await quantity.pressSequentially("183");
+  await expect(quantity).toHaveValue("183");
+  await expect(page.getByTestId("quantity-problem")).toHaveCount(0);
+  await expect(page.getByTestId("food-preview")).toContainText("112 kcal");
+
+  // an amount that cannot be right is said to be, and left as typed
+  await quantity.clear();
+  await quantity.pressSequentially("99999");
+  await expect(quantity).toHaveValue("99999");
+  await expect(page.getByTestId("quantity-problem")).toContainText(
+    "1 g to 5000 g",
+  );
+  await expect(page.getByTestId("confirm-add-food")).toBeDisabled();
+  if (process.env.QTY_SHOT)
+    await page.getByRole("dialog").screenshot({ path: process.env.QTY_SHOT });
+
+  await quantity.clear();
+  await quantity.pressSequentially("183");
+  await page.getByTestId("confirm-add-food").click();
+  await expect(page.getByTestId("section-lunch")).toContainText(
+    "E2E quantity yogurt",
+  );
+
+  // and the server holds 183, not a clamped or rounded stand-in
+  const after = (await (
+    await page.request.get(`/api/days/${open.date}`)
+  ).json()) as Omit<Day, "id">;
+  const added = SECTIONS.flatMap((section) => after.sections[section]).filter(
+    (entry) => !before.has(entry.id),
+  );
+  expect(added).toHaveLength(1);
+  expect(added[0]).toMatchObject({
+    kind: "food",
+    foodId: food.id,
+    quantity: 183,
+  });
+
+  await removeEntries(request, open.date, (entry) => !before.has(entry.id));
+  await deleteFoodNamed(request, "E2E quantity yogurt");
+  await page.request.delete("/api/profile");
+  expectQuiet(consoleErrors);
+});

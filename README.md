@@ -107,8 +107,8 @@ profile before the add and create pictures, since an account with none cannot ad
 ```bash
 cd backend && uv run pytest          # 368 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 189 unit and component tests
-npm run test:e2e                     # 35 Playwright tests, against its own container on :8100
+npm test                             # 211 unit and component tests
+npm run test:e2e                     # 36 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back
 ```
