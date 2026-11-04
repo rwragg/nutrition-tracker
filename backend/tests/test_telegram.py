@@ -152,17 +152,17 @@ def test_an_unknown_code_is_not_found(client: TestClient, code: str) -> None:
 def test_a_code_binds_the_chat_to_the_account_that_asked_for_it(client: TestClient) -> None:
     code = code_for(client, SEED)
 
-    response = bind(client, "8685521777", code)
+    response = bind(client, "1234567890", code)
 
     assert response.status_code == 200, response.text
-    assert response.json() == {"id": "user", "username": "user", "chat_id": "8685521777"}
+    assert response.json() == {"id": "user", "username": "user", "chat_id": "1234567890"}
 
     connection = db.connect()
     try:
         stored = connection.execute("SELECT telegram_id FROM users WHERE id = 'user'").fetchone()
     finally:
         connection.close()
-    assert stored["telegram_id"] == "8685521777"
+    assert stored["telegram_id"] == "1234567890"
 
 
 def test_a_code_works_once(client: TestClient) -> None:

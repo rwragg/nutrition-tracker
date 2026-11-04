@@ -303,13 +303,13 @@ def test_a_version_3_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
 
         # and the new columns do what they are for: one chat, one account
         migrated.execute(
-            "UPDATE users SET email = 'robert@example.com', telegram_id = '8685521777'"
+            "UPDATE users SET email = 'robert@example.com', telegram_id = '1234567890'"
             " WHERE id = 'user'"
         )
         migrated.commit()
         with pytest.raises(sqlite3.IntegrityError):
             migrated.execute(
-                "INSERT INTO users (id, username, telegram_id) VALUES ('ghost','ghost','8685521777')"
+                "INSERT INTO users (id, username, telegram_id) VALUES ('ghost','ghost','1234567890')"
             )
     finally:
         migrated.close()
@@ -324,7 +324,7 @@ def test_a_version_4_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
     db.initialise(path, today=date(2026, 11, 1)).close()
 
     legacy = rewind(path, "4")
-    legacy.execute("UPDATE users SET telegram_id = '8685521777' WHERE id = 'user'")
+    legacy.execute("UPDATE users SET telegram_id = '1234567890' WHERE id = 'user'")
     legacy.commit()
     tables = {row[0] for row in legacy.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert "telegram_codes" not in tables
@@ -342,7 +342,7 @@ def test_a_version_4_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
         assert migrated.execute("SELECT count(*) FROM entries").fetchone()[0] == entries_before
         assert migrated.execute(
             "SELECT telegram_id FROM users WHERE id = 'user'"
-        ).fetchone()[0] == "8685521777"
+        ).fetchone()[0] == "1234567890"
 
         # the new table is the one a fresh file has, and it enforces what it is for
         assert {row[1] for row in migrated.execute("PRAGMA table_info(telegram_codes)")} == {

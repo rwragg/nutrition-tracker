@@ -87,9 +87,9 @@ describe("linking a Telegram chat", () => {
     await screen.findByTestId("telegram-code");
     expect(screen.queryByTestId("telegram-linked")).not.toBeInTheDocument();
 
-    chat.id = "8685521777"; // the bot redeemed it
+    chat.id = "1234567890"; // the bot redeemed it
 
-    expect(await screen.findByTestId("telegram-linked")).toHaveTextContent("8685521777");
+    expect(await screen.findByTestId("telegram-linked")).toHaveTextContent("1234567890");
     expect(screen.queryByTestId("telegram-code")).not.toBeInTheDocument();
   });
 

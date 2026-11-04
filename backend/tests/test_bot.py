@@ -245,7 +245,7 @@ def test_an_unknown_food_id_is_shown_as_its_id_rather_than_hidden() -> None:
 
 # --- the commands, end to end, as one chat ----------------------------------------------
 
-CHAT = "8685521777"
+CHAT = "1234567890"
 
 
 def test_today_asks_the_api_for_the_machine_s_date(api: FakeApi) -> None:
@@ -468,8 +468,8 @@ def test_the_preflight_accepts_an_unbound_chat_as_the_right_answer() -> None:
 
 
 def test_the_allowed_list_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", " 8685521777 , 42 ,")
-    assert bot.allowed_users() == {"8685521777", "42"}
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", " 1234567890 , 42 ,")
+    assert bot.allowed_users() == {"1234567890", "42"}
     monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "")
     assert bot.allowed_users() == set()
 

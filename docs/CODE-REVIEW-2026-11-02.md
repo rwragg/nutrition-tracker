@@ -200,8 +200,11 @@ than the 409 message. Catch `sqlite3.IntegrityError` around the `UPDATE` and ret
   yours. Irrelevant now, relevant at hundreds of users.
 - **`.env.example` is clean and `.env` is ignored and untracked.** The bot secret in `.env` is 43 characters.
   No token-shaped string appears anywhere in git history (checked with a pattern over `git log --all -p`).
-  Your Telegram id (8685521777) is in tracked test files and `docs/RESUME.md`. In a private repo that is
-  fine; remove it before making the repo public.
+  Your Telegram id was in tracked test files and `docs/RESUME.md`. In a private repo that is fine; remove
+  it before making the repo public. **Done 2026-11-04**: every tracked file now uses an invented id
+  (1234567890), and the real one lives only in the gitignored `.env`. The repo is public and the id is
+  still in the history of six earlier commits, left there on purpose: a Telegram id is not a credential,
+  and rewriting pushed history costs more than it protects.
 
 ## Documentation drift
 

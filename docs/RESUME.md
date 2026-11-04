@@ -160,7 +160,7 @@ screen that shows the code was built later the same day (the **Telegram** button
 - **The bot carries the chat id on every request** and no longer signs in. `app/bot.py` lost its
   `ACCOUNT` constant and gained `/bind`, a preflight, and the translation of the app's 403 into the
   instruction to link.
-- **Robert's own chat is bound** (`users.telegram_id = 8685521777`, set by hand before the screen existed),
+- **Robert's own chat is bound** (`users.telegram_id` is set to his chat id, by hand before the screen existed),
   so his bot kept working across the change.
 
 ## Code review, 2026-11-02
