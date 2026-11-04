@@ -98,6 +98,8 @@ Part 12 is **deployed** (4 Nov evening); a test copy may still be running (secti
   `scripts/link-bot.sh --project nutrition-shots --port 8200 --user rwragg` is the way: he types the token and password at hidden
   prompts (never in chat), it starts only the bot, and prints `/bind CODE`. Tested end to end with stand-ins; **the real Telegram
   round trip is unproven until he runs it**. Do not reuse `@rjw_nutrition_bot`'s token (the live bot) or a Hermes profile's.
+  **4 Nov, later: Robert asked to rework this so the token is entered in the app instead.** That is `docs/PLAN.md` Part 14,
+  a draft awaiting his decisions (D36-D42); the script need not be run for it.
 - **Pushed:** everything up to the `snapshot-2026-11-04` tag is on GitHub, in all four repositories (Robert said "push
   everything" on 4 Nov). Anything committed after that tag is not; check `git rev-list --count origin/main..HEAD`.
 - **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were

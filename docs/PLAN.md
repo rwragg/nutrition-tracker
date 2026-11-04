@@ -1226,6 +1226,77 @@ refused on adding with the 409 sentence, and still gets a 401 on `/api/profile` 
 create was refused live with its sentence and wrote nothing, and the bot came up listening. **The live account has no profile
 yet, so it cannot add anything until Robert saves one (D34).** **Not done:** the deck is not rebuilt.
 
+## Part 14 - a bot token entered in the app · **proposed 2026-11-04, not approved, nothing built**
+
+Robert, 4 Nov: *"can we rework so we enter it in the app"*, after making a second account and a bot of its own for it.
+Today a bot is attached by putting its token in `.env` (the live bot) or by running `scripts/link-bot.sh` (R55, a
+throwaway stack), and one bot serves every account, each chat bound by a code (R26). This part lets an account attach
+**its own bot from the app**: paste the token, have Telegram prove it, get the `/bind` line, and be talking to it. It is
+a design decision more than a feature: the app would **hold a credential**, which it has never done (the USDA key and
+the bot secret are in `.env`), and the bot would run **one poller per account's token**. Each point below carries a
+recommendation, marked **[proposed]**, and what is lost if it is declined.
+
+**Requirements (proposed)**
+
+- **R56 - an account attaches its own bot from the Telegram dialog.** A password-type field takes the token; the **server**
+  has Telegram prove it (`getMe`) and the dialog shows only the bot's `@username` and its status; from then on that bot
+  answers for that account. *Check:* API and component tests against a stand-in Telegram (never the real one); an e2e test
+  through the dialog, from the paste to a `/today` answered.
+- **R57 - the token is write-only.** No route, log line, error message, response or screen ever returns it, including
+  failures and the bot's own status. Removing the bot deletes it and stops the poller. *Check:* tests plant a token and
+  assert it is absent from every response, every captured log line and every error body; a removal test.
+- **R58 - it is stored encrypted, under a key held in the environment** (D37). *Check:* a test reads the raw database
+  file and finds no token in the clear; a test that a missing or wrong key refuses to start and says why.
+- **R59 - one token, one account, one poller.** The app refuses a token already attached to another account. It cannot know
+  about a token used elsewhere (the live `.env` bot, a Hermes profile's bot): Telegram allows one poller per token, so a
+  reuse silently breaks the other bot. The dialog says so, and the bot's own log names a conflict (Telegram's 409).
+  *Check:* a duplicate-token test; a conflict test with a stand-in that answers 409.
+- **R60 - the bot stays a client of the API and keeps no records** (D14). It asks the app, with the bot secret, which
+  accounts have a token and runs a poller for each; an attach or a removal takes effect within 30 seconds **without
+  restarting anything**. *Check:* bot unit tests with a stand-in Telegram and API; one e2e.
+- **R61 - a bot serves only its own account's chats.** Binding is the existing pairing code (R26), minted in the dialog
+  and sent to that bot. A chat that is not bound gets one fixed sentence about linking, and nothing else is read or
+  stored. *Check:* a bot of account A cannot read account B's log even if B's chat messages it.
+- **R62 - limits.** One bot per account, a configured cap on bots in total (every one is a poller), a timeout on `getMe`,
+  and failed attaches counted per account and per address like sign-in is (R25). *Check:* one test per limit.
+- **R63 - the existing `.env` bot keeps working untouched** as the "house bot" for any account that has not attached its own.
+  *Check:* the current bot tests pass unchanged.
+- **R64 - what is deliberately not done:** there is no TLS yet, so a token typed into the app crosses the wire in the
+  clear. That is acceptable on loopback and **not** acceptable once the app is hosted (R30), so this part must not be
+  exposed before hosting has TLS. The dialog says so while the app is served over plain HTTP.
+
+**Decisions to take, and what I propose**
+
+- **D36 - one bot per account, or one shared bot.** **[proposed] per account**, because that is what you did and it
+  keeps each person's chat on their own bot; the shared `.env` bot stays as the default (R63). *If declined:* keep one
+  bot, and the app only needs somewhere to enter *that* one token (a much smaller part: a single admin field).
+- **D37 - how the token is stored.** **[proposed] encrypted at rest** with Fernet from the `cryptography` package, key
+  from the environment (`APP_DATA_KEY`, generated once and kept in `.env`). This adds **a dependency**, the first crypto
+  one, and I would not hand-roll it. *If declined:* plaintext in the database, which anyone holding the data volume
+  or a backup can read: simpler, and a backup would then carry live credentials.
+- **D38 - where the polling runs.** **[proposed] in the bot process**, which fetches the active tokens from the app over
+  the bot-secret API (a route that hands out secrets to exactly one caller) and polls each. *If declined:* poll inside the
+  backend, which ends "the bot is only a client of the API" (D14) and puts long-polling in the web process.
+- **D39 - who may talk to a bot.** Today `TELEGRAM_ALLOWED_USERS` in `.env` is the gate. A per-account bot cannot use it.
+  **[proposed]** no allowlist: only a valid code binds, strangers get one fixed sentence, and failed binds are rate limited
+  (R62). *If declined:* the owner enters their own Telegram user id in the dialog as an allowlist of one.
+- **D40 - who may attach.** **[proposed] any signed-in account, for itself only.** *If declined:* a single admin account.
+- **D41 - the rule this reverses.** "Keys live in `.env` only" is amended **for bot tokens only**: they may be entered in
+  the app. The USDA key and the bot secret stay in `.env`, and the other secrets rule (never in chat, a URL or a log) is
+  unchanged and is what R57 enforces.
+- **D42 - `scripts/link-bot.sh` (R55).** **[proposed] retire it** when this ships: its job is done by the dialog. It
+  stays as it is until then. It is not needed for this and need not be run.
+
+**Steps, each stopping for approval:** (1) the backend: schema 8 with a `bots` table, the crypto, the routes, `getMe`
+through an injectable client, the limits; (2) the bot: a poller per active token, fetching them from the app, conflict
+handling; (3) the dialog, a stand-in Telegram server for the e2e, the docs and the rollback notes.
+
+**What it costs.** A schema bump (8, additive, with the same refusal-on-older-build behaviour as 7), one new dependency,
+a rewrite of the bot's main loop from one token to many, and a new class of risk (a stored credential) that the app has
+not had. Roughly the size of Part 12. **What I would want you to weigh before saying yes:** a shared bot already serves
+several accounts safely; a bot per account is more to run and more to secure, so it is worth it only if people really
+want their own bots.
+
 ## Open questions
 
 - **Q1 — Registration is deferred, not dropped.** `AGENTS.md` asks for registration with a telegram id
