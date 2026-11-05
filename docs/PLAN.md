@@ -1226,7 +1226,7 @@ refused on adding with the 409 sentence, and still gets a 401 on `/api/profile` 
 create was refused live with its sentence and wrote nothing, and the bot came up listening. **The live account has no profile
 yet, so it cannot add anything until Robert saves one (D34).** **Not done:** the deck is not rebuilt.
 
-## Part 14 - a bot token entered in the app, and approving who may use the app · **decisions taken and confirmed 2026-11-04; step 1 (approvals) built and tested, awaiting approval; steps 2 to 4 not started**
+## Part 14 - a bot token entered in the app, and approving who may use the app · **decisions taken and confirmed 2026-11-04; step 1 (approvals) built, tested and deployed 4 Nov; step 2 approved to start; steps 3 and 4 not started**
 
 Robert, 4 Nov: *"can we rework so we enter it in the app"*, after making a second account and a bot of its own for it.
 Today a bot is attached by putting its token in `.env` (the live bot) or by running `scripts/link-bot.sh` (R55, a
@@ -1352,7 +1352,10 @@ not had. Roughly the size of Part 12. **What I would want you to weigh before sa
 several accounts safely; a bot per account is more to run and more to secure, so it is worth it only if people really
 want their own bots.
 
-**Step 1 status: built and tested, not deployed, not pushed.** Schema 8, the sign-in refusal, `app/notices.py`, `app/admin.py`,
+**Step 1 status: built, tested and deployed (4 Nov, late evening).** The live stack is schema 8; a live check registered a throwaway
+account, was refused as waiting, and the bot delivered the notice to the admin chat in about 15 seconds before the account was
+rejected. Rollback is the image `pre-approvals` and `~/backups/nutrition/2026-11-04-pre-approvals/nutrition.db` (the schema 7 build
+refuses schema 8). Schema 8, the sign-in refusal, `app/notices.py`, `app/admin.py`,
 `scripts/users.sh`, the bot's delivery, the waiting screen. Backend 450, frontend 216, e2e 36 (the registration journey now
 runs through the real script against the real stack). Where it differs from what was planned, and why:
 
@@ -1368,8 +1371,8 @@ runs through the real script against the real stack). Where it differs from what
   and would explain how to link, which is the wrong thing to tell someone whose account was switched off.
 - **Found by a test, fixed:** `scripts/users.sh` read `$?` after `if !`, which is the status of the negation (0), so a refused
   change would have exited 0 and looked like success.
-- **Before this is deployed:** set `TELEGRAM_ADMIN_CHAT` in the live `.env` (the admin's own chat id; it is not a secret), or
-  nobody is told and `scripts/users.sh list` is the only way to see who is waiting. Every existing account stays approved.
+- **`TELEGRAM_ADMIN_CHAT` is set** in the live `.env` (the admin's own chat id; not a secret). Without it nobody is told and
+  `scripts/users.sh list` is the only way to see who is waiting. Every existing account stayed approved.
 
 ## Open questions
 

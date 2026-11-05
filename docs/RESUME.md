@@ -101,12 +101,11 @@ Part 12 is **deployed** (4 Nov evening); a test copy may still be running (secti
   **4 Nov, later: Robert asked to rework this so the token is entered in the app instead.** That is `docs/PLAN.md` Part 14.
   He took the decisions (one bot per account, encrypted at rest, polling in the bot process, the app is the authority and
   tells the admin by Telegram) and added an approval flow. The script need not be run for it.
-- **Part 14 step 1 (approvals): built and tested 4 Nov, NOT deployed, NOT pushed.** Schema 8; a registration is `pending` and
+- **Part 14 step 1 (approvals): built, tested and DEPLOYED 4 Nov (late evening).** The live stack is schema 8 (verified in the running backend; counts unchanged: 1 user, 33 foods, 5 meals, 18 entries); a live end-to-end check registered a throwaway account, was refused as waiting, and the bot delivered the notice to his chat within ~15 s (the account was then rejected). Rollback: image `nutrition-tracker:pre-approvals` and `~/backups/nutrition/2026-11-04-pre-approvals/nutrition.db` (its SNAPSHOT.md has the facts); **the schema 7 build refuses a schema 8 database**, so a rollback loses anything logged since. Schema 8; a registration is `pending` and
   cannot sign in until the admin runs `scripts/users.sh approve NAME` (there is no web route that does it, on purpose).
-  Every account that exists stays approved. The bot delivers a notice to `TELEGRAM_ADMIN_CHAT`. **Before deploying:** set
-  `TELEGRAM_ADMIN_CHAT` in the live `.env` (his own chat id) or nobody is told; take a snapshot first, because **the schema 7
-  build refuses a schema 8 database** (same position as 6 to 7). Steps 2 to 4 (the token entered in the app) wait for his
-  go. The step's own status and where it departs from the plan: `docs/PLAN.md` Part 14.
+  Every account that exists stays approved. The bot delivers a notice to `TELEGRAM_ADMIN_CHAT` (set). Steps 2 to 4 (the token
+  entered in the app) were approved to start on 4 Nov after the deploy. The step's own status and where it departs from the
+  plan: `docs/PLAN.md` Part 14.
 - **Pushed:** everything up to the `snapshot-2026-11-04` tag is on GitHub, in all four repositories (Robert said "push
   everything" on 4 Nov). Anything committed after that tag is not; check `git rev-list --count origin/main..HEAD`.
 - **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were

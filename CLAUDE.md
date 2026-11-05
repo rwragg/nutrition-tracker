@@ -17,7 +17,7 @@ meal** (it can still read, look a food up, edit and delete). **Deployed 2026-11-
 snapshot's `nutrition.db` too, and loses anything logged since. **The live account has no profile yet, so it cannot add
 anything until it saves one.** `docs/PLAN.md` Part 12 has the status.
 
-**Part 14 step 1 (approving who may use the app) is built and tested, not deployed:** schema 8, a `status` on every account
+**Part 14 step 1 (approving who may use the app) is built, tested and DEPLOYED (4 Nov, late evening):** the live stack is schema 8 and `TELEGRAM_ADMIN_CHAT` is set in the live `.env`. Rollback = image `pre-approvals` (+ `-bot`) AND `~/backups/nutrition/2026-11-04-pre-approvals/nutrition.db`; **the schema 7 build refuses a schema 8 database**. Schema 8, a `status` on every account
 (`pending` / `approved` / `disabled`), `scripts/users.sh`, a notice queue the bot delivers to `TELEGRAM_ADMIN_CHAT`. **A new
 registration cannot sign in until approved; every existing account stays approved. No web route changes a status, and a test
 reads the route table to keep it so.** Steps 2 to 4 (a bot token entered in the app) are not started: `docs/PLAN.md` Part 14.
