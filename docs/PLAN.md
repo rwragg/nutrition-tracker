@@ -1226,7 +1226,7 @@ refused on adding with the 409 sentence, and still gets a 401 on `/api/profile` 
 create was refused live with its sentence and wrote nothing, and the bot came up listening. **The live account has no profile
 yet, so it cannot add anything until Robert saves one (D34).** **Not done:** the deck is not rebuilt.
 
-## Part 14 - a bot token entered in the app, and approving who may use the app · **decisions taken 2026-11-04; two readings to confirm; nothing built**
+## Part 14 - a bot token entered in the app, and approving who may use the app · **decisions taken and confirmed 2026-11-04; step 1 (approvals) built and tested, awaiting approval; steps 2 to 4 not started**
 
 Robert, 4 Nov: *"can we rework so we enter it in the app"*, after making a second account and a bot of its own for it.
 Today a bot is attached by putting its token in `.env` (the live bot) or by running `scripts/link-bot.sh` (R55, a
@@ -1324,6 +1324,9 @@ recommendation, marked **[proposed]**, and what is lost if it is declined.
   they are waiting for. The app does **not** tell them when they are approved (no email is sent: see D43); the admin does.
   *Check:* a sign-in screen test.
 
+**Confirmed by Robert, 4 Nov:** D39 as read (the bot serves only chats the app has bound, and the app is how the admin is told),
+D44 (approval gates sign-in), and D43 as Telegram, not email.
+
 **Two more decisions**
 
 - **D43 - how the admin is told.** **[proposed] a Telegram message from the house bot to the admin chat.** It needs no new
@@ -1337,8 +1340,8 @@ recommendation, marked **[proposed]**, and what is lost if it is declined.
   food log; much smaller, but then "approving users" would not mean what he said.
 
 **Steps, each stopping for approval (revised 4 Nov):** (1) **approvals**: schema 8 (an account status), the sign-in refusal,
-the notice queue, `scripts/users.sh`, and the migration that approves everyone who exists; this alone is useful and
-independent of bots; (2) **bots**: schema 9 (a `bots` table), the crypto, the routes, `getMe` through an injectable
+the notice queue **and the bot's delivery of it** (moved here from step 3: without it an approval flow tells nobody),
+`scripts/users.sh`, and the migration that approves everyone who exists; this alone is useful and independent of bots; (2) **bots**: schema 9 (a `bots` table), the crypto, the routes, `getMe` through an injectable
 client, the limits; (3) the bot process: a poller per active token, fetching them from the app, conflict handling, and
 delivery of the admin's notices; (4) the dialog (the field on the Telegram button), the sign-in screen's waiting message, a
 stand-in Telegram server for the e2e, the docs and the rollback notes.
@@ -1348,6 +1351,25 @@ a rewrite of the bot's main loop from one token to many, and a new class of risk
 not had. Roughly the size of Part 12. **What I would want you to weigh before saying yes:** a shared bot already serves
 several accounts safely; a bot per account is more to run and more to secure, so it is worth it only if people really
 want their own bots.
+
+**Step 1 status: built and tested, not deployed, not pushed.** Schema 8, the sign-in refusal, `app/notices.py`, `app/admin.py`,
+`scripts/users.sh`, the bot's delivery, the waiting screen. Backend 450, frontend 216, e2e 36 (the registration journey now
+runs through the real script against the real stack). Where it differs from what was planned, and why:
+
+- **R66, "counts toward the same rate limits".** A *correct* password for a pending or disabled account is **not** recorded as
+  a failed sign-in. It is not a guess, and a person waiting to be approved may reasonably try again; counting it would lock
+  them out of the app for being patient. A *wrong* password is counted as it always was, and answers the same
+  "Invalid credentials" whatever the account's status, so the waiting sentence reveals nothing to a guesser (tested).
+- **R67, the last approved account.** `disable` refuses when it would leave nobody approved: that would lock the admin out of
+  the app they are administering. Not in the plan; added because the failure is silent and the fix is a one-line guard.
+- **R68, "delivered once".** It is **at least once**. The bot sends first and acknowledges after, so a failure between the two
+  sends the notice again. A duplicate is better than a lost registration. Stated in the code and tested.
+- **A refusal for a disabled account's bound chat is a 409, not a 403,** because the bot reads a 403 as "this chat is not linked"
+  and would explain how to link, which is the wrong thing to tell someone whose account was switched off.
+- **Found by a test, fixed:** `scripts/users.sh` read `$?` after `if !`, which is the status of the negation (0), so a refused
+  change would have exited 0 and looked like success.
+- **Before this is deployed:** set `TELEGRAM_ADMIN_CHAT` in the live `.env` (the admin's own chat id; it is not a secret), or
+  nobody is told and `scripts/users.sh list` is the only way to see who is waiting. Every existing account stays approved.
 
 ## Open questions
 

@@ -2,7 +2,7 @@
   "name": "nutrition-tracker",
   "status": "approved by Robert 2026-11-01, and implemented. Four revisions since: the days table was dropped the same day - a day is the date on an entry, not a row of its own - on 2026-11-02 the foods unit list gained the gram basis (2 -> 3), accounts became real: email, telegram id and a stored password hash (3 -> 4), and pairing codes arrived so a chat can be bound to an account (4 -> 5), and a profile per account arrived so calorie and protein targets can be worked out from the person (6 -> 7, Part 12: an additive table, nothing existing touched).",
   "engine": "sqlite",
-  "schema_version": 7,
+  "schema_version": 8,
   "file": "/data/nutrition.db",
   "connection_pragmas": [
     {
@@ -23,7 +23,8 @@
         { "name": "username", "type": "TEXT", "nullable": false, "unique": true, "notes": "What a person signs in with. Unique by column constraint." },
         { "name": "email", "type": "TEXT", "nullable": true, "unique": true, "notes": "R3 asks for one. Unique by index, and many NULLs are allowed, so an account without one is a normal account - what the email is *for* is D17, still open." },
         { "name": "telegram_id", "type": "TEXT", "nullable": true, "unique": true, "notes": "R3 asks for one. Digits. This is what R26 will bind a chat to, and it is stored as text because it is an identifier, not a number to do arithmetic on." },
-        { "name": "password_hash", "type": "TEXT", "nullable": true, "notes": "pbkdf2_sha256$iterations$salt$digest (see app/passwords.py). Never returned by a route. Nullable so a row written before registration existed is still a valid row, and a null one fails closed: nobody signs in with it." }
+        { "name": "password_hash", "type": "TEXT", "nullable": true, "notes": "pbkdf2_sha256$iterations$salt$digest (see app/passwords.py). Never returned by a route. Nullable so a row written before registration existed is still a valid row, and a null one fails closed: nobody signs in with it." },
+        { "name": "status", "type": "TEXT", "nullable": false, "default": "pending", "check": "one of 'pending', 'approved' or 'disabled'", "notes": "Whether the account may be used (Part 14, R65). A registration starts pending and cannot sign in until the admin approves it; disabled is an approved account switched off, its sessions included (R66). Changed only from the machine, by scripts/users.sh: there is no web route that does it (R67). The default is the safe one, so an insert that forgets to say is locked out, not let in; the migration from version 7 set every account that existed to approved." }
       ],
       "primary_key": ["id"],
       "indexes": [
@@ -135,6 +136,35 @@
       "ordering": "Entries come back in insertion order (SQLite's implicit rowid). No position column: the app never reorders an entry, only adds and removes."
     },
     {
+      "name": "notices",
+      "purpose": "Things the admin should be told (Part 14, R68), queued by the app and delivered by the bot. The app never talks to Telegram: the bot fetches what is waiting, sends it, and says so, so a notice survives the bot being down and is sent once, not once per poll. Plain text for a person; never a password, a token or a hash.",
+      "columns": [
+        { "name": "id", "type": "INTEGER", "nullable": false, "notes": "Primary key, AUTOINCREMENT: an id is never reused, so an acknowledgement can never land on a different notice." },
+        { "name": "kind", "type": "TEXT", "nullable": false, "notes": "What it is about. 'registration' today." },
+        { "name": "body", "type": "TEXT", "nullable": false, "notes": "The text the admin reads. A username in it is shell-quoted where it is part of a command." },
+        { "name": "created", "type": "TEXT", "nullable": false, "notes": "An ISO 8601 UTC stamp." },
+        { "name": "delivered", "type": "TEXT", "nullable": true, "notes": "NULL until the bot reports it sent; then the time. This is what makes a delivery happen once." }
+      ],
+      "primary_key": ["id"],
+      "indexes": [
+        { "name": "notices_waiting", "columns": ["id"], "notes": "Partial: WHERE delivered IS NULL. The bot only ever asks for the ones still waiting." }
+      ]
+    },
+    {
+      "name": "admin_log",
+      "purpose": "Every change the admin makes to an account (Part 14, R67): when, who, what, which account. Never a password, a token or a hash. `who` is the console, because there is no web route that changes a status: the only actor is someone with a shell on the machine.",
+      "columns": [
+        { "name": "id", "type": "INTEGER", "nullable": false, "notes": "Primary key, AUTOINCREMENT." },
+        { "name": "at", "type": "TEXT", "nullable": false, "notes": "An ISO 8601 UTC stamp." },
+        { "name": "who", "type": "TEXT", "nullable": false, "notes": "'console'." },
+        { "name": "action", "type": "TEXT", "nullable": false, "notes": "approve, reject, disable or enable." },
+        { "name": "username", "type": "TEXT", "nullable": false, "notes": "Stored as text, not a reference: a rejected account is deleted and its log line must outlive it." },
+        { "name": "detail", "type": "TEXT", "nullable": true, "notes": "For example 'pending -> approved'." }
+      ],
+      "primary_key": ["id"],
+      "indexes": []
+    },
+    {
       "name": "meta",
       "purpose": "One row recording the schema version, so a database file written by a different version of this schema is refused with a clear message instead of misbehaving.",
       "columns": [
@@ -146,7 +176,7 @@
     }
   ],
   "ddl": [
-    "CREATE TABLE users (\n    id            TEXT PRIMARY KEY,\n    username      TEXT NOT NULL UNIQUE,\n    email         TEXT,\n    telegram_id   TEXT,\n    password_hash TEXT\n)",
+    "CREATE TABLE users (\n    id            TEXT PRIMARY KEY,\n    username      TEXT NOT NULL UNIQUE,\n    email         TEXT,\n    telegram_id   TEXT,\n    password_hash TEXT,\n    status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'disabled'))\n)",
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_email ON users (email)",
     "CREATE UNIQUE INDEX IF NOT EXISTS users_by_telegram ON users (telegram_id)",
     "CREATE TABLE telegram_codes (\n    code    TEXT PRIMARY KEY,\n    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,\n    expires TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%SZ', expires) IS expires),\n    used    INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1))\n)",
@@ -163,6 +193,9 @@
     "CREATE INDEX entries_by_user_date ON entries (user_id, date)",
     "CREATE INDEX entries_by_food ON entries (food_id)",
     "CREATE INDEX entries_by_meal ON entries (meal_id)",
+    "CREATE TABLE notices (\n    id        INTEGER PRIMARY KEY AUTOINCREMENT,\n    kind      TEXT NOT NULL,\n    body      TEXT NOT NULL,\n    created   TEXT NOT NULL,\n    delivered TEXT\n)",
+    "CREATE INDEX notices_waiting ON notices (id) WHERE delivered IS NULL",
+    "CREATE TABLE admin_log (\n    id       INTEGER PRIMARY KEY AUTOINCREMENT,\n    at       TEXT NOT NULL,\n    who      TEXT NOT NULL,\n    action   TEXT NOT NULL,\n    username TEXT NOT NULL,\n    detail   TEXT\n)",
     "CREATE TABLE meta (\n    key   TEXT PRIMARY KEY,\n    value TEXT NOT NULL\n)"
   ],
   "delete_policy": {

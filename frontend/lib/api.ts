@@ -198,13 +198,19 @@ export async function signOut(): Promise<void> {
   await request<{ status: string }>("/api/logout", { method: "POST" });
 }
 
-/** Create an account (R24). Does not sign in - the caller does that next, with what was typed. */
+/** What the server says an account may do (Part 14, R65). Only the server decides this. */
+export type AccountStatus = "pending" | "approved" | "disabled";
+
+/**
+ * Create an account (R24). Does not sign in. The answer carries the account's status: a new account is `pending` and
+ * cannot sign in until the admin approves it (R65), so the caller signs in only when the server says `approved`.
+ */
 export async function registerAccount(input: {
   username: string;
   email: string;
   password: string;
-}): Promise<{ id: string; username: string }> {
-  return await request<{ id: string; username: string }>("/api/register", {
+}): Promise<{ id: string; username: string; status: AccountStatus }> {
+  return await request<{ id: string; username: string; status: AccountStatus }>("/api/register", {
     method: "POST",
     body: JSON.stringify({
       username: input.username,

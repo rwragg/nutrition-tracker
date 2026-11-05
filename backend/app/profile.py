@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator
 
 from app import targets
-from app.auth import Connection
+from app.auth import Connection, active_user
 from app.db import ACTIVITY_LEVELS, GOALS, SEXES, UNIT_SYSTEMS
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
@@ -39,7 +39,7 @@ def today() -> calendar_date:
     return calendar_date.today()
 
 
-def browser_session(request: Request) -> str:
+def browser_session(request: Request, connection: Connection) -> str:
     """The account of a signed-in browser, and no one else (R53).
 
     `auth.current_user` also accepts the bot speaking for a bound chat. That is right for foods and
@@ -48,7 +48,7 @@ def browser_session(request: Request) -> str:
     user_id = request.session.get("user_id")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not signed in")
-    return user_id
+    return active_user(connection, user_id, request)  # an account switched off loses its session here too (R66)
 
 
 Owner = Annotated[str, Depends(browser_session)]

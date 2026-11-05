@@ -17,6 +17,11 @@ meal** (it can still read, look a food up, edit and delete). **Deployed 2026-11-
 snapshot's `nutrition.db` too, and loses anything logged since. **The live account has no profile yet, so it cannot add
 anything until it saves one.** `docs/PLAN.md` Part 12 has the status.
 
+**Part 14 step 1 (approving who may use the app) is built and tested, not deployed:** schema 8, a `status` on every account
+(`pending` / `approved` / `disabled`), `scripts/users.sh`, a notice queue the bot delivers to `TELEGRAM_ADMIN_CHAT`. **A new
+registration cannot sign in until approved; every existing account stays approved. No web route changes a status, and a test
+reads the route table to keep it so.** Steps 2 to 4 (a bot token entered in the app) are not started: `docs/PLAN.md` Part 14.
+
 **In flight (4 Nov, after the deploy):** the live account has not saved a profile yet, and a throwaway test copy may still
 be running on `:8200` (an older build; `down -v` needs Robert's approval). Read `docs/RESUME.md` section 0 first.
 
@@ -41,8 +46,8 @@ is "What is left" at the top of `docs/RESUME.md`. What the code review found and
 ```bash
 ./scripts/start.sh                       # build + start, app on :8000 (user / password)
 ./scripts/stop.sh
-cd backend && uv run pytest -q           # 384 tests
-cd frontend && npm test                  # 211 unit/component tests
+cd backend && uv run pytest -q           # 450 tests
+cd frontend && npm test                  # 216 unit/component tests
 cd frontend && npm run lint && npx tsc --noEmit
 cd frontend && npm run test:e2e          # 36 Playwright tests, own stack on :8100
 ./scripts/e2e-persistence.sh             # write, rebuild image, read back
@@ -98,6 +103,8 @@ Verify before starting: clean `git status`, and the suites above green.
 - A live session answers before the bot headers: tests of the bot's door must sign out first.
 - A meal entry's `quantity` is NULL, not 1: totals need `COALESCE(e.quantity, 1)`.
 - A SQLite `CHECK` that evaluates to NULL passes: date guards use `IS date`, not `= date`.
+- A test that needs an account that can sign in **approves it through `people.approve()`** (backend) or the real `scripts/users.sh`
+  (Playwright): a registration is `pending`, and there is no route to approve it, on purpose.
 - Playwright: sign in through `page.request`, not the form; count deliberate 401/403/409 out of the
   console-error assertion by status; a test that writes must assert on its own row, not a section.
 - Do not take the e2e stack down from `webServer.command`; do it from the npm script.

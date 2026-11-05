@@ -221,14 +221,16 @@ export function stubFetch(
     }
 
     if (path === "/api/register") {
+      // Like the real server (Part 14, R65): a new account is pending, and says so.
       const registered = handlers.register?.(body ?? {}) ?? {
         ok: true,
-        body: { id: `user-${++data.created}`, username: body?.username },
+        body: { id: `user-${++data.created}`, username: body?.username, status: "pending" },
       };
       return answer(
         registered.body ?? {
           id: `user-${++data.created}`,
           username: body?.username,
+          status: "pending",
         },
         registered.status ?? (registered.ok ? 201 : 409),
       );

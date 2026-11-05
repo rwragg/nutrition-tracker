@@ -23,7 +23,7 @@ from app.passwords import hash_password
 
 # Bumped when the shape changes in a way an existing file cannot satisfy. A file written by a
 # different version is migrated where a migration exists, and refused where it does not.
-SCHEMA_VERSION = "7"
+SCHEMA_VERSION = "8"
 DEFAULT_DB_PATH = "/data/nutrition.db"
 SEED_USER_ID = "user"
 
@@ -59,6 +59,10 @@ ACTIVITY_LEVELS = ("sedentary", "light", "moderate", "active", "very_active")
 GOALS = ("lose", "maintain", "gain")
 UNIT_SYSTEMS = ("metric", "imperial")
 
+# What an account may do (Part 14, R65). A new registration is `pending` and cannot sign in until the admin approves it;
+# `disabled` is an approved account that was switched off. Only `scripts/users.sh` changes it (R67).
+USER_STATUSES = ("pending", "approved", "disabled")
+
 
 def _in(values: tuple[str, ...]) -> str:
     return ", ".join(f"'{value}'" for value in values)
@@ -68,6 +72,32 @@ def _in(values: tuple[str, ...]) -> str:
 # and RESTRICT means deleting an account has to remove its profile first (noted for Part 10 step 4).
 # Inputs only: no target is stored (R42), because a target derived from the weight goes stale when
 # the weight changes. The two overrides are the person's own figures and so are inputs too (R46).
+# Things the admin should be told, queued by the app and delivered by the bot (R68). The app never talks to Telegram
+# itself: the bot is the only thing that does, so a notice waits here while the bot is down and goes out when it is back.
+# `delivered` is NULL until the bot says it was sent, so a notice is delivered once, not once per poll.
+NOTICES_DDL = """
+    CREATE TABLE IF NOT EXISTS notices (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind       TEXT NOT NULL,
+        body       TEXT NOT NULL,
+        created    TEXT NOT NULL,
+        delivered  TEXT
+    )
+    """
+
+# Every change the admin makes to an account, kept (R67). `who` is the console: there is no web route that changes a
+# status, so the only actor is someone with a shell on the machine. Never a password, never a token.
+ADMIN_LOG_DDL = """
+    CREATE TABLE IF NOT EXISTS admin_log (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        at        TEXT NOT NULL,
+        who       TEXT NOT NULL,
+        action    TEXT NOT NULL,
+        username  TEXT NOT NULL,
+        detail    TEXT
+    )
+    """
+
 PROFILES_DDL = f"""
     CREATE TABLE IF NOT EXISTS profiles (
         user_id          TEXT PRIMARY KEY REFERENCES users (id) ON DELETE RESTRICT,
@@ -115,13 +145,14 @@ def foods_ddl(table: str = "foods", *, with_source: bool = True) -> str:
 
 SCHEMA = (
     META,
-    """
+    f"""
     CREATE TABLE IF NOT EXISTS users (
         id            TEXT PRIMARY KEY,
         username      TEXT NOT NULL UNIQUE,
         email         TEXT,
         telegram_id   TEXT,
-        password_hash TEXT
+        password_hash TEXT,
+        status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ({_in(USER_STATUSES)}))
     )
     """,
     # Uniqueness by index rather than in the column, so a fresh file and a migrated one end up
@@ -143,6 +174,9 @@ SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS telegram_codes_by_user ON telegram_codes (user_id)",
     PROFILES_DDL,
+    NOTICES_DDL,
+    ADMIN_LOG_DDL,
+    "CREATE INDEX IF NOT EXISTS notices_waiting ON notices (id) WHERE delivered IS NULL",
     foods_ddl(),
     "CREATE INDEX IF NOT EXISTS foods_by_user ON foods (user_id)",
     """
@@ -373,6 +407,25 @@ def _migrate_profiles(connection: sqlite3.Connection) -> None:
         connection.execute(PROFILES_DDL)
 
 
+def _migrate_user_status(connection: sqlite3.Connection) -> None:
+    """7 -> 8: an account has a status, and **everyone who exists is approved** (Part 14, R65).
+
+    The column is added with the safe default, `pending`, which is also what a fresh file's definition says, so the two are
+    the same shape. Every row that is already there is then set to `approved`: this change is about who may register
+    from now on, and it must not lock out the account that has been signing in all along, or any account made in the
+    meantime. `notices` and `admin_log` are new tables, so `SCHEMA` creates them (`IF NOT EXISTS`) after this runs.
+
+    One caution worth keeping: the old build refuses a file at this version (it expects 7 with no migration from 8), so
+    once this has run, going back means restoring a snapshot. That is the same position as 6 -> 7 and was tested then.
+    """
+    with connection:
+        connection.execute(
+            f"ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'pending' "
+            f"CHECK (status IN ({_in(USER_STATUSES)}))"
+        )
+        connection.execute("UPDATE users SET status = 'approved'")
+
+
 # Keyed by the version being migrated FROM, each with the version it produces and the step that
 # does it. The steps do not write the version themselves: the loop below does, from the target
 # recorded here. That is not tidiness — a step that wrote the *current* `SCHEMA_VERSION` instead
@@ -384,6 +437,7 @@ MIGRATIONS: dict[str, tuple[str, Callable[[sqlite3.Connection], None]]] = {
     "4": ("5", _migrate_telegram_codes),
     "5": ("6", _migrate_food_source),
     "6": ("7", _migrate_profiles),
+    "7": ("8", _migrate_user_status),
 }
 
 
@@ -478,7 +532,7 @@ def seed(connection: sqlite3.Connection, today: date) -> bool:
         return False
 
     connection.execute(
-        "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+        "INSERT INTO users (id, username, password_hash, status) VALUES (?, ?, ?, 'approved')",
         (SEED_USER_ID, SEED_USER_ID, hash_password(SEED_PASSWORD)),
     )
 

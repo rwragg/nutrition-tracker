@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.main import app
-from people import give_profile
+from people import approve, give_profile
 from app.passwords import hash_password, verify_password
 
 SEED_CREDENTIALS = {"username": "user", "password": "password"}
@@ -48,6 +48,7 @@ def register(client: TestClient, who: dict) -> dict:
 
 def signed_in(who: dict) -> TestClient:
     """A client of its own, signed in as one account (or as the seeded one)."""
+    approve(who["username"])
     client = TestClient(app)
     client.__enter__()
     response = client.post("/api/login", json={"username": who["username"], "password": who["password"]})
@@ -73,16 +74,24 @@ def alice_and_bob(client: TestClient) -> Iterator[tuple[TestClient, TestClient]]
 # --- R24: an account can be made ---------------------------------------------------------
 
 
-def test_a_new_account_is_created_and_can_sign_in(client: TestClient) -> None:
+def test_a_new_account_is_created_but_waits_for_approval(client: TestClient) -> None:
     created = register(client, ALICE)
 
     assert created["username"] == "alice"
     assert created["email"] == "alice@example.com"
     assert created["id"].startswith("user-")
 
-    # no hash, and nothing else, comes back
-    assert set(created) == {"id", "username", "email"}
+    # no hash, and nothing else, comes back; and it is waiting (Part 14, R65)
+    assert set(created) == {"id", "username", "email", "status"}
+    assert created["status"] == "pending"
 
+    # the right password is not enough until the admin approves
+    refused = client.post("/api/login", json={"username": "alice", "password": "correct-horse-battery"})
+    assert refused.status_code == 403
+    assert refused.json()["detail"] == "Your account is waiting for approval."
+    assert client.get("/api/session").status_code == 401  # and no session was made
+
+    approve("alice")
     assert client.post(
         "/api/login", json={"username": "alice", "password": "correct-horse-battery"}
     ).status_code == 200
@@ -94,6 +103,7 @@ def test_two_accounts_can_both_be_made(client: TestClient) -> None:
     register(client, BOB)
 
     for who in (ALICE, BOB):
+        approve(who["username"])
         response = client.post(
             "/api/login", json={"username": who["username"], "password": who["password"]}
         )
@@ -157,6 +167,7 @@ def test_registration_cannot_claim_a_chat(client: TestClient) -> None:
         connection.close()
     assert stored["telegram_id"] is None
 
+    approve("alice")
     client.post("/api/login", json={"username": "alice", "password": ALICE["password"]})
     assert client.get("/api/telegram/link").json() == {"telegram_id": None}
 

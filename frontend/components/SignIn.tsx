@@ -18,9 +18,10 @@ type Mode = "sign-in" | "register";
  * here knows what a valid password is, whether a username is free, or which food is whose -
  * the server owns those rules, so this screen cannot disagree with it (D12).
  *
- * Registering signs the new account in straight away, because that is what the person meant by
- * doing it. It is two calls, not one: the API creates the account and then the API starts the
- * session, which is exactly what the API's own routes are for.
+ * Registering does not sign anyone in unless the server says the account is approved. A new account is
+ * `pending` (Part 14, R65): it exists, and it cannot be used until the person who runs the app approves it, so the
+ * honest thing to show is that, and not a sign-in that is about to be refused. What happens is the server's to decide
+ * and this screen follows what it says (D12): it never works out for itself who is approved.
  */
 export default function SignIn({ onSignedIn }: Props) {
   const [mode, setMode] = useState<Mode>("sign-in");
@@ -29,6 +30,8 @@ export default function SignIn({ onSignedIn }: Props) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
+  // The account that was just made and is waiting; while set, the screen says so instead of showing a form.
+  const [waiting, setWaiting] = useState<string | null>(null);
 
   function switchTo(next: Mode) {
     setMode(next);
@@ -46,8 +49,14 @@ export default function SignIn({ onSignedIn }: Props) {
     let created = false;
     try {
       if (mode === "register") {
-        await registerAccount({ username, email, password });
+        const account = await registerAccount({ username, email, password });
         created = true;
+        if (account.status !== "approved") {
+          setBusy(false);
+          setPassword("");
+          setWaiting(account.username);
+          return;
+        }
       }
       await signIn(username, password);
     } catch (error) {
@@ -68,6 +77,41 @@ export default function SignIn({ onSignedIn }: Props) {
 
     setBusy(false);
     onSignedIn({ username });
+  }
+
+  if (waiting !== null) {
+    return (
+      <main className="app-shell d-flex flex-grow-1 flex-column gap-4">
+        <TitleBar />
+
+        <section
+          className="day-panel mx-auto w-100"
+          style={{ maxWidth: "26rem" }}
+          data-testid="waiting-for-approval"
+        >
+          <h2 className="h5 mb-2">Waiting for approval</h2>
+          <p className="small mb-3">
+            The account <strong>{waiting}</strong> has been created. It cannot be used until whoever runs
+            this app approves it.
+          </p>
+          <p className="text-muted-brand small mb-4">
+            This app does not send email, so nothing will arrive when that happens. Try signing in again later, or
+            ask them.
+          </p>
+          <button
+            type="button"
+            className={BTN_PRIMARY}
+            data-testid="back-to-sign-in"
+            onClick={() => {
+              setWaiting(null);
+              switchTo("sign-in");
+            }}
+          >
+            Back to sign in
+          </button>
+        </section>
+      </main>
+    );
   }
 
   return (

@@ -43,6 +43,7 @@ import urllib.parse
 import urllib.request
 from datetime import date as calendar_date
 from http import HTTPStatus
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from app.api import SECTIONS
@@ -192,12 +193,12 @@ class Api:
         self.secret = secret
         self.timeout = timeout
 
-    def request(self, path: str, chat_id: str, method: str = "GET", body: dict | None = None) -> Any:
+    def request(self, path: str, chat_id: str | None, method: str = "GET", body: dict | None = None) -> Any:
+        """`chat_id=None` is a request the bot makes for itself and not for any chat: the secret alone."""
         data = json.dumps(body).encode() if body is not None else None
-        headers = {
-            BOT_SECRET_HEADER: self.secret,
-            BOT_CHAT_HEADER: str(chat_id),
-        }
+        headers = {BOT_SECRET_HEADER: self.secret}
+        if chat_id is not None:
+            headers[BOT_CHAT_HEADER] = str(chat_id)
         if data:
             headers["Content-Type"] = "application/json"
 
@@ -229,6 +230,13 @@ class Api:
     def bind(self, chat_id: str, code: str) -> dict:
         return self.request("/api/telegram/bind", chat_id, "POST",
                             {"code": code, "chat_id": str(chat_id)})
+
+    def notices(self) -> list[dict]:
+        """What the admin has not yet been told (Part 14, R68). The bot's own business: no chat is asking."""
+        return self.request("/api/telegram/notices", None)
+
+    def notice_delivered(self, notice_id: int) -> None:
+        self.request(f"/api/telegram/notices/{int(notice_id)}/delivered", None, "POST")
 
 
 # ---------------------------------------------------------------------------- replies ---
@@ -392,6 +400,57 @@ def allowed_users() -> set[str]:
     return {user.strip() for user in os.environ.get("TELEGRAM_ALLOWED_USERS", "").split(",") if user.strip()}
 
 
+NOTICE_INTERVAL = 10  # seconds between looks at the queue: a notice reaches the admin within one long poll, not instantly
+
+
+def admin_chat() -> str:
+    """The chat the admin is told things in (Part 14, R69). Unset means nobody is told: not an error, and the queue waits."""
+    return os.environ.get("TELEGRAM_ADMIN_CHAT", "").strip()
+
+
+class NoticeSource(Protocol):
+    """The two calls delivery needs, so a stand-in is a legitimate caller and not a type error."""
+
+    def notices(self) -> list[dict]: ...
+    def notice_delivered(self, notice_id: int) -> None: ...
+
+
+def deliver_notices(api: NoticeSource, send_text: Callable[[str, str], None], chat_id: str) -> int:
+    """Send the admin whatever is waiting, oldest first, and say each one was sent (R68). Returns how many went.
+
+    The bot is the only thing that talks to Telegram, so this is where a notice leaves the app. It sends first and
+    acknowledges after, which makes the guarantee **at least once**: if the acknowledgement fails the notice is sent
+    again next round, and a duplicate is better than a registration the admin never hears about. It stops at the first
+    failure rather than skipping past it, so notices never arrive out of order.
+
+    What it prints names the exception and nothing else. The text of an error from `urllib` is usually harmless, but the
+    Telegram URL carries the bot's token, and a log line is the last place that should hold one.
+    """
+    if not chat_id:
+        return 0
+
+    try:
+        waiting = api.notices()
+    except (urllib.error.URLError, OSError, json.JSONDecodeError) as error:
+        print(f"notices: could not ask the app ({type(error).__name__})", flush=True)
+        return 0
+
+    delivered = 0
+    for notice in waiting:
+        try:
+            send_text(chat_id, notice["body"])
+        except Exception as error:  # noqa: BLE001 - whatever stopped it, the notice stays queued and goes next round
+            print(f"notices: notice {notice.get('id')} not sent ({type(error).__name__}); it stays queued", flush=True)
+            break
+        try:
+            api.notice_delivered(notice["id"])
+        except (urllib.error.URLError, OSError) as error:
+            print(f"notices: notice {notice.get('id')} sent but not acknowledged ({type(error).__name__}); it will be sent again", flush=True)
+            break
+        delivered += 1
+    return delivered
+
+
 def poll(token: str, api: Api) -> None:
     """Long polling, so the bot needs no public URL and no webhook to be reachable.
 
@@ -402,9 +461,17 @@ def poll(token: str, api: Api) -> None:
     allowed = allowed_users()
     handled: set[int] = set()
     offset = 0
+    admin = admin_chat()
+    next_notice_look = 0.0
 
     print(f"listening (app at {api.base}, {len(allowed)} allowed chat(s))", flush=True)
+    print("admin notices: " + ("on" if admin else "off (TELEGRAM_ADMIN_CHAT is not set; they wait in the app)"), flush=True)
     while True:
+        # At the top of the loop so it also runs while Telegram is misbehaving, and before a 30 second wait for updates.
+        if admin and time.monotonic() >= next_notice_look:
+            deliver_notices(api, lambda chat, text: send(token, chat, text), admin)
+            next_notice_look = time.monotonic() + NOTICE_INTERVAL
+
         try:
             url = f"{TELEGRAM}/bot{token}/getUpdates?timeout=30&offset={offset}"
             with urllib.request.urlopen(url, timeout=60) as response:

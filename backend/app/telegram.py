@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app import notices
 from app.auth import BOT_SECRET_HEADER, Connection, User, require_bot
 from app.ratelimit import BIND_FAILURES
 
@@ -216,3 +217,32 @@ def unlink(connection: Connection, user: User) -> None:
     outlive the thing it named."""
     with connection:
         connection.execute("UPDATE users SET telegram_id = NULL WHERE id = ?", (user,))
+
+
+# --- notices for the admin (Part 14, R68) -------------------------------------------------------------------------
+# The app queues them and never speaks to Telegram; the bot fetches what is waiting, sends it, and says it did. Both
+# routes are the bot's alone (its secret, no session), so nothing a signed-in account can reach reads or clears them.
+
+
+@router.get("/notices")
+def waiting_notices(
+    connection: Connection,
+    supplied_secret: str | None = Header(default=None, alias=BOT_SECRET_HEADER),
+) -> list[dict]:
+    """What the admin has not yet been told, oldest first, a few at a time."""
+    require_bot(supplied_secret)
+    return notices.waiting(connection)
+
+
+@router.post("/notices/{notice_id}/delivered", status_code=status.HTTP_204_NO_CONTENT)
+def notice_delivered(
+    notice_id: int,
+    connection: Connection,
+    supplied_secret: str | None = Header(default=None, alias=BOT_SECRET_HEADER),
+) -> None:
+    """The bot sent it. Idempotent in effect: saying so twice changes nothing, and an unknown id is a 404."""
+    require_bot(supplied_secret)
+    if not notices.mark_delivered(connection, notice_id):
+        exists = connection.execute("SELECT 1 FROM notices WHERE id = ?", (notice_id,)).fetchone()
+        if exists is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such notice")

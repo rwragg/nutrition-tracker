@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app import bot
 from app.main import app
 from app.profile import SET_UP_FIRST
-from people import give_profile
+from people import approve, give_profile
 
 SEED = {"username": "user", "password": "password"}
 DAY = "2026-11-02"
@@ -118,6 +118,7 @@ def test_a_profile_belongs_to_its_account_so_one_account_does_not_unlock_another
     alice = {"username": "alice", "email": "alice@example.com", "password": "alice-example-password"}
     with TestClient(app) as other:
         assert other.post("/api/register", json=alice).status_code == 201
+        approve("alice")
         assert other.post("/api/login", json={"username": "alice", "password": alice["password"]}).status_code == 200
         give_profile(other)
         assert other.post("/api/foods", json=food_body()).status_code == 201

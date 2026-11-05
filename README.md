@@ -48,8 +48,26 @@ One container: FastAPI serves the frontend at `/`, owns the API, and keeps a SQL
 
 On Windows, `scripts\start.bat` and `scripts\stop.bat`. The app is then at http://localhost:8000/, and
 you sign in with `user` / `password` - or create your own account from the same screen, which starts
-with an empty log of its own. The first run seeds a sample log, once, into the empty database.
+with an empty log of its own **but cannot be used until the admin approves it** (see below). The first run seeds a sample log, once, into the empty database.
 The API is documented in [`backend/AGENTS.md`](backend/AGENTS.md).
+
+## Approving new accounts
+
+A new registration is **pending**: it exists, and it cannot sign in until you approve it. Existing accounts are approved.
+You approve from the machine, with a script; there is deliberately no web page or route that does it, so a signed-in
+account cannot approve itself or anyone.
+
+```bash
+scripts/users.sh list                # every account and its status, and how many are waiting
+scripts/users.sh approve NAME        # a waiting account may sign in
+scripts/users.sh reject NAME         # a waiting account is deleted
+scripts/users.sh disable NAME        # an approved account is switched off; its open sessions end at once
+scripts/users.sh enable NAME         # and switched back on
+```
+
+To be told when someone registers, put your own Telegram chat id in `.env` as `TELEGRAM_ADMIN_CHAT` (send the bot a
+message first) and run the bot. The app queues a notice and the bot delivers it, with the command to approve. Without
+that, nobody is told and `list` is how you find out. The app sends no email. Every change is kept in `admin_log`.
 
 ## The Telegram front end (optional)
 
@@ -119,9 +137,9 @@ profile before the add and create pictures, since an account with none cannot ad
 ## Tests
 
 ```bash
-cd backend && uv run pytest          # 384 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
+cd backend && uv run pytest          # 450 tests: routes, schema, guards, isolation, accounts, limits, linking, the bot, and the container
 cd frontend && npm install
-npm test                             # 211 unit and component tests
+npm test                             # 216 unit and component tests
 npm run test:e2e                     # 36 Playwright tests, against its own container on :8100
 npm run lint
 ./scripts/e2e-persistence.sh         # writes through the API, rebuilds the container, reads it back

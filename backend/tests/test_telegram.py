@@ -18,7 +18,7 @@ from app import db, telegram
 from app.auth import BOT_CHAT_HEADER, BOT_SECRET_HEADER
 from app.main import app
 from app.profile import SET_UP_FIRST
-from people import give_profile
+from people import approve, give_profile
 
 SECRET = "a-bot-secret-for-tests"
 
@@ -49,6 +49,7 @@ def as_bot(chat_id: str, *, secret: str | None = SECRET) -> dict[str, str]:
 
 
 def signed_in(client: TestClient, who: dict) -> None:
+    approve(who["username"])
     assert client.post("/api/login", json={"username": who["username"], "password": who["password"]}).status_code == 200
 
 

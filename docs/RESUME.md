@@ -44,8 +44,8 @@ The bot is opt-in behind a compose profile. The USDA key and the bot secret and 
 
 ```bash
 cd ~/hermes_workspace/nutrition && git log --oneline -3 && git status --short   # clean
-cd backend && uv run pytest -q          # 384 passed (includes 5 container tests that build the real image, and 16 for scripts/link-bot.sh)
-cd ../frontend && npm test              # 211 passed
+cd backend && uv run pytest -q          # 450 passed (includes 5 container tests that build the real image, 16 for scripts/link-bot.sh, 21 for scripts/users.sh)
+cd ../frontend && npm test              # 216 passed
 npm run lint && npx tsc --noEmit        # clean
 npm run test:e2e                        # 36 passed, builds its own stack on :8100 with no USDA key
 ./scripts/e2e-persistence.sh            # writes via the API, rebuilds the image, reads it back
@@ -98,8 +98,15 @@ Part 12 is **deployed** (4 Nov evening); a test copy may still be running (secti
   `scripts/link-bot.sh --project nutrition-shots --port 8200 --user rwragg` is the way: he types the token and password at hidden
   prompts (never in chat), it starts only the bot, and prints `/bind CODE`. Tested end to end with stand-ins; **the real Telegram
   round trip is unproven until he runs it**. Do not reuse `@rjw_nutrition_bot`'s token (the live bot) or a Hermes profile's.
-  **4 Nov, later: Robert asked to rework this so the token is entered in the app instead.** That is `docs/PLAN.md` Part 14,
-  a draft awaiting his decisions (D36-D42); the script need not be run for it.
+  **4 Nov, later: Robert asked to rework this so the token is entered in the app instead.** That is `docs/PLAN.md` Part 14.
+  He took the decisions (one bot per account, encrypted at rest, polling in the bot process, the app is the authority and
+  tells the admin by Telegram) and added an approval flow. The script need not be run for it.
+- **Part 14 step 1 (approvals): built and tested 4 Nov, NOT deployed, NOT pushed.** Schema 8; a registration is `pending` and
+  cannot sign in until the admin runs `scripts/users.sh approve NAME` (there is no web route that does it, on purpose).
+  Every account that exists stays approved. The bot delivers a notice to `TELEGRAM_ADMIN_CHAT`. **Before deploying:** set
+  `TELEGRAM_ADMIN_CHAT` in the live `.env` (his own chat id) or nobody is told; take a snapshot first, because **the schema 7
+  build refuses a schema 8 database** (same position as 6 to 7). Steps 2 to 4 (the token entered in the app) wait for his
+  go. The step's own status and where it departs from the plan: `docs/PLAN.md` Part 14.
 - **Pushed:** everything up to the `snapshot-2026-11-04` tag is on GitHub, in all four repositories (Robert said "push
   everything" on 4 Nov). Anything committed after that tag is not; check `git rev-list --count origin/main..HEAD`.
 - **Decided, do not re-ask:** the published history keeps the example body figures and the age sentence that were

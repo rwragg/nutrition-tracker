@@ -63,6 +63,7 @@ def test_a_missing_file_becomes_the_whole_schema(tmp_path: Path) -> None:
     assert path.exists()
     assert table_names(connection) == {
         "users", "telegram_codes", "profiles", "foods", "meals", "meal_foods", "entries", "meta",
+        "notices", "admin_log",
     }
     assert index_names(connection) == {
         "users_by_email",
@@ -75,6 +76,7 @@ def test_a_missing_file_becomes_the_whole_schema(tmp_path: Path) -> None:
         "entries_by_user_date",
         "entries_by_food",
         "entries_by_meal",
+        "notices_waiting",
     }
     connection.close()
 
@@ -165,6 +167,11 @@ def rewind(path: Path, version: str) -> sqlite3.Connection:
     String comparison is fine for the version, which is a single digit.
     """
     connection = sqlite3.connect(path)
+
+    if version < "8":  # before account status, the notice queue and the admin log
+        connection.execute("DROP TABLE notices")
+        connection.execute("DROP TABLE admin_log")
+        connection.execute("ALTER TABLE users DROP COLUMN status")
 
     if version < "7":  # before profiles
         connection.execute("DROP TABLE profiles")
@@ -288,7 +295,7 @@ def test_a_version_3_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
         # the point of this step: the account columns are there, and a fresh file's shape is
         # what a migrated one now has - which is all the version number claims
         assert {row[1] for row in migrated.execute("PRAGMA table_info(users)")} == {
-            "id", "username", "email", "telegram_id", "password_hash",
+            "id", "username", "email", "telegram_id", "password_hash", "status",
         }
         assert {row[1] for row in migrated.execute("PRAGMA index_list(users)")} >= {
             "users_by_email", "users_by_telegram",
@@ -433,10 +440,10 @@ def test_a_version_6_file_is_migrated_rather_than_refused(tmp_path: Path) -> Non
     try:
         assert migrated.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()[0] == db.SCHEMA_VERSION == "7"
+        ).fetchone()[0] == db.SCHEMA_VERSION == "8"
 
-        # nothing that existed was touched
-        assert [tuple(r) for r in migrated.execute("SELECT * FROM users ORDER BY id")] == [tuple(r) for r in users_before]
+        # nothing that existed was touched (the users table has grown a column since, which is the next test's business)
+        assert [tuple(r) for r in migrated.execute("SELECT id, username, email, telegram_id, password_hash FROM users ORDER BY id")] == [tuple(r)[:5] for r in users_before]
         assert [tuple(r) for r in migrated.execute("SELECT * FROM foods ORDER BY id")] == [tuple(r) for r in foods_before]
         assert [tuple(r) for r in migrated.execute("SELECT * FROM entries ORDER BY id")] == [tuple(r) for r in entries_before]
 
@@ -468,8 +475,9 @@ def test_the_chain_runs_from_the_oldest_version_to_the_newest(tmp_path: Path) ->
     try:
         assert migrated.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()[0] == db.SCHEMA_VERSION == "7"
+        ).fetchone()[0] == db.SCHEMA_VERSION == "8"
         assert migrated.execute("SELECT count(*) FROM profiles").fetchone()[0] == 0
+        assert migrated.execute("SELECT count(*) FROM notices").fetchone()[0] == 0  # nothing is queued by a migration
     finally:
         migrated.close()
 
@@ -620,6 +628,71 @@ def test_deleting_an_unused_food_is_allowed(seeded: sqlite3.Connection) -> None:
     seeded.commit()
 
     assert seeded.execute("SELECT count(*) AS n FROM foods WHERE id = 'spare'").fetchone()["n"] == 0
+
+
+def test_a_version_7_file_is_migrated_and_everyone_who_existed_is_approved(tmp_path: Path) -> None:
+    """7 -> 8 (Part 14, R65): accounts gain a status, and nobody who already had an account is locked out.
+
+    The person who has signed in all along, and any account made since, must come out `approved`: the change is about who
+    may register from now on, not about who may still sign in."""
+    path = tmp_path / "v7.db"
+    db.initialise(path, today=date(2026, 11, 1)).close()
+    legacy = rewind(path, "7")
+    for number in range(3):  # accounts of several kinds: with a password, with a chat linked, with neither
+        legacy.execute(
+            "INSERT INTO users (id, username, email, telegram_id, password_hash) VALUES (?, ?, ?, ?, ?)",
+            (f"user-old{number}", f"old{number}", f"old{number}@example.com", f"1000{number}" if number else None,
+             "pbkdf2_sha256$1$aa$bb" if number != 2 else None),
+        )
+    legacy.commit()
+    before = legacy.execute("SELECT count(*) FROM users").fetchone()[0]
+    assert "status" not in {row[1] for row in legacy.execute("PRAGMA table_info(users)")}
+    legacy.close()
+
+    migrated = db.initialise(path, today=date(2026, 11, 1))
+    try:
+        assert migrated.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] == "8"
+        assert migrated.execute("SELECT count(*) FROM users").fetchone()[0] == before  # none lost, none added
+        statuses = {row[0] for row in migrated.execute("SELECT status FROM users")}
+        assert statuses == {"approved"}, statuses
+
+        # the new tables exist and are empty, and the column's guard is real
+        for table in ("notices", "admin_log"):
+            assert migrated.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute("UPDATE users SET status = 'banned' WHERE id = 'user-old0'")
+
+        # and what is made after the migration is safe by default: an insert that forgets to say is pending, not approved
+        migrated.execute("INSERT INTO users (id, username) VALUES ('user-new', 'new')")
+        assert migrated.execute("SELECT status FROM users WHERE id = 'user-new'").fetchone()[0] == "pending"
+    finally:
+        migrated.close()
+
+
+def test_a_fresh_file_and_a_migrated_one_have_the_same_users_table(tmp_path: Path) -> None:
+    """The version number claims the two are the same shape, the default and the constraint included."""
+    fresh = db.initialise(tmp_path / "fresh.db", today=date(2026, 11, 1))
+    db.initialise(tmp_path / "old.db", today=date(2026, 11, 1)).close()
+    rewind(tmp_path / "old.db", "7").close()
+    migrated = db.initialise(tmp_path / "old.db", today=date(2026, 11, 1))
+    try:
+        def shape(connection: sqlite3.Connection, table: str) -> tuple:
+            columns = [tuple(row)[1:] for row in connection.execute(f"PRAGMA table_info({table})")]
+            sql = connection.execute("SELECT sql FROM sqlite_master WHERE name = ?", (table,)).fetchone()[0]
+            return columns, " ".join(sql.split())
+
+        for table in ("users", "notices", "admin_log"):
+            fresh_columns, _ = shape(fresh, table)
+            migrated_columns, _ = shape(migrated, table)
+            assert migrated_columns == fresh_columns, table  # same columns, types, defaults, order
+
+        # the stored SQL differs in text (ALTER appends a clause), so the constraint is proved by behaviour in both files
+        for connection in (fresh, migrated):
+            with pytest.raises(sqlite3.IntegrityError):
+                connection.execute("INSERT INTO users (id, username, status) VALUES ('x', 'x', 'banned')")
+    finally:
+        fresh.close()
+        migrated.close()
 
 
 # --- the code and the proposal describe the same tables ---------------------------------

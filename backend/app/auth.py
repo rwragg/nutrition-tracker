@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.db import database
 from app.passwords import DUMMY_HASH, hash_password, needs_rehash, verify_password
+from app import notices
 from app.ratelimit import (
     LOGIN_FAILURES_BY_ADDRESS,
     LOGIN_FAILURES_BY_USER,
@@ -89,6 +90,30 @@ class Registration(BaseModel):
         return self
 
 
+# What a person who cannot get in is told, by what is wrong with the account (Part 14, R66). It is said only after the
+# password has been checked, so it tells a stranger nothing: a wrong password is still just "Invalid credentials".
+STATUS_SENTENCES = {
+    "pending": "Your account is waiting for approval.",
+    "disabled": "This account has been disabled.",
+}
+
+
+def active_user(connection: sqlite3.Connection, user_id: str, request: Request | None = None) -> str:
+    """The account if it may be used right now, or 401 and the session ended (R66).
+
+    Checked on every request rather than only at sign-in, so switching an account off takes effect at once, in sessions
+    that were already open, and not at the end of the cookie's life.
+    """
+    row = connection.execute("SELECT status FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is not None and row["status"] == "approved":
+        return user_id
+
+    if request is not None:
+        request.session.clear()
+    sentence = STATUS_SENTENCES.get(row["status"], "Not signed in") if row is not None else "Not signed in"
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=sentence)
+
+
 def bot_secret() -> str:
     """The secret the bot presents. Empty means this app cannot take a binding at all, which is a
     configuration answer rather than a refusal of the caller."""
@@ -116,13 +141,21 @@ def bound_user(connection: sqlite3.Connection, chat_id: str) -> str:
     said who they are yet - and the refusal is the instruction to go and bind.
     """
     row = connection.execute(
-        "SELECT id FROM users WHERE telegram_id = ?", (chat_id,)
+        "SELECT id, status FROM users WHERE telegram_id = ?", (chat_id,)
     ).fetchone()
 
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="this chat is not linked to an account yet",
+        )
+
+    if row["status"] != "approved":
+        # 409, not 403: the bot reads a 403 as "this chat is not linked" and answers with how to link, which is the wrong
+        # thing to say to someone whose account was switched off. Any other refusal it relays in the app's own words.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=STATUS_SENTENCES.get(row["status"], "this account cannot be used right now"),
         )
 
     return row["id"]
@@ -140,7 +173,7 @@ def current_user(request: Request, connection: Connection) -> str:
         # A session wins if a request somehow carries both: a browser that is signed in is signed
         # in, and that is the stronger claim. The bot never sends cookies, so in practice the two
         # never meet - which is why this is worth stating rather than discovering.
-        return user_id
+        return active_user(connection, user_id, request)
 
     chat_id = request.headers.get(BOT_CHAT_HEADER)
     if chat_id is not None:
@@ -198,10 +231,13 @@ def register(
     user_id = f"user-{uuid.uuid4().hex[:12]}"
     try:
         with connection:
+            # `pending` and not signed in: the admin has to approve it (Part 14, R65). The notice is written in the same
+            # transaction, so an account that is waiting always has someone told, and a failed insert tells no one.
             connection.execute(
-                "INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)",
+                "INSERT INTO users (id, username, email, password_hash, status) VALUES (?, ?, ?, ?, 'pending')",
                 (user_id, body.username, body.email, hash_password(body.password)),
             )
+            notices.queue(connection, "registration", notices.registration_body(body.username))
     except sqlite3.IntegrityError:
         # The unique indexes are the backstop for the gap between the check above and this
         # insert. The same answer either way, because to a caller they are the same fact.
@@ -210,7 +246,7 @@ def register(
             detail="that username or email is already registered",
         ) from None
 
-    return {"id": user_id, "username": body.username, "email": body.email}
+    return {"id": user_id, "username": body.username, "email": body.email, "status": "pending"}
 
 
 @router.post("/login")
@@ -221,7 +257,7 @@ def login(credentials: Credentials, request: Request, connection: Connection) ->
     LOGIN_FAILURES_BY_ADDRESS.refuse_if_blocked(address)
 
     row = connection.execute(
-        "SELECT id, password_hash FROM users WHERE username = ?", (credentials.username,)
+        "SELECT id, password_hash, status FROM users WHERE username = ?", (credentials.username,)
     ).fetchone()
 
     # A password is hashed whether or not the username exists, so the two refusals take the same time
@@ -235,6 +271,12 @@ def login(credentials: Credentials, request: Request, connection: Connection) ->
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     LOGIN_FAILURES_BY_USER.clear(credentials.username)
+
+    # The right password for an account that may not be used yet, or any more (Part 14, R66). Said only now, after the
+    # password was checked in the same time as any other, so it reveals nothing to someone guessing. Not recorded as a
+    # failure: a correct password is not a guess, and a person waiting to be approved may well try again.
+    if row["status"] != "approved":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=STATUS_SENTENCES[row["status"]])
 
     # A hash written with fewer iterations than today's is upgraded now, while the password is in hand.
     if needs_rehash(row["password_hash"]):

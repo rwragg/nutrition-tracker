@@ -12,6 +12,7 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
+from people import approve
 from app import db, profile
 from app.main import app
 
@@ -46,6 +47,7 @@ def client() -> Iterator[TestClient]:
 
 
 def signed_in(who: dict) -> TestClient:
+    approve(who["username"])
     other = TestClient(app)
     other.__enter__()
     response = other.post("/api/login", json={"username": who["username"], "password": who["password"]})

@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import {
   expect,
   test as base,
@@ -16,6 +18,19 @@ import {
   type Section,
   type Store,
 } from "../lib/types";
+
+/**
+ * Approve a waiting account the way the admin does: by running the real `scripts/users.sh` against this suite's own
+ * stack (Part 14, R67). There is no web route that does it, on purpose, so a browser test that needs an account that
+ * can sign in has to go through the script, which also exercises the script against a live container.
+ */
+function approve(name: string): string {
+  return execFileSync(
+    "bash",
+    ["scripts/users.sh", "--project", "nutrition-e2e", "approve", name],
+    { cwd: path.resolve(process.cwd(), ".."), encoding: "utf8" },
+  );
+}
 
 /**
  * The browser tests, against the container the compose stack builds.
@@ -813,13 +828,14 @@ test.describe("the sign-in gate", () => {
     expect(response?.status()).toBe(200);
   });
 
-  test("registers an account through the screen, and it starts with nothing", async ({
+  test("registers an account through the screen, waits for approval, and then starts with nothing", async ({
     page,
     consoleErrors,
   }) => {
-    // R24 end to end: the real stack, a new account, and a log of its own - empty, rather than
-    // the seeded one with someone else's name on it (R25).
+    // R24 and Part 14 end to end: the real stack, a new account that cannot be used until it is approved, and then a log
+    // of its own - empty, rather than the seeded one with someone else's name on it (R25).
     const name = `newcomer-${Date.now()}`;
+    const password = "a-long-enough-password";
 
     await page.goto("/");
     await page.getByTestId("show-register").click();
@@ -827,7 +843,27 @@ test.describe("the sign-in gate", () => {
 
     await page.getByLabel("Username").fill(name);
     await page.getByLabel("Email").fill(`${name}@example.com`);
-    await page.getByLabel(/^Password/).fill("a-long-enough-password");
+    await page.getByLabel(/^Password/).fill(password);
+    await page.getByTestId("sign-in-submit").click();
+
+    // not signed in: it says it is waiting, and offers the way back
+    await expect(page.getByTestId("waiting-for-approval")).toContainText(name);
+    await expect(page.getByTestId("signed-in-as")).toHaveCount(0);
+
+    // and the right password is refused, in the server's words, until the admin approves it
+    await page.getByTestId("back-to-sign-in").click();
+    await page.getByLabel("Username").fill(name);
+    await page.getByLabel(/^Password/).fill(password);
+    await page.getByTestId("sign-in-submit").click();
+    await expect(page.getByTestId("sign-in").getByRole("alert")).toHaveText(
+      "Your account is waiting for approval.",
+    );
+    await expect(page.getByTestId("signed-in-as")).toHaveCount(0);
+
+    // the admin approves it, from the machine
+    expect(approve(name)).toContain(`approved '${name}'`);
+
+    await page.getByLabel(/^Password/).fill(password);
     await page.getByTestId("sign-in-submit").click();
 
     // in, as the new account, on an empty day
@@ -839,7 +875,8 @@ test.describe("the sign-in gate", () => {
     expect(foods.status()).toBe(200);
     expect(await foods.json()).toEqual([]);
 
-    expectQuiet(consoleErrors);
+    // the two refusals above are 403s the browser logs, which is what this test is about
+    expectQuietApartFrom(consoleErrors, ["403"]);
   });
 
   test("a registration that is refused says which field, and stays on the form", async ({
@@ -855,10 +892,10 @@ test.describe("the sign-in gate", () => {
     await page.getByLabel("Email").fill(`${name}@example.com`);
     await page.getByLabel(/^Password/).fill("a-long-enough-password");
     await page.getByTestId("sign-in-submit").click();
-    await expect(page.getByTestId("signed-in-as")).toHaveText(name);
+    await expect(page.getByTestId("waiting-for-approval")).toContainText(name);
 
     // then try to take it again
-    await page.getByTestId("sign-out").click();
+    await page.getByTestId("back-to-sign-in").click();
     await expect(page.getByTestId("sign-in")).toBeVisible();
     await page.getByTestId("show-register").click();
     await page.getByLabel("Username").fill(name);

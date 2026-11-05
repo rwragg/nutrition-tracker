@@ -12,6 +12,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
+from people import approve
 from app import usda
 from app.main import app
 
@@ -362,6 +363,7 @@ def test_one_accounts_use_does_not_spend_anothers(
 
     answer(monkeypatch, [usda_food(1, "Tempeh", calories=192)])
     client.post("/api/register", json={"username": "other", "email": "o@example.com", "password": "long-enough-1"})
+    approve("other")
 
     client.post("/api/login", json=SEED)
     for number in range(LOOKUPS_PER_MINUTE.limit):

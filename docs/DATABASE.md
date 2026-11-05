@@ -29,10 +29,12 @@ reasoning: what each choice buys, what it costs, and what it deliberately leaves
 
 | Table | What it holds | Why not folded into another |
 | --- | --- | --- |
-| `users` | one row per person | every other table carries `user_id`, so R2 is a filter rather than a redesign |
+| `users` | one row per person, and whether they may use the app (`status`) | every other table carries `user_id`, so R2 is a filter rather than a redesign |
 | `foods` | a food and the macros one unit of it contributes | the unit is part of the record; macros are per unit, exactly as the frontend's `Food` type says |
 | `profiles` | what a person's calorie and protein targets are worked out from | body measurements are not a login: kept apart from `users` so an account with none is simply absent, and so the two can be handled differently |
 | `meals` | a named group of foods | the name is the whole record |
+| `notices` | things the admin should be told, queued by the app and delivered by the bot | the app never talks to Telegram; a queue is what lets a notice survive the bot being down |
+| `admin_log` | every change the admin makes to an account | a rejected account is deleted, and its log line must outlive it |
 | `meal_foods` | which foods a meal is made of, and how much of each | a meal is a list, and a list in a column would have to be parsed to answer "which meals use this food?" |
 | `entries` | one thing logged, in one section, on one date, by one user | the only table the frontend's `LogEntry` maps to — and it carries its own date, so there is no day table to join through |
 
@@ -199,6 +201,32 @@ name of 1 to 40 characters, and real dates are all in the table, so a route that
 refused. Dates use `IS`, for the reason the section on the schema as run gives. The one rule that is not
 here is the age limit of 18 to 100: it depends on today's date, which a CHECK cannot know, so the route
 enforces it (R40).
+
+## Who may use the app, and version 8
+
+**What changed.** `users` gained a `status`: `pending`, `approved` or `disabled` (Part 14, R65). A registration is
+`pending` and cannot sign in until the admin approves it; `disabled` is an approved account switched off, and its open
+sessions end on the next request (R66). Two small tables came with it: `notices`, a queue of things the admin should be
+told, and `admin_log`, a record of every change the admin makes.
+
+**The default is the safe one.** The column is `NOT NULL DEFAULT 'pending'`, so an insert that forgets to say is locked out,
+not let in. The migration then sets every row that already exists to `approved`: this change is about who may register from
+now on, and it must not lock out the account that has been signing in all along or any made in the meantime. A test
+plants accounts of three kinds (a password, a linked chat, neither) on a version 7 file and checks that all of them come out
+approved and none is lost.
+
+**Who may change a status.** Only someone on the machine, with `scripts/users.sh`. There is no web route that does it, and
+a test reads the route table to keep it that way, so a signed-in account cannot approve itself or anyone else.
+
+**The notice queue is the app's half of a conversation with the bot.** The app writes a row when someone registers, in the
+same transaction as the account, so an account that is waiting always has someone told and a failed insert tells no one.
+The bot fetches what has no `delivered` stamp, sends it, then says so. That is at least once, by design: if the
+acknowledgement fails the notice is sent again, and a duplicate is better than a registration the admin never heard about.
+
+**How the step works.** An `ALTER TABLE ... ADD COLUMN` with the same definition the fresh file uses, then an `UPDATE`; the
+two new tables are created by the schema after it. A test compares a fresh file with a migrated one, column for column.
+**The old build refuses a version 8 file** (it expects 7, with no migration from 8), so going back means restoring a
+snapshot, as it did for 7. That was tested for 7 and the mechanism is the same.
 
 ## Decisions worth stating
 
